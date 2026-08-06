@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from api import data_service, fpl_client
 from api.chip_recommendations import (
@@ -13,6 +13,7 @@ from api.chip_recommendations import (
 )
 from api.chip_signals import BASELINE_WINDOW, generate_chip_alerts
 from api.chip_tracking import build_chip_status, filter_actionable_chip_alerts
+from api.readiness import require_live_artifacts
 from api.routers.fixtures import fixture_source_state
 from api.routers.fpl_live import (
     _current_gameweek_from_bootstrap,
@@ -21,10 +22,21 @@ from api.routers.fpl_live import (
     _season_label_from_bootstrap,
 )
 from api.routers.planner import _current_player_rows, _money, _season_transition_message
+from fpl_intelligence.live_shadow import (
+    append_shadow_record,
+    compare_chip_recommendations,
+    shadow_enabled,
+)
 from fpl_intelligence.multi_gw_projection import load_planner_models, project_players
+from fpl_intelligence.production_portfolio import get_production_portfolio
 from fpl_intelligence.season_rules import build_season_rules
 
-router = APIRouter(prefix="/api", tags=["chips"])
+router = APIRouter(
+    prefix="/api",
+    tags=["chips"],
+    dependencies=[Depends(require_live_artifacts)],
+)
+ACTIVE_PORTFOLIO = get_production_portfolio()
 
 
 @router.get("/chip-tips")
@@ -58,6 +70,7 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
             "message": _season_transition_message(
                 season,
                 fixture_state.get("next_kickoff"),
+                season_state=season_state,
             ),
             "alerts": [],
         }
@@ -83,8 +96,8 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
     )
 
     try:
-        models = load_planner_models()
-    except FileNotFoundError as exc:
+        models = load_planner_models(ACTIVE_PORTFOLIO.projections.chip_model)
+    except (FileNotFoundError, RuntimeError) as exc:
         return {
             **response_meta,
             "status": "unavailable",
@@ -134,6 +147,8 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
             rules=rules,
             frames=frames,
             data_cutoff=_deadline_for_gameweek(bootstrap, target_gameweek),
+            projection_model_name=ACTIVE_PORTFOLIO.projections.chip_model,
+            portfolio_version=ACTIVE_PORTFOLIO.version,
         )
     except (ValueError, KeyError, IndexError) as exc:
         return {
@@ -142,6 +157,44 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
             "message": f"Live chip valuation is temporarily unavailable: {exc}",
             "alerts": [],
         }
+    shadow = None
+    if shadow_enabled():
+        control = get_production_portfolio("m8_control")
+        try:
+            control_models = load_planner_models(control.projections.chip_model)
+            control_projected_players = project_players(
+                player_rows,
+                fixture_rows,
+                bootstrap.get("teams", []),
+                max(1, target_gameweek - (BASELINE_WINDOW - 1)),
+                8,
+                models=control_models,
+                history=data_service.historical_player_gw(),
+            )
+            control_recommendation = recommend_live_chip(
+                target_gameweek=target_gameweek,
+                squad=squad_frame(team_picks.get("picks", []), control_projected_players),
+                bank=_money(team_entry.get("last_deadline_bank")) or 0.0,
+                free_transfers=int(team_entry.get("free_transfers") or 1),
+                chip_state=build_live_chip_state(rules, chip_status),
+                rules=rules,
+                frames=projection_frames(control_projected_players),
+                data_cutoff=_deadline_for_gameweek(bootstrap, target_gameweek),
+                projection_model_name=control.projections.chip_model,
+                portfolio_version=control.version,
+            )
+            shadow = compare_chip_recommendations(
+                active=recommendation,
+                control=control_recommendation,
+                gameweek=target_gameweek,
+                active_portfolio=ACTIVE_PORTFOLIO,
+                control_portfolio=control,
+                rules_version=rules.rules_version,
+                data_cutoff=_deadline_for_gameweek(bootstrap, target_gameweek),
+            )
+            append_shadow_record(shadow)
+        except (ValueError, KeyError, IndexError, FileNotFoundError, RuntimeError) as exc:
+            shadow = {"status": "unavailable", "error": str(exc)}
     difficulty_by_team_gw = _difficulty_by_team_gw(fixture_rows)
 
     history_rows = []
@@ -179,12 +232,15 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
         "target_gameweek": target_gameweek,
         "baseline_gameweeks": completed_gameweeks,
         "model": recommendation["model"],
+        "projection_model": recommendation["projection_model"],
+        "portfolio_version": recommendation["portfolio_version"],
         "model_version": recommendation["model_version"],
         "chip_mode": recommendation["chip_mode"],
         "rules_version": recommendation["rules_version"],
         "rules_payload_hash": recommendation["rules_payload_hash"],
         "data_cutoff": recommendation["data_cutoff"],
         "generated_at": recommendation["generated_at"],
+        "shadow": shadow,
     }
 
 

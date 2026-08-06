@@ -6,6 +6,7 @@ import type {
   ChipTipsResponse,
   Fixture,
   FixtureTick,
+  InitialSquadResponse,
   Player,
   PlayerComparisonResponse,
   PlayerHistoryPoint,
@@ -17,7 +18,8 @@ import type {
   TransferTarget,
 } from "./types";
 
-export const API_BASE = "http://localhost:8000";
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function fetchJson<T>(
   path: string,
@@ -81,6 +83,15 @@ export async function getHealth(): Promise<{ status: string }> {
   return fetchJson("/api/health");
 }
 
+export async function getReadiness(): Promise<{
+  status: string;
+  ready: boolean;
+  season: string;
+  errors: string[];
+}> {
+  return fetchJson("/api/readiness", { cache: "no-store" });
+}
+
 export async function getPlayerHistory(name: string): Promise<PlayerHistoryPoint[]> {
   return fetchJson(`/api/players/${encodeURIComponent(name)}/history`);
 }
@@ -114,20 +125,22 @@ export async function getPlanner(teamId: string, horizon: number): Promise<Plann
   return fetchJson(`/api/predictions/planner?team_id=${encodeURIComponent(teamId)}&horizon=${horizon}`);
 }
 
+export async function getInitialSquad(horizon: number): Promise<InitialSquadResponse> {
+  return fetchJson(`/api/predictions/initial-squad?horizon=${horizon}`, {
+    cache: "no-store",
+  });
+}
+
 export async function getChipTips(teamId?: string): Promise<ChipTipsResponse> {
   const suffix = teamId ? "?team_id=" + encodeURIComponent(teamId) : "";
   return fetchJson("/api/chip-tips" + suffix, { cache: "no-store" });
 }
 
 export async function getChipStatuses(teamId?: string): Promise<ChipStatusResponse> {
-  if (!teamId) {
-    return {
-      status: "no_team",
-      message: "Connect your FPL team to see live chip availability.",
-      chips: [],
-    };
-  }
-  return fetchJson(`/api/fpl/team/${encodeURIComponent(teamId)}/chips`, { cache: "no-store" });
+  const path = teamId
+    ? `/api/fpl/team/${encodeURIComponent(teamId)}/chips`
+    : "/api/fpl/chips";
+  return fetchJson(path, { cache: "no-store" });
 }
 
 export async function getAccuracy(): Promise<AccuracyResult[]> {

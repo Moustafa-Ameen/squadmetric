@@ -113,9 +113,13 @@ def test_live_recommendation_exposes_horizon_gain_and_metadata(monkeypatch):
         rules=rules,
         frames=frames,
         data_cutoff="2025-08-29T17:30:00Z",
+        projection_model_name="Gradient Boosting Regressor",
+        portfolio_version="r2-consumer-portfolio-v1",
     )
 
     assert result["model_version"] == "test-beam"
+    assert result["projection_model"] == "Gradient Boosting Regressor"
+    assert result["portfolio_version"] == "r2-consumer-portfolio-v1"
     assert result["recommendation"]["action"] == "use"
     assert result["recommendation"]["chip"] == "Bench Boost"
     assert result["recommendation"]["expected_immediate_gain"] == 10.0

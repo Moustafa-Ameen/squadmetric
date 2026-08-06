@@ -149,8 +149,9 @@ export default function SettingsPage() {
           <div className="space-y-1 text-sm text-muted">
             <p>FPL Intelligence v1.0</p>
             <p>Built with Python, FastAPI, and Next.js</p>
-            <p>Model: Gradient Boosting trained on 85,000+ player-gameweek rows</p>
-            <p>Backtest: historical 2025-26 season</p>
+            <p>Live season: 2026/27</p>
+            <p>Models: consumer-specific portfolio trained only on completed seasons</p>
+            <p>Validation: season-held-out benchmark evidence is shown on the Proof page</p>
           </div>
         </Panel>
       </div>

@@ -52,8 +52,9 @@ DATA_FILES = {
 }
 
 
-@lru_cache(maxsize=len(DATA_FILES))
-def load_dataset(key: str) -> pd.DataFrame:
+@lru_cache(maxsize=len(DATA_FILES) * 4)
+def _load_dataset_versioned(key: str, modified_ns: int) -> pd.DataFrame:
+    del modified_ns
     filename = DATA_FILES.get(key)
     if filename is None:
         logging.warning("Unknown data key requested: %s", key)
@@ -65,6 +66,16 @@ def load_dataset(key: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     return pd.read_csv(path)
+
+
+def load_dataset(key: str) -> pd.DataFrame:
+    filename = DATA_FILES.get(key)
+    if filename is None:
+        logging.warning("Unknown data key requested: %s", key)
+        return pd.DataFrame()
+    path = PROCESSED_DIR / filename
+    modified_ns = path.stat().st_mtime_ns if path.exists() else 0
+    return _load_dataset_versioned(key, modified_ns)
 
 
 def to_records(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
@@ -104,8 +115,9 @@ def historical_player_gw() -> pd.DataFrame:
     return load_dataset("historical_player_gw").copy()
 
 
-@lru_cache(maxsize=1)
-def bootstrap_static() -> dict[str, Any]:
+@lru_cache(maxsize=4)
+def _bootstrap_static_versioned(modified_ns: int) -> dict[str, Any]:
+    del modified_ns
     path = RAW_DIR / "bootstrap-static.json"
     if not path.exists():
         logging.warning("Bootstrap data file is missing: %s", path)
@@ -113,3 +125,9 @@ def bootstrap_static() -> dict[str, Any]:
 
     with path.open(encoding="utf-8") as file:
         return json.load(file)
+
+
+def bootstrap_static() -> dict[str, Any]:
+    path = RAW_DIR / "bootstrap-static.json"
+    modified_ns = path.stat().st_mtime_ns if path.exists() else 0
+    return _bootstrap_static_versioned(modified_ns)

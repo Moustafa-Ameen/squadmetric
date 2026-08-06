@@ -9,6 +9,7 @@ __pycache__/
 
 data/raw/*.json
 data/raw/historical/
+data/raw/snapshots/
 data/processed/
 data/processed/*.parquet
 data/processed/*.csv

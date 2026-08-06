@@ -137,6 +137,8 @@ def recommend_live_chip(
     rules: SeasonRules,
     frames: Mapping[int, pd.DataFrame],
     data_cutoff: str | None,
+    projection_model_name: str = "Gradient Boosting Regressor",
+    portfolio_version: str = "unversioned",
 ) -> dict[str, Any]:
     """Return the live recommendation and short-horizon alternative opportunity."""
 
@@ -178,6 +180,8 @@ def recommend_live_chip(
         chip_state=chip_state,
         rules=rules,
         data_cutoff=data_cutoff,
+        projection_model_name=projection_model_name,
+        portfolio_version=portfolio_version,
     )
 
 
@@ -256,6 +260,8 @@ def _recommendation_payload(
     chip_state: ChipState,
     rules: SeasonRules,
     data_cutoff: str | None,
+    projection_model_name: str,
+    portfolio_version: str,
 ) -> dict[str, Any]:
     expected_immediate_gain = action.expected_points - action.no_chip_expected_points
     expected_horizon_gain = action.expected_horizon_points - action.no_chip_horizon_points
@@ -300,6 +306,8 @@ def _recommendation_payload(
     return {
         "model": MODEL_NAME,
         "model_version": model_version,
+        "projection_model": projection_model_name,
+        "portfolio_version": portfolio_version,
         "chip_mode": "beam_search",
         "rules_version": rules.rules_version,
         "rules_payload_hash": rules.payload_hash,

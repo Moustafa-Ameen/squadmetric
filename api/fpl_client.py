@@ -1,3 +1,4 @@
+from time import monotonic
 from typing import Any
 
 import httpx
@@ -6,6 +7,8 @@ from fastapi import HTTPException
 BASE_URL = "https://fantasy.premierleague.com/api/"
 TIMEOUT_SECONDS = 10.0
 UNAVAILABLE_MESSAGE = "FPL data is temporarily unavailable. Try again shortly."
+BOOTSTRAP_CACHE_SECONDS = 300.0
+_BOOTSTRAP_CACHE: tuple[float, dict[str, Any]] | None = None
 
 
 async def _get(path: str) -> Any:
@@ -20,7 +23,20 @@ async def _get(path: str) -> Any:
 
 
 async def get_bootstrap() -> dict[str, Any]:
-    return await _get("bootstrap-static/")
+    global _BOOTSTRAP_CACHE
+    if (
+        _BOOTSTRAP_CACHE is not None
+        and monotonic() - _BOOTSTRAP_CACHE[0] < BOOTSTRAP_CACHE_SECONDS
+    ):
+        return _BOOTSTRAP_CACHE[1]
+    payload = await _get("bootstrap-static/")
+    _BOOTSTRAP_CACHE = (monotonic(), payload)
+    return payload
+
+
+def clear_bootstrap_cache() -> None:
+    global _BOOTSTRAP_CACHE
+    _BOOTSTRAP_CACHE = None
 
 
 async def get_fixtures() -> list[dict[str, Any]]:

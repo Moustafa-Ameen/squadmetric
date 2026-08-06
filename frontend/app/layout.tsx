@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
-
 export const metadata: Metadata = {
-  title: "FPL Intelligence",
-  description: "Fantasy Premier League predictions, transfer targets, and model proof.",
+  title: "FPL Intelligence 2026/27",
+  description: "2026/27 Fantasy Premier League predictions, transfers, chips, and captaincy.",
 };
 
 export default function RootLayout({
@@ -18,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <body>
         <AppShell>{children}</AppShell>
       </body>
     </html>

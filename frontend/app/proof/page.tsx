@@ -57,10 +57,10 @@ export default function ProofPage() {
 
       <section className="fpl-card-shadow rounded-lg border border-fpl-border border-l-4 border-l-fpl-green bg-[linear-gradient(135deg,#0d1a0d_0%,#161616_100%)] p-6">
         <h2 className="text-[26px] font-bold leading-tight text-primary">
-          Our model beat every baseline across a full 38-gameweek season.
+          Historical model evidence, separated from the live 2026/27 serving fit.
         </h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-secondary">
-          Trained on 85,000+ player-gameweek rows. Tested on data it had never seen. Here&apos;s exactly what happened.
+          The tables below are held-out historical evaluations. The live model is refit on completed seasons only; 2026/27 outcomes are not part of its training data.
         </p>
       </section>
 

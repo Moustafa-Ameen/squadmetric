@@ -35,25 +35,46 @@ const fallbackChips: ChipCard[] = [
     tip: "Usually strongest before a major double gameweek or late-season fixture swing.",
   },
   {
-    key: "fh",
-    name: "Free Hit",
-    subtitle: "one Gameweek only",
+    key: "fh1",
+    name: "Free Hit 1",
+    subtitle: "first half · unavailable GW1",
     icon: Zap,
     tip: "Save for a blank gameweek when many clubs do not play.",
   },
   {
-    key: "bb",
-    name: "Bench Boost",
-    subtitle: "bench scores too",
+    key: "bb1",
+    name: "Bench Boost 1",
+    subtitle: "first half · bench scores too",
     icon: Shield,
     tip: "Only powerful when all 15 squad members are expected to play.",
   },
   {
-    key: "tc",
-    name: "Triple Captain",
-    subtitle: "captain scores 3×",
+    key: "tc1",
+    name: "Triple Captain 1",
+    subtitle: "first half · captain scores 3×",
     icon: Sparkles,
     tip: "Best on a premium double-gameweek captain with strong minutes.",
+  },
+  {
+    key: "fh2",
+    name: "Free Hit 2",
+    subtitle: "second half · one Gameweek only",
+    icon: Zap,
+    tip: "Preserve for the strongest blank or double-gameweek opportunity.",
+  },
+  {
+    key: "bb2",
+    name: "Bench Boost 2",
+    subtitle: "second half · bench scores too",
+    icon: Shield,
+    tip: "Plan all 15 players around a strong double gameweek.",
+  },
+  {
+    key: "tc2",
+    name: "Triple Captain 2",
+    subtitle: "second half · captain scores 3×",
+    icon: Sparkles,
+    tip: "Prefer a high-minutes premium captain with two strong fixtures.",
   },
 ];
 
@@ -89,11 +110,10 @@ const expandable = [
 ];
 
 const timeline = [
-  "WC1 early season",
-  "TC first major DGW",
-  "BB next DGW",
-  "FH biggest blank GW",
-  "WC2 late season rebuild",
+  "First WC, FH, BB and TC expire at the GW19 deadline",
+  "Second set activates for the second half",
+  "Only one chip can be used in a Gameweek",
+  "A GW19 Free Hit prevents using the second Free Hit in GW20",
 ];
 
 const chipCopy = {

@@ -2,14 +2,19 @@ import unicodedata
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api import data_service, fpl_client
 from api.player_signals import add_safety_tiers
+from api.readiness import require_current_artifacts
 from api.routers.fixtures import fixture_source_state, ticker
 from api.routers.fpl_live import _detect_season_state
 
-router = APIRouter(prefix="/api/players", tags=["players"])
+router = APIRouter(
+    prefix="/api/players",
+    tags=["players"],
+    dependencies=[Depends(require_current_artifacts)],
+)
 
 PLAYER_COLUMN_MAP = {
     "element_id": "element_id",
@@ -33,6 +38,12 @@ PLAYER_COLUMN_MAP = {
 }
 
 NUMERIC_COLUMNS = data_service.PLAYERS_RANKED_NUMERIC_COLUMNS
+PLAYER_METADATA_COLUMNS = {
+    "season": "season",
+    "bootstrap_hash": "bootstrap_hash",
+    "data_cutoff": "data_cutoff",
+    "prior_source": "prior_source",
+}
 
 RECENT_FORM_WINDOW = 3
 
@@ -72,6 +83,11 @@ def _load_players() -> tuple[Any, list[str]]:
 def _plain_player_columns(dataframe):
     output = dataframe.rename(columns=PLAYER_COLUMN_MAP)
     columns = [column for column in PLAYER_COLUMN_MAP.values() if column in output.columns]
+    columns.extend(
+        destination
+        for source, destination in PLAYER_METADATA_COLUMNS.items()
+        if source in output.columns and destination not in columns
+    )
     return output[columns]
 
 
@@ -168,17 +184,6 @@ def _add_historical_form_fallback(dataframe: pd.DataFrame) -> pd.DataFrame:
     # Tail per player rather than filtering from one global latest GW. This
     # preserves a player's latest available history when a fixture is missed.
     recent = season_history.sort_values("gameweek")
-    recent_by_id: dict[Any, float] = {}
-    if "player_id" in recent.columns:
-        recent_by_id = (
-            recent.dropna(subset=["player_id"])
-            .groupby("player_id", sort=False)
-            .tail(RECENT_FORM_WINDOW)
-            .groupby("player_id")["total_points"]
-            .mean()
-            .to_dict()
-        )
-
     recent_by_name: dict[str, float] = {}
     if "player_name" in recent.columns:
         recent["player_key"] = recent["player_name"].map(_normalize)
@@ -191,10 +196,8 @@ def _add_historical_form_fallback(dataframe: pd.DataFrame) -> pd.DataFrame:
             .to_dict()
         )
 
-    current_ids = pd.to_numeric(dataframe["element_id"], errors="coerce")
-    form = current_ids.map(recent_by_id)
     names = dataframe["player_name"].map(_normalize)
-    form = form.fillna(names.map(recent_by_name))
+    form = names.map(recent_by_name)
     dataframe["form"] = form.fillna(0.0)
     return dataframe
 

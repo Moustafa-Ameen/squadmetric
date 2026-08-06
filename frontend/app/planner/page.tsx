@@ -5,11 +5,15 @@ import { ArrowRight, CircleAlert, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
-import { isSeasonEndedState, SeasonTransitionNotice } from "@/components/SeasonTransitionNotice";
 import { SectionHeader } from "@/components/SectionHeader";
-import { getPlanner } from "@/lib/api";
+import { getInitialSquad, getPlanner } from "@/lib/api";
 import { points, positionCode } from "@/lib/format";
-import type { PlannerPlayer, PlannerProjection, PlannerResponse } from "@/lib/types";
+import type {
+  InitialSquadResponse,
+  PlannerPlayer,
+  PlannerProjection,
+  PlannerResponse,
+} from "@/lib/types";
 
 type Horizon = 3 | 5 | 8;
 type StagedMove = { gameweek: number; outgoingId: number; incomingId: number };
@@ -37,6 +41,7 @@ export default function PlannerPage() {
   const [horizon, setHorizon] = useState<Horizon>(3);
   const [teamId, setTeamId] = useState("");
   const [data, setData] = useState<PlannerResponse | null>(null);
+  const [initialSquad, setInitialSquad] = useState<InitialSquadResponse | null>(null);
   const [stagedMoves, setStagedMoves] = useState<StagedMove[]>([]);
   const [selectedGameweek, setSelectedGameweek] = useState<number | null>(null);
   const [outgoingId, setOutgoingId] = useState("");
@@ -48,10 +53,14 @@ export default function PlannerPage() {
     const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
     queueMicrotask(() => {
       setTeamId(savedTeamId);
-      setLoading(!savedTeamId ? false : true);
+      setLoading(true);
       setError(false);
     });
     if (!savedTeamId) {
+      getInitialSquad(horizon)
+        .then(setInitialSquad)
+        .catch(() => setError(true))
+        .finally(() => setLoading(false));
       return;
     }
 
@@ -68,13 +77,13 @@ export default function PlannerPage() {
   }, [horizon]);
 
   const simulation = useMemo(
-    () => (data && !isSeasonEndedState(data.season_state) ? simulatePlan(data, stagedMoves) : []),
+    () => (data && data.season_state === "in_season" ? simulatePlan(data, stagedMoves) : []),
     [data, stagedMoves],
   );
   const selectedRow = simulation.find((row) => row.gameweek === selectedGameweek);
   const selectedOutgoing = selectedRow?.stateBefore.roster.get(Number(outgoingId));
   const candidates = useMemo(() => {
-    if (!selectedRow || !selectedOutgoing || !data || isSeasonEndedState(data.season_state)) return [];
+    if (!selectedRow || !selectedOutgoing || !data || data.season_state !== "in_season") return [];
     return data.player_pool
       .filter(
         (player) =>
@@ -90,43 +99,95 @@ export default function PlannerPage() {
 
   if (loading) return <PlannerSkeleton />;
 
-  if (!teamId) {
+  if (error) return <ErrorState />;
+
+  if (!teamId && initialSquad) {
     return (
-      <div className="flex min-h-[65vh] items-center justify-center">
-        <div className="max-w-md rounded-[10px] border border-fpl-border bg-fpl-card p-8 text-center">
-          <h1 className="text-lg font-semibold text-primary">Connect your squad first</h1>
-          <p className="mt-2 text-sm text-secondary">
-            The multi-gameweek planner needs your squad, bank, and free-transfer balance.
-          </p>
-          <Link href="/settings" className="mt-5 inline-flex fpl-button px-4 py-2 text-sm">
-            Open Settings
-          </Link>
+      <div className="space-y-5">
+        <SectionHeader
+          title={`${initialSquad.season} Initial Squad`}
+          subtitle="A legal £100m opening squad using current official prices and fixtures"
+        />
+        <Panel>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fpl-green">
+                Pre-season optimizer
+              </div>
+              <h2 className="mt-2 text-[20px] font-semibold text-primary">
+                {initialSquad.formation} · {money(initialSquad.cost)}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-secondary">
+                {initialSquad.assumption}
+              </p>
+            </div>
+            <div className="flex rounded-lg border border-fpl-border bg-fpl-raised p-1">
+              {([3, 5, 8] as Horizon[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setHorizon(option)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
+                    horizon === option ? "bg-fpl-green text-fpl-dark" : "text-secondary"
+                  }`}
+                >
+                  {option} GWs
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <Info label="Expected GW1 incl. captain" value={`${points(initialSquad.expected_gw1_points)} pts`} />
+            <Info label="Captain" value={initialSquadLabel(initialSquad, initialSquad.captain_id)} />
+            <Info label="Vice-captain" value={initialSquadLabel(initialSquad, initialSquad.vice_captain_id)} />
+          </div>
+        </Panel>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <Panel>
+            <h2 className="text-[16px] font-semibold text-primary">Starting XI</h2>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {initialSquad.squad.filter((player) => player.is_starter).map((player) => (
+                <InitialPlayer key={player.element_id} player={player} />
+              ))}
+            </div>
+          </Panel>
+          <Panel>
+            <h2 className="text-[16px] font-semibold text-primary">Bench order</h2>
+            <div className="mt-4 space-y-2">
+              {initialSquad.squad.filter((player) => !player.is_starter).map((player) => (
+                <InitialPlayer key={player.element_id} player={player} />
+              ))}
+            </div>
+            <Link href="/settings" className="mt-5 inline-flex fpl-button px-4 py-2 text-sm">
+              Connect my FPL team
+            </Link>
+          </Panel>
         </div>
+        <p className="text-[11px] text-muted">
+          {initialSquad.model} · {initialSquad.portfolio_version} · cutoff {initialSquad.data_cutoff}
+        </p>
       </div>
     );
   }
 
-  if (error || !data) return <ErrorState />;
+  if (!data) return <ErrorState />;
 
-  if (isSeasonEndedState(data.season_state)) {
+  if (data.season_state !== "in_season") {
     return (
       <div className="space-y-5">
-        <SectionHeader title="Transfer Planner" subtitle="Multi-gameweek planning is paused between seasons" />
-        <SeasonTransitionNotice
-          seasonState={{
-            season_state: data.season_state,
-            fpl_api_season: data.fpl_api_season ?? "the previous",
-            fixture_source: "",
-            fixture_season: data.fixture_season ?? "unknown",
-            difficulty_source: "",
-            current_gw: null,
-            next_gw: null,
-            last_completed_gw: null,
-            next_season_start: data.next_season_start ?? null,
-            data_freshness: { fpl_api: "", fixtures: "" },
-          }}
-          message={data.message}
+        <SectionHeader
+          title="2026/27 Transfer Planner"
+          subtitle="Official prices, players, rules and fixtures are loaded"
         />
+        <Panel>
+          <h2 className="text-[18px] font-semibold text-primary">Pre-season squad access</h2>
+          <p className="mt-2 text-sm leading-6 text-secondary">{data.message}</p>
+          {data.decision_error ? (
+            <p className="mt-3 rounded-lg border border-fpl-amber/30 bg-fpl-amber/10 p-3 text-sm text-fpl-amber">
+              {data.decision_error}
+            </p>
+          ) : null}
+        </Panel>
       </div>
     );
   }
@@ -167,6 +228,59 @@ export default function PlannerPage() {
         title="Transfer Planner"
         subtitle={`Plan ${horizon} gameweeks ahead for Team #${teamId}`}
       />
+
+      <Panel>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fpl-green">
+              Complete optimizer recommendation
+            </div>
+            {data.decision ? (
+              <>
+                <h2 className="mt-2 text-[20px] font-semibold text-primary">
+                  {data.decision.transfer.incoming_name
+                    ? `${data.decision.transfer.outgoing_name} → ${data.decision.transfer.incoming_name}`
+                    : "Roll the transfer"}
+                  {data.decision.transfer.hit_selected
+                    ? ` · -${data.decision.transfer.hit_cost} hit`
+                    : ""}
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-secondary">
+                  {data.decision.reason}
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-fpl-amber">
+                {data.decision_error ?? "No complete recommendation is available."}
+              </p>
+            )}
+          </div>
+          <div className="rounded-lg border border-fpl-border bg-fpl-raised px-4 py-3 text-right">
+            <div className="text-xs text-muted">Recommended chip</div>
+            <div className="mt-1 font-semibold text-primary">{data.decision?.chip ?? "Save"}</div>
+          </div>
+        </div>
+        {data.decision ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Info label="Expected GW points" value={points(data.decision.expected_gameweek_points)} />
+              <Info label={`${horizon}-GW projection`} value={points(data.decision.expected_horizon_points)} />
+              <Info
+                label="Horizon gain"
+                value={`${data.decision.expected_horizon_gain >= 0 ? "+" : ""}${points(data.decision.expected_horizon_gain)}`}
+              />
+              <Info
+                label="Captain / vice"
+                value={`${playerLabel(data, data.decision.captain_id)} / ${playerLabel(data, data.decision.vice_captain_id)}`}
+              />
+            </div>
+            <p className="mt-3 text-[11px] text-muted">
+              Portfolio {data.portfolio_version ?? "unknown"} · transfer {data.transfer_model ?? data.model} ·
+              captain {data.captain_model ?? "unknown"} · chip {data.chip_model ?? "unknown"}
+            </p>
+          </>
+        ) : null}
+      </Panel>
 
       <Panel>
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -485,6 +599,49 @@ function roundMoney(value: number): number {
 
 function money(value: number | null | undefined): string {
   return value === null || value === undefined ? "-" : `\u00a3${value.toFixed(1)}m`;
+}
+
+function playerLabel(data: PlannerResponse, elementId: number | null): string {
+  if (elementId === null) return "-";
+  return (
+    data.squad.find((player) => player.element_id === elementId)?.web_name ??
+    data.player_pool.find((player) => player.element_id === elementId)?.web_name ??
+    `#${elementId}`
+  );
+}
+
+function initialSquadLabel(data: InitialSquadResponse, elementId: number): string {
+  return (
+    data.squad.find((player) => player.element_id === elementId)?.web_name ??
+    `#${elementId}`
+  );
+}
+
+function InitialPlayer({
+  player,
+}: {
+  player: InitialSquadResponse["squad"][number];
+}) {
+  return (
+    <div className="rounded-lg border border-fpl-border bg-fpl-raised p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="font-semibold text-primary">
+            {player.web_name ?? player.player_name}
+          </div>
+          <div className="mt-1 text-[11px] text-muted">
+            {player.team} · {positionCode(player.position)} · {money(player.price)}
+          </div>
+        </div>
+        <div className="font-mono text-sm font-bold text-fpl-green">
+          {points(player.gw1_points)}
+        </div>
+      </div>
+      <div className="mt-2 text-[10px] text-muted">
+        {player.horizon_points.toFixed(1)} pts over selected horizon
+      </div>
+    </div>
+  );
 }
 
 function Metric({ label, value, accent, danger }: { label: string; value: string; accent?: boolean; danger?: boolean }) {

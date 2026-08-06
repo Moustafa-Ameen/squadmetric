@@ -18,6 +18,10 @@ export interface Player {
   web_name?: string;
   team_code?: number;
   reasoning?: string;
+  season?: string;
+  bootstrap_hash?: string;
+  data_cutoff?: string;
+  prior_source?: string;
 }
 
 export interface CaptainPick {
@@ -35,6 +39,12 @@ export interface CaptainPick {
   team_code?: number;
   web_name?: string;
   reasoning?: string;
+  season?: string;
+  bootstrap_hash?: string;
+  rules_version?: string;
+  data_cutoff?: string;
+  model?: string;
+  portfolio_version?: string;
 }
 
 export interface TransferTarget {
@@ -55,6 +65,13 @@ export interface TransferTarget {
   defensive_contribution_per_90?: number;
   safety_tier?: "Safe" | "Risky" | "";
   team_code?: number;
+  season?: string;
+  bootstrap_hash?: string;
+  rules_version?: string;
+  data_cutoff?: string;
+  model?: string;
+  portfolio_version?: string;
+  prior_source?: string;
 }
 
 export interface Fixture {
@@ -179,9 +196,14 @@ export interface SeasonState {
     fpl_api: string;
     fixtures: string;
   };
+  recommendations_ready?: boolean;
+  artifact_status?: string;
+  artifact_errors?: string[];
+  artifact_manifest?: Record<string, unknown> | null;
 }
 
 export type SeasonStateCode =
+  | "pre_season"
   | "in_season"
   | "season_ended_preseason"
   | "season_ended_no_next_data";
@@ -190,6 +212,7 @@ export interface PlannerFixtureProjection {
   opponent: string;
   opponent_name: string;
   home: boolean;
+  opponent_difficulty?: number | null;
   opponent_strength: number;
   predicted_points: number;
   start_likelihood: number;
@@ -238,6 +261,10 @@ export interface PlannerResponse {
   horizon: number;
   squad_gameweek: number;
   model: string;
+  portfolio_version?: string;
+  transfer_model?: string;
+  captain_model?: string;
+  chip_model?: string;
   assumption: string;
   bank_value: number | null;
   free_transfers_available: number;
@@ -245,6 +272,65 @@ export interface PlannerResponse {
   baseline: PlannerBaselinePoint[];
   squad: PlannerPlayer[];
   player_pool: PlannerPlayer[];
+  decision?: PlannerDecision | null;
+  decision_error?: string | null;
+}
+
+export interface PlannerDecisionTransfer {
+  outgoing_id: number | null;
+  outgoing_name: string | null;
+  incoming_id: number | null;
+  incoming_name: string | null;
+  projected_gain: number;
+  hit_cost: number;
+  hit_selected: boolean;
+}
+
+export interface PlannerDecision {
+  transfer: PlannerDecisionTransfer;
+  chip: string | null;
+  chip_key: string | null;
+  starting_ids: number[];
+  bench_order: number[];
+  captain_id: number | null;
+  vice_captain_id: number | null;
+  expected_gameweek_points: number;
+  expected_horizon_points: number;
+  no_chip_horizon_points: number;
+  expected_horizon_gain: number;
+  uncertainty_penalty: number;
+  reason: string;
+}
+
+export interface InitialSquadPlayer {
+  element_id: number;
+  player_name: string;
+  web_name?: string;
+  team: string;
+  position: string;
+  price: number;
+  gw1_points: number;
+  horizon_points: number;
+  is_starter: boolean;
+  bench_order: number | null;
+}
+
+export interface InitialSquadResponse {
+  season: string;
+  bootstrap_hash: string;
+  rules_version: string;
+  data_cutoff: string;
+  model: string;
+  portfolio_version: string;
+  horizon: number;
+  budget: number;
+  cost: number;
+  formation: string;
+  captain_id: number;
+  vice_captain_id: number;
+  expected_gw1_points: number;
+  squad: InitialSquadPlayer[];
+  assumption: string;
 }
 
 export type ChipTipsStatus = "no_team" | "unavailable" | "insufficient_data" | "ready";

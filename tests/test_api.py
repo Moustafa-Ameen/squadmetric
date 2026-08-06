@@ -2,6 +2,7 @@ import asyncio
 
 import pandas as pd
 from api.main import app
+from api.readiness import require_current_artifacts, require_live_artifacts
 from api.routers import chips as chips_router
 from api.routers import fpl_live
 from api.routers import planner as planner_router
@@ -9,6 +10,9 @@ from api.routers import players as players_router
 from api.routers import predictions as predictions_router
 from api.routers.fixtures import TEAM_SHORT_NAMES, TEAM_STRENGTH, _ticker_from_named_fixtures
 from httpx import ASGITransport, AsyncClient
+
+app.dependency_overrides[require_live_artifacts] = lambda: None
+app.dependency_overrides[require_current_artifacts] = lambda: None
 
 
 async def _get(path: str):
@@ -22,6 +26,21 @@ def test_health_returns_ok():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_portfolio_status_exposes_active_and_rollback_configs(monkeypatch):
+    monkeypatch.delenv("FPL_SHADOW_MODE", raising=False)
+
+    response = asyncio.run(_get("/api/operations/portfolio"))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["active"]["version"] == "r2-consumer-portfolio-v1"
+    assert payload["active"]["transfer_model"] == "Ridge Regression"
+    assert payload["active"]["chip_model"] == "Gradient Boosting Regressor"
+    assert payload["rollback"]["version"] == "m8.6.1-ridge-control-v1"
+    assert payload["shadow_mode"] is False
+    assert payload["automatic_execution"] is False
 
 
 def test_players_returns_plain_english_fields():
@@ -393,24 +412,120 @@ def test_form_fallback_diverges_from_season_ppg_in_both_directions(monkeypatch):
     assert by_name["In Form"]["form"] > by_name["In Form"]["ppg"]
 
 
-def test_captaincy_predictions_use_ridge_regression_model():
-    predictions = predictions_router.data_service.backtest_predictions()
-    latest_gw = int(predictions["gameweek"].max())
-    ridge_top = (
-        predictions[
-            (predictions["gameweek"] == latest_gw)
-            & (predictions["model"] == predictions_router.CAPTAINCY_MODEL)
-        ]
-        .sort_values("expected_points_adjusted", ascending=False)
-        .iloc[0]
+def test_captaincy_predictions_use_current_season_projection(monkeypatch):
+    async def fake_live_projection_rows(**kwargs):
+        return (
+            [
+                {
+                    "element_id": 101,
+                    "name": "Current Captain",
+                    "team": "MCI",
+                    "position": "FWD",
+                    "price": 15.5,
+                    "start_likelihood": 0.9,
+                    "projections": [
+                        {
+                            "gameweek": 1,
+                            "projected_points": 8.4,
+                            "blank": False,
+                            "double": False,
+                            "fixtures": [
+                                {
+                                    "predicted_points": 9.0,
+                                    "start_likelihood": 0.93,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            {
+                "season": "2026-27",
+                "bootstrap_hash": "bootstrap-hash",
+                "rules_version": "rules-v1",
+                "data_cutoff": "2026-07-26T00:00:00Z",
+                "model": kwargs["model_name"],
+                "start_gameweek": 1,
+            },
+        )
+
+    monkeypatch.setattr(
+        predictions_router,
+        "live_projection_rows",
+        fake_live_projection_rows,
     )
 
-    response = asyncio.run(_get(f"/api/predictions/captaincy?gw={latest_gw}&limit=1"))
+    response = asyncio.run(_get("/api/predictions/captaincy?gw=1&limit=1"))
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload[0]["name"] == ridge_top["player_name"]
-    assert predictions_router.CAPTAINCY_MODEL == "Ridge Regression"
+    assert payload[0]["name"] == "Current Captain"
+    assert payload[0]["season"] == "2026-27"
+    assert payload[0]["element_id"] == 101
+    assert payload[0]["model"] == "Ridge Regression"
+
+
+def test_initial_squad_uses_current_projections_and_is_fpl_legal(monkeypatch):
+    positions = ["GKP"] * 2 + ["DEF"] * 5 + ["MID"] * 5 + ["FWD"] * 3
+    projected = []
+    for index, position in enumerate(positions, start=1):
+        projected.append(
+            {
+                "element_id": index,
+                "name": f"Player {index}",
+                "web_name": f"P{index}",
+                "team": f"T{(index - 1) // 3 + 1}",
+                "position": position,
+                "price": 6.6,
+                "projections": [
+                    {
+                        "gameweek": gameweek,
+                        "projected_points": round(2.0 + index / 10, 2),
+                        "blank": False,
+                        "double": False,
+                        "fixtures": [],
+                    }
+                    for gameweek in (1, 2, 3)
+                ],
+            }
+        )
+
+    async def fake_live_projection_rows(**kwargs):
+        assert kwargs["start_gameweek"] == 1
+        assert kwargs["horizon"] == 3
+        return projected, {
+            "season": "2026-27",
+            "bootstrap_hash": "bootstrap-hash",
+            "rules_version": "rules-v1",
+            "data_cutoff": "2026-07-26T00:00:00Z",
+            "model": kwargs["model_name"],
+            "start_gameweek": 1,
+        }
+
+    monkeypatch.setattr(
+        predictions_router,
+        "live_projection_rows",
+        fake_live_projection_rows,
+    )
+
+    response = asyncio.run(_get("/api/predictions/initial-squad?horizon=3"))
+
+    assert response.status_code == 200
+    payload = response.json()
+    squad = payload["squad"]
+    starters = [player for player in squad if player["is_starter"]]
+    position_counts = pd.Series([player["position"] for player in squad]).value_counts()
+    team_counts = pd.Series([player["team"] for player in squad]).value_counts()
+    assert payload["season"] == "2026-27"
+    assert len(squad) == 15
+    assert len(starters) == 11
+    assert payload["cost"] == 99.0
+    assert payload["initial_squad_policy"] == "horizon_3_attack"
+    assert payload["policy_status"] == "experimental"
+    assert position_counts.to_dict() == {"DEF": 5, "MID": 5, "FWD": 3, "GKP": 2}
+    assert int(team_counts.max()) == 3
+    assert payload["captain_id"] in {player["element_id"] for player in starters}
+    assert payload["vice_captain_id"] in {player["element_id"] for player in starters}
 
 
 def test_fixture_ticker_rows_include_source_metadata():
@@ -561,6 +676,9 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
     async def fake_picks(team_id, gw):
         return {"picks": [{"element": 10, "position": 1, "is_captain": True}]}
 
+    async def fake_history(team_id):
+        return {"chips": []}
+
     async def fake_fixtures():
         return []
 
@@ -598,6 +716,7 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
     monkeypatch.setattr(planner_router.fpl_client, "get_bootstrap", fake_bootstrap)
     monkeypatch.setattr(planner_router.fpl_client, "get_team", fake_team)
     monkeypatch.setattr(planner_router.fpl_client, "get_team_picks", fake_picks)
+    monkeypatch.setattr(planner_router.fpl_client, "get_team_history", fake_history)
     monkeypatch.setattr(planner_router.fpl_client, "get_fixtures", fake_fixtures)
     monkeypatch.setattr(planner_router, "fixture_source_state", fake_fixture_source_state)
     monkeypatch.setattr(
@@ -606,7 +725,11 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
         lambda: pd.DataFrame([{"player_name": "Example Midfielder"}]),
     )
     monkeypatch.setattr(planner_router.data_service, "historical_player_gw", lambda: pd.DataFrame())
-    monkeypatch.setattr(planner_router, "load_planner_models", lambda: (object(), object()))
+    monkeypatch.setattr(
+        planner_router,
+        "load_planner_models",
+        lambda *args, **kwargs: (object(), object()),
+    )
     monkeypatch.setattr(planner_router, "project_players", lambda *args, **kwargs: projected)
 
     response = asyncio.run(_get("/api/predictions/planner?team_id=10&horizon=3"))
@@ -617,6 +740,9 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
     assert payload["bank_value"] == 1.5
     assert payload["free_transfers_available"] == 1
     assert payload["max_extra_free_transfers"] == 4
+    assert payload["transfer_model"] == "Ridge Regression"
+    assert payload["chip_model"] == "Gradient Boosting Regressor"
+    assert payload["portfolio_version"] == "r2-consumer-portfolio-v1"
     assert payload["squad"][0]["is_starter"] is True
     assert payload["baseline"][0]["projected_points"] == 4.2
 
@@ -650,7 +776,9 @@ def test_planner_returns_transition_state_without_projecting(monkeypatch):
     assert payload["season_state"] == "season_ended_preseason"
     assert payload["fixture_season"] == "2026-27"
     assert payload["next_season_start"] == "2026-08-21T19:00:00Z"
-    assert "baseline" not in payload
+    assert payload["baseline"] == []
+    assert payload["squad"] == []
+    assert payload["decision"] is None
 
 
 def test_chip_tips_returns_clear_no_team_state():
@@ -661,12 +789,32 @@ def test_chip_tips_returns_clear_no_team_state():
     assert response.json()["alerts"] == []
 
 
-def test_chip_status_returns_clear_no_team_state():
+def test_chip_status_without_team_returns_official_inventory(monkeypatch):
+    async def fake_bootstrap():
+        return players_router.data_service.bootstrap_static()
+
+    async def fake_fixtures():
+        return []
+
+    async def fake_fixture_source_state(fixture_rows=None):
+        return {
+            "source": "Official PL fixture release",
+            "season": "2026-27",
+            "difficulty_source": "App-estimated difficulty",
+            "freshness": "static official release",
+            "next_kickoff": "2026-08-22T00:00:00Z",
+        }
+
+    monkeypatch.setattr(fpl_live.fpl_client, "get_bootstrap", fake_bootstrap)
+    monkeypatch.setattr(fpl_live.fpl_client, "get_fixtures", fake_fixtures)
+    monkeypatch.setattr(fpl_live, "fixture_source_state", fake_fixture_source_state)
+
     response = asyncio.run(_get("/api/fpl/chips"))
 
     assert response.status_code == 200
-    assert response.json()["status"] == "no_team"
-    assert response.json()["chips"] == []
+    assert response.json()["status"] == "ready"
+    assert len(response.json()["chips"]) == 8
+    assert response.json()["fpl_api_season"] == "2026-27"
 
 
 def test_chip_status_reads_live_history_and_bootstrap_windows(monkeypatch):
