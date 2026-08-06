@@ -21,6 +21,7 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from fpl_intelligence.minutes_model import MinutesBandConditionalModel
 from fpl_intelligence.season_rules import historical_regime
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -91,52 +92,6 @@ def minutes_band(minutes: pd.Series | np.ndarray) -> np.ndarray:
     """Map observed minutes to the three FPL-relevant playing-time bands."""
     values = np.asarray(minutes)
     return np.select([values <= 0, values < 60], [0, 1], default=2).astype(int)
-
-
-@dataclass
-class MinutesBandConditionalModel:
-    """Minutes-band probabilities plus E(points | minutes band) models.
-
-    The classifier estimates the probability of each minutes band.  Each point
-    regressor is trained only on historical rows in that band, so the final
-    prediction is the conditional expectation required by the M2 design:
-
-        sum_b P(minutes band=b) * E(points | minutes band=b)
-    """
-
-    classifier: Any | None
-    fallback_probabilities: np.ndarray
-    band_point_models: dict[int, Any | None]
-    conditional_point_means: dict[int, float]
-
-    def predict_proba(self, features: pd.DataFrame) -> np.ndarray:
-        probabilities = np.tile(self.fallback_probabilities, (len(features), 1))
-        if self.classifier is None:
-            return probabilities
-
-        probabilities = np.zeros((len(features), 3), dtype=float)
-        raw = self.classifier.predict_proba(features)
-        for column, label in enumerate(self.classifier.classes_):
-            probabilities[:, int(label)] = raw[:, column]
-        return probabilities
-
-    def predict(self, features: pd.DataFrame) -> np.ndarray:
-        return self.predict_proba(features).argmax(axis=1)
-
-    def predict_conditional_points(self, features: pd.DataFrame) -> np.ndarray:
-        predictions = np.zeros((len(features), 3), dtype=float)
-        for band in range(3):
-            model = self.band_point_models.get(band)
-            if model is None:
-                predictions[:, band] = self.conditional_point_means.get(band, 0.0)
-            else:
-                predictions[:, band] = model.predict(features)
-        return predictions
-
-    def predict_expected_points(self, features: pd.DataFrame) -> np.ndarray:
-        probabilities = self.predict_proba(features)
-        conditional_points = self.predict_conditional_points(features)
-        return (probabilities * conditional_points).sum(axis=1)
 
 
 def load_historical_player_gameweeks(path: Path = HISTORICAL_PLAYER_GW_PATH) -> pd.DataFrame:

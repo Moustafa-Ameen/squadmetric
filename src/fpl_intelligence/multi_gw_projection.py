@@ -19,33 +19,45 @@ import numpy as np
 import pandas as pd
 
 from fpl_intelligence.fixture_scenarios import FixtureScenario
-from fpl_intelligence.step4_models import MINUTES_BAND_MODEL_PATH, MINUTES_MODEL_PATH
-from fpl_intelligence.step5_model_comparison import GRADIENT_BOOSTING_MODEL_PATH
+from fpl_intelligence.live_model_training import (
+    LIVE_GRADIENT_MODEL_PATH,
+    LIVE_MINUTES_BAND_MODEL_PATH,
+    LIVE_RIDGE_MODEL_PATH,
+)
 
 ALLOWED_HORIZONS = (3, 5, 8)
 MODEL_NAME = "Gradient Boosting Regressor"
+MODEL_PATHS = {
+    "Ridge Regression": LIVE_RIDGE_MODEL_PATH,
+    "Gradient Boosting Regressor": LIVE_GRADIENT_MODEL_PATH,
+}
 RECENT_WINDOW = 3
 
 
-@lru_cache(maxsize=1)
-def load_planner_models():
-    """Load the points model and the newest available minutes model artifact."""
+@lru_cache(maxsize=4)
+def load_planner_models(model_name: str = MODEL_NAME):
+    """Load a consumer-specific, current-season points/minutes artifact pair."""
+
+    points_path = MODEL_PATHS.get(model_name)
+    if points_path is None:
+        allowed = ", ".join(sorted(MODEL_PATHS))
+        raise ValueError(f"Unknown planner model {model_name!r}; choose from {allowed}")
     missing = (
-        [str(GRADIENT_BOOSTING_MODEL_PATH)]
-        if not Path(GRADIENT_BOOSTING_MODEL_PATH).exists()
+        [str(points_path)]
+        if not Path(points_path).exists()
         else []
     )
-    if not Path(MINUTES_BAND_MODEL_PATH).exists() and not Path(MINUTES_MODEL_PATH).exists():
-        missing.append(str(MINUTES_BAND_MODEL_PATH))
+    if not Path(LIVE_MINUTES_BAND_MODEL_PATH).exists():
+        missing.append(str(LIVE_MINUTES_BAND_MODEL_PATH))
     if missing:
         raise FileNotFoundError(f"Planner model artifacts are missing: {', '.join(missing)}")
 
-    minutes_path = (
-        MINUTES_BAND_MODEL_PATH
-        if Path(MINUTES_BAND_MODEL_PATH).exists()
-        else MINUTES_MODEL_PATH
-    )
-    return joblib.load(GRADIENT_BOOSTING_MODEL_PATH), joblib.load(minutes_path)
+    try:
+        return joblib.load(points_path), joblib.load(LIVE_MINUTES_BAND_MODEL_PATH)
+    except (AttributeError, ImportError, ModuleNotFoundError, ValueError) as exc:
+        raise RuntimeError(
+            f"Planner model artifacts could not be loaded for {model_name}: {exc}"
+        ) from exc
 
 
 def project_player(
@@ -129,12 +141,7 @@ def project_players(
                 )
                 continue
 
-            player_id = player.get("element_id", player.get("id"))
-            baseline = (
-                baselines.get(player_id)
-                or baselines.get(_normalise(player.get("name")))
-                or {}
-            )
+            baseline = baselines.get(_normalise(player.get("name"))) or {}
             fixture_groups[index] = []
             for fixture in player_fixtures:
                 fixture_groups[index].append(fixture)
@@ -160,6 +167,7 @@ def project_players(
                     "opponent": fixture["opponent"],
                     "opponent_name": fixture["opponent_name"],
                     "home": fixture["home"],
+                    "opponent_difficulty": fixture["opponent_difficulty"],
                     "opponent_strength": fixture["opponent_strength"],
                     "predicted_points": round(predicted_value, 2),
                     "start_likelihood": round(start_value, 4),
@@ -205,8 +213,7 @@ def _project_row(
     )
     team_by_id = {team.get("id"): team for team in teams}
     baselines = _recent_baselines(history)
-    player_id = player.get("element_id", player.get("id"))
-    baseline = baselines.get(player_id) or baselines.get(_normalise(player.get("name"))) or {}
+    baseline = baselines.get(_normalise(player.get("name"))) or {}
 
     output = []
     for gameweek in range(start_gameweek, start_gameweek + horizon_length):
@@ -244,6 +251,7 @@ def _project_row(
                     "opponent": fixture["opponent"],
                     "opponent_name": fixture["opponent_name"],
                     "home": fixture["home"],
+                    "opponent_difficulty": fixture["opponent_difficulty"],
                     "opponent_strength": fixture["opponent_strength"],
                     "predicted_points": round(predicted_points, 2),
                     "start_likelihood": round(start_likelihood, 4),
@@ -324,30 +332,34 @@ def _fixtures_for_player(
         if fixture.get("team_h") == team_id:
             opponent_id = fixture.get("team_a")
             opponent = team_by_id.get(opponent_id, {})
+            raw_strength = fixture.get(
+                "opponent_strength", opponent.get("strength_overall_away")
+            )
             rows.append(
                 {
                     "fixture_id": fixture.get("fixture_id", fixture.get("id")),
                     "opponent": opponent.get("short_name") or fixture.get("team_a_short", "-"),
                     "opponent_name": opponent.get("name") or fixture.get("team_a_name", "Unknown"),
                     "home": True,
-                    "opponent_strength": fixture.get(
-                        "opponent_strength", opponent.get("strength_overall_away", 0)
-                    ),
+                    "opponent_difficulty": _fpl_difficulty(raw_strength),
+                    "opponent_strength": _model_opponent_strength(raw_strength),
                     **_fixture_metadata(fixture),
                 }
             )
         elif fixture.get("team_a") == team_id:
             opponent_id = fixture.get("team_h")
             opponent = team_by_id.get(opponent_id, {})
+            raw_strength = fixture.get(
+                "opponent_strength", opponent.get("strength_overall_home")
+            )
             rows.append(
                 {
                     "fixture_id": fixture.get("fixture_id", fixture.get("id")),
                     "opponent": opponent.get("short_name") or fixture.get("team_h_short", "-"),
                     "opponent_name": opponent.get("name") or fixture.get("team_h_name", "Unknown"),
                     "home": False,
-                    "opponent_strength": fixture.get(
-                        "opponent_strength", opponent.get("strength_overall_home", 0)
-                    ),
+                    "opponent_difficulty": _fpl_difficulty(raw_strength),
+                    "opponent_strength": _model_opponent_strength(raw_strength),
                     **_fixture_metadata(fixture),
                 }
             )
@@ -358,6 +370,24 @@ def _fixtures_for_player(
 def _fixture_metadata(fixture: dict[str, Any]) -> dict[str, Any]:
     keys = ("status", "confirmed", "postponed", "rescheduled")
     return {key: fixture[key] for key in keys if key in fixture}
+
+
+def _model_opponent_strength(value: Any) -> float:
+    """Map the live 1-5 FDR scale onto the historical model's strength scale."""
+
+    raw = _number(value)
+    if raw <= 0:
+        return 1150.0
+    if raw <= 5:
+        return 925.0 + 75.0 * raw
+    return raw
+
+
+def _fpl_difficulty(value: Any) -> int | None:
+    raw = _number(value)
+    if 1 <= raw <= 5:
+        return int(raw)
+    return None
 
 
 def _gameweek_metadata(
@@ -386,18 +416,6 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, float
 
     current = current[current["season"] == current["season"].max()].sort_values("gameweek")
     output: dict[Any, dict[str, float]] = {}
-    if "player_id" in current.columns:
-        recent = (
-            current.dropna(subset=["player_id"])
-            .groupby("player_id", sort=False)
-            .tail(RECENT_WINDOW)
-        )
-        for player_id, rows in recent.groupby("player_id"):
-            output[player_id] = {
-                "minutes_last_3": float(rows["minutes"].sum()),
-                "points_last_3": float(rows["total_points"].sum()),
-            }
-
     if "player_name" in current.columns:
         current["player_key"] = current["player_name"].map(_normalise)
         recent = (

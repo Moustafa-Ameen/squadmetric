@@ -231,7 +231,7 @@ def test_strategy_acceptance_compares_candidate_to_control_per_variant(tmp_path:
     assert xg_xa.metrics["aggregate_realistic_delta"] == 4.0
 
 
-def test_multi_season_baseline_reproduces_m3_5_rebaseline_totals():
+def test_multi_season_baseline_reproduces_identity_safe_no_chip_totals():
     result = run_multi_season_ablation(
         load_historical_player_gameweeks(),
         variant_names=("baseline",),
@@ -239,10 +239,10 @@ def test_multi_season_baseline_reproduces_m3_5_rebaseline_totals():
     comparison = result.comparison.set_index(["season", "strategy_name"])
 
     expected = {
-        ("2023-24", "no-transfers"): (2047.0, 1833.0),
-        ("2023-24", "deterministic-single-transfer"): (2320.0, 2119.0),
-        ("2024-25", "no-transfers"): (1189.0, 1044.0),
-        ("2024-25", "deterministic-single-transfer"): (2112.0, 1903.0),
+        ("2023-24", "no-transfers"): (772.0, 669.0),
+        ("2023-24", "deterministic-single-transfer"): (2276.0, 2047.0),
+        ("2024-25", "no-transfers"): (2174.0, 1963.0),
+        ("2024-25", "deterministic-single-transfer"): (2345.0, 2147.0),
     }
     for key, (hindsight, realistic) in expected.items():
         row = comparison.loc[key]

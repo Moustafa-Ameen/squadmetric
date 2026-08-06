@@ -1,7 +1,11 @@
 import pandas as pd
 
 from fpl_intelligence.fixture_scenarios import build_fixture_scenario
-from fpl_intelligence.multi_gw_projection import project_player
+from fpl_intelligence.multi_gw_projection import (
+    _fpl_difficulty,
+    _model_opponent_strength,
+    project_player,
+)
 
 
 class StrengthSensitivePointsModel:
@@ -12,6 +16,18 @@ class StrengthSensitivePointsModel:
 class AlwaysStartsModel:
     def predict_proba(self, features: pd.DataFrame):
         return [[0.0, 1.0] for _ in range(len(features))]
+
+
+def test_live_fdr_is_mapped_to_the_historical_model_strength_scale():
+    assert _model_opponent_strength(1) == 1000.0
+    assert _model_opponent_strength(3) == 1150.0
+    assert _model_opponent_strength(5) == 1300.0
+    assert _model_opponent_strength(1200) == 1200.0
+    assert _model_opponent_strength(None) == 1150.0
+
+    assert _fpl_difficulty(1) == 1
+    assert _fpl_difficulty(5) == 5
+    assert _fpl_difficulty(1200) is None
 
 
 def test_projection_handles_single_blank_double_and_fixture_strength():
@@ -66,6 +82,7 @@ def test_projection_handles_single_blank_double_and_fixture_strength():
     assert projections[0]["blank"] is False
     assert projections[0]["double"] is False
     assert projections[0]["fixtures"][0]["opponent"] == "EAS"
+    assert projections[0]["fixtures"][0]["opponent_difficulty"] is None
     assert projections[0]["projected_points"] == 11.0
 
     assert projections[1] == {

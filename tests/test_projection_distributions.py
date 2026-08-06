@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from fpl_intelligence.component_features import COMPONENT_TARGET_COLUMNS
 from fpl_intelligence.component_projection import (
@@ -9,6 +10,7 @@ from fpl_intelligence.component_projection import (
 from fpl_intelligence.projection_distributions import (
     build_empirical_component_distribution,
     build_poisson_component_distribution,
+    fit_empirical_interval_calibrator,
 )
 
 
@@ -35,6 +37,27 @@ def test_empirical_distribution_requires_declared_matching_calibration_sample():
     )
     assert result.interval_method == "empirical_residual_interval"
     assert (result.upper["expected_assists"] >= result.lower["expected_assists"]).all()
+
+
+def test_held_out_calibrator_can_be_applied_to_a_later_cutoff():
+    expected = pd.DataFrame({"expected_goals_scored": np.ones(24)})
+    actual = pd.DataFrame({"expected_goals_scored": np.arange(24) % 4})
+    calibrator = fit_empirical_interval_calibrator(
+        expected,
+        actual,
+        coverage=0.8,
+        calibration_cutoff="2025-26:GW20",
+        model_version="m10-test",
+    )
+    result = calibrator.apply(
+        pd.DataFrame({"expected_goals_scored": [0.5, 2.0]}),
+        data_cutoff="2025-26:GW25",
+    )
+    assert calibrator.sample_count == 24
+    assert result.calibration_cutoff == "2025-26:GW20"
+    assert result.data_cutoff == "2025-26:GW25"
+    assert result.interval_method == "heldout_empirical_residual_interval"
+    assert result.coverage == pytest.approx(0.8)
 
 
 def test_component_model_distribution_is_opt_in_and_does_not_change_point_predictions():

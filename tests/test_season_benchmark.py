@@ -4,11 +4,13 @@ import pandas as pd
 import pytest
 
 from fpl_intelligence.backtest_transfer_strategy import TransferDecision, select_starting_xi
+from fpl_intelligence.chip_simulation import chip_definitions
 from fpl_intelligence.season_benchmark import (
     DeterministicTransferStrategy,
     NoTransfersStrategy,
     StrategyContext,
     _assert_transfer_budget,
+    _realized_chip_gain,
     append_decision_rows_to_history,
     append_result_to_history,
     get_training_data_for_season,
@@ -21,6 +23,7 @@ from fpl_intelligence.season_benchmark import (
     train_gameweek_predictions,
     train_realistic_captain_predictions,
 )
+from fpl_intelligence.season_rules import build_historical_season_rules
 
 
 def _squad_rows() -> list[dict[str, object]]:
@@ -87,6 +90,26 @@ def test_benchmark_doubles_the_specific_highest_scoring_starter():
     assert score.captain_id == lineup.starting_ids[4]
     assert score.raw_starter_points == sum(starter_points)
     assert score.points == 71
+
+
+def test_realized_chip_gain_uses_the_correct_counterfactual_squad():
+    definitions = {
+        chip.name: chip
+        for chip in chip_definitions(build_historical_season_rules("2023-24"))
+    }
+
+    assert _realized_chip_gain(
+        definitions["bboost"],
+        scored_points=60.0,
+        active_squad_base_points=50.0,
+        no_chip_counterfactual_points=40.0,
+    ) == 10.0
+    assert _realized_chip_gain(
+        definitions["freehit"],
+        scored_points=60.0,
+        active_squad_base_points=60.0,
+        no_chip_counterfactual_points=45.0,
+    ) == 15.0
 
 
 def test_benchmark_excludes_deliberately_high_bench_points():
@@ -183,6 +206,17 @@ def test_no_transfer_strategy_runs_a_complete_historical_season(tmp_path: Path):
         "squad_before_hash",
         "post_gameweek_squad_hash",
         "data_cutoff",
+        "squad_ids",
+        "active_squad_ids",
+        "selected_starting_ids",
+        "selected_bench_ids",
+        "realistic_starting_ids",
+        "realistic_autosub_ids",
+        "outgoing_id",
+        "incoming_id",
+        "initial_squad_mode",
+        "initial_squad_version",
+        "initial_squad_hash",
     }.issubset(decision_history.columns)
 
     conditional_result = run_season_benchmark(
@@ -290,6 +324,51 @@ def test_component_projection_is_selectable_without_changing_control_default():
     assert control_target["model"].eq("Ridge Regression").all()
 
 
+def test_m10_team_components_mode_is_opt_in_and_point_in_time_safe():
+    players = load_historical_player_gameweeks()
+    target, training = train_gameweek_predictions(
+        players,
+        "2024-25",
+        10,
+        feature_mode="xg_xa",
+        projection_mode="m10_team_components",
+    )
+
+    assert not training.empty
+    assert target["projection_mode"].eq("m10_team_components").all()
+    assert target["model"].eq("M10 Team Components").all()
+    assert target["expected_points_adjusted"].ge(0).all()
+    assert target["team_forecast_model_version"].eq("m10-team-poisson-v1").all()
+    assert target["component_bridge_model_version"].eq("m10-player-components-v1").all()
+
+    mutated = players.copy()
+    future_mask = (mutated["season"] == "2024-25") & (mutated["gameweek"] >= 10)
+    mutated.loc[future_mask, ["expected_goals", "expected_assists"]] = 9999.0
+    changed, _ = train_gameweek_predictions(
+        mutated,
+        "2024-25",
+        10,
+        feature_mode="xg_xa",
+        projection_mode="m10_team_components",
+    )
+    pd.testing.assert_series_equal(
+        target.set_index("player_id")["expected_points_adjusted"].sort_index(),
+        changed.set_index("player_id")["expected_points_adjusted"].sort_index(),
+        check_names=False,
+    )
+
+    future = train_future_gameweek_predictions(
+        players,
+        "2024-25",
+        10,
+        feature_mode="xg_xa",
+        projection_mode="m10_team_components",
+        horizons=(1, 2),
+    )
+    assert future[11]["projection_mode"].eq("m10_team_components").all()
+    assert future[11]["team_forecast_data_cutoff"].eq("2024-25:GW10").all()
+
+
 def test_availability_role_mode_exposes_point_in_time_role_probabilities():
     players = load_historical_player_gameweeks()
     target, training = train_gameweek_predictions(
@@ -364,15 +443,11 @@ def test_realistic_captain_model_training_stops_before_target_gameweek():
     target_gameweek = 10
 
     training = get_training_data_for_season(players, "2024-25", target_gameweek)
-    captain_predictions = train_realistic_captain_predictions(
-        players, "2024-25", target_gameweek
-    )
+    captain_predictions = train_realistic_captain_predictions(players, "2024-25", target_gameweek)
 
     assert int(training[training["season"] == "2024-25"]["gameweek"].max()) == 9
     assert captain_predictions["captain_max_training_current_season_gameweek"].iloc[0] == 9
-    assert not (
-        (training["season"] == "2024-25") & (training["gameweek"] >= target_gameweek)
-    ).any()
+    assert not ((training["season"] == "2024-25") & (training["gameweek"] >= target_gameweek)).any()
 
 
 def test_realistic_captaincy_uses_vice_captain_when_captain_does_not_play():
@@ -411,3 +486,4 @@ def test_realistic_captaincy_uses_vice_captain_when_captain_does_not_play():
     assert score.vice_captain_fallback is True
     assert score.captain_actual_points == 0
     assert score.vice_captain_actual_points == 7
+    assert score.bench_ids == lineup.bench_ids

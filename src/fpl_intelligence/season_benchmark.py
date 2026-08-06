@@ -63,6 +63,7 @@ from fpl_intelligence.chip_simulation import (
     CHIP_MODES,
     ChipCounterfactual,
     ChipDecision,
+    ChipDefinition,
     DeterministicChipPlanner,
     apply_chip,
     apply_chip_to_score,
@@ -72,22 +73,30 @@ from fpl_intelligence.chip_simulation import (
     initial_chip_state,
 )
 from fpl_intelligence.component_projection import (
+    COMPONENT_MODEL_COLUMNS,
     component_feature_columns,
     default_dc_rule_versions,
     fit_component_projection_model,
+    score_expected_components,
 )
 from fpl_intelligence.fixture_scenarios import (
     build_historical_fixture_scenario,
 )
 from fpl_intelligence.historical_data import load_historical_raw
+from fpl_intelligence.player_component_forecast import build_player_fixture_components
+from fpl_intelligence.preseason import (
+    IDENTITY_SAFE_INITIAL_SQUAD_MODE,
+    IDENTITY_SAFE_INITIAL_SQUAD_VERSION,
+)
+from fpl_intelligence.projection_portfolio import ProjectionPortfolio
 from fpl_intelligence.season_rules import build_historical_season_rules
 from fpl_intelligence.step4_models import (
     build_minutes_classifier,
-    build_ridge_model,
     feature_columns_for_mode,
     fit_minutes_band_conditional_model,
     load_historical_player_gameweeks,
 )
+from fpl_intelligence.team_forecast import fit_team_goal_model
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 HISTORICAL_PLAYER_GW_PATH = PROJECT_ROOT / "data" / "processed" / "historical_player_gw.csv"
@@ -103,7 +112,7 @@ DEFAULT_MODEL = "Ridge Regression"
 DEFAULT_MODEL_VERSION = "local benchmark"
 DEFAULT_PROJECTION_MODE = "total_points"
 CHIP_MODE_DEFAULT = CHIP_MODE_NONE
-PROJECTION_MODES = ("total_points", "components")
+PROJECTION_MODES = ("total_points", "components", "m10_team_components")
 OPTIMIZER_VERSION = "m3.5-milp-v1"
 HISTORY_COLUMNS = [
     "run_timestamp",
@@ -211,6 +220,8 @@ class SeasonBenchmarkResult:
     chips_used: int = 0
     minutes_mode: str = "binary"
     hit_policy: str = "current_gw"
+    initial_squad_mode: str = IDENTITY_SAFE_INITIAL_SQUAD_MODE
+    initial_squad_version: str = IDENTITY_SAFE_INITIAL_SQUAD_VERSION
 
 
 @dataclass(frozen=True)
@@ -225,6 +236,7 @@ class RealisticCaptainScore:
     vice_captain_actual_points: float
     vice_captain_fallback: bool
     starting_ids: tuple[int, ...]
+    bench_ids: tuple[int, ...]
     autosub_ids: tuple[int, ...]
     formation: str
 
@@ -253,9 +265,9 @@ def get_training_data_for_season(
             f"Lookahead detected: target {season} GW{gameweek} has current-season "
             f"training data through GW{max_current_gameweek}."
         )
-    assert not (
-        (training["season"] == season) & (training["gameweek"] >= gameweek)
-    ).any(), "Training data contains target or future rows."
+    assert not ((training["season"] == season) & (training["gameweek"] >= gameweek)).any(), (
+        "Training data contains target or future rows."
+    )
     return training
 
 
@@ -268,6 +280,71 @@ def _minutes_feature_columns(minutes_mode: str, feature_mode: str) -> list[str]:
     return columns
 
 
+def _fit_total_points_prediction_context(
+    training: pd.DataFrame,
+    *,
+    model_name: str,
+    minutes_mode: str,
+    feature_mode: str,
+) -> dict[str, Any]:
+    """Fit reusable total-points models for one point-in-time cutoff."""
+
+    feature_columns = feature_columns_for_mode(feature_mode)
+    minutes_feature_columns = _minutes_feature_columns(minutes_mode, feature_mode)
+    points_model: Pipeline = MODEL_BUILDERS[model_name](feature_columns)
+    points_model.fit(training[feature_columns], training["next_gameweek_points"])
+    minutes_model: Pipeline | None = None
+    minutes_band_model: Any | None = None
+    if minutes_mode == "binary":
+        minutes_model = build_minutes_classifier(minutes_feature_columns)
+        minutes_model.fit(
+            training[minutes_feature_columns], (training["minutes"] >= 60).astype(int)
+        )
+    else:
+        minutes_band_model = fit_minutes_band_conditional_model(
+            training, minutes_feature_columns
+        )
+    start_model: Pipeline | None = None
+    start_fallback = 0.5
+    if minutes_mode == "availability_role":
+        start_model, start_fallback = _fit_start_probability_model(
+            training, minutes_feature_columns
+        )
+    return {
+        "points_model": points_model,
+        "minutes_model": minutes_model,
+        "minutes_band_model": minutes_band_model,
+        "start_model": start_model,
+        "start_fallback": start_fallback,
+    }
+
+
+def _get_total_points_prediction_context(
+    training: pd.DataFrame,
+    *,
+    season: str,
+    gameweek: int,
+    model_name: str,
+    minutes_mode: str,
+    feature_mode: str,
+    cache: dict[tuple[Any, ...], dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Reuse one fitted model context across current and future frames."""
+
+    key = (season, gameweek, model_name, minutes_mode, feature_mode)
+    if cache is not None and key in cache:
+        return cache[key]
+    context = _fit_total_points_prediction_context(
+        training,
+        model_name=model_name,
+        minutes_mode=minutes_mode,
+        feature_mode=feature_mode,
+    )
+    if cache is not None:
+        cache[key] = context
+    return context
+
+
 def _fit_start_probability_model(
     training: pd.DataFrame,
     feature_columns: list[str],
@@ -275,13 +352,13 @@ def _fit_start_probability_model(
     """Fit a start-probability model, with a safe prior for one-class windows."""
 
     if "starts" in training:
-        start_target = (
-            pd.to_numeric(training["starts"], errors="coerce").fillna(0) > 0
-        ).astype(int)
+        start_target = (pd.to_numeric(training["starts"], errors="coerce").fillna(0) > 0).astype(
+            int
+        )
     else:
-        start_target = (
-            pd.to_numeric(training["minutes"], errors="coerce").fillna(0) >= 60
-        ).astype(int)
+        start_target = (pd.to_numeric(training["minutes"], errors="coerce").fillna(0) >= 60).astype(
+            int
+        )
     fallback = float(start_target.mean()) if len(start_target) else 0.5
     if start_target.nunique() < 2:
         return None, fallback
@@ -335,9 +412,7 @@ def _apply_live_availability_features(
         cutoff=cutoff,
         target_gameweek=target_gameweek,
     )
-    availability_columns = [
-        column for column in AVAILABILITY_FEATURE_COLUMNS if column in features
-    ]
+    availability_columns = [column for column in AVAILABILITY_FEATURE_COLUMNS if column in features]
     return target.drop(columns=availability_columns, errors="ignore").merge(
         features[["player_id", *availability_columns]],
         on="player_id",
@@ -351,6 +426,7 @@ def _component_target_predictions(
     *,
     feature_mode: str,
     minutes_mode: str,
+    context: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """Apply M7 component scoring to one target gameweek."""
 
@@ -361,38 +437,26 @@ def _component_target_predictions(
         if "bps_rule_version" in target.columns and not target.empty
         else None
     )
-    component_model = fit_component_projection_model(
+    context = context or _fit_m10_component_context(
         training,
         feature_mode=feature_mode,
+        minutes_mode=minutes_mode,
         target_bps_rule_version=target_bps_rule_version,
     )
-    start_model: Pipeline | None = None
-    start_fallback = 0.5
-    if minutes_mode == "availability_role":
-        start_model, start_fallback = _fit_start_probability_model(
-            training, minutes_feature_columns
-        )
+    component_model = context["component_model"]
+    start_model = context["start_model"]
+    start_fallback = context["start_fallback"]
 
     if minutes_mode == "binary":
-        minutes_model = build_minutes_classifier(minutes_feature_columns)
-        minutes_features = minutes_feature_columns
-        minutes_model.fit(
-            training[minutes_features], (training["minutes"] >= 60).astype(int)
-        )
-        probability_60_plus = minutes_model.predict_proba(
-            target[minutes_feature_columns]
-        )[:, 1]
+        minutes_model = context["minutes_model"]
+        probability_60_plus = minutes_model.predict_proba(target[minutes_feature_columns])[:, 1]
         band_probabilities = np.column_stack(
             [1.0 - probability_60_plus, np.zeros(len(target)), probability_60_plus]
         )
         predicted_bands = band_probabilities.argmax(axis=1)
     else:
-        minutes_band_model = fit_minutes_band_conditional_model(
-            training, minutes_feature_columns
-        )
-        band_probabilities = minutes_band_model.predict_proba(
-            target[minutes_feature_columns]
-        )
+        minutes_band_model = context["minutes_band_model"]
+        band_probabilities = minutes_band_model.predict_proba(target[minutes_feature_columns])
         probability_60_plus = band_probabilities[:, 2]
         predicted_bands = band_probabilities.argmax(axis=1)
 
@@ -436,6 +500,246 @@ def _component_target_predictions(
     return output
 
 
+def _fit_m10_component_context(
+    training: pd.DataFrame,
+    *,
+    feature_mode: str,
+    minutes_mode: str,
+    target_bps_rule_version: str | None = None,
+) -> dict[str, Any]:
+    """Fit one point-in-time component/minutes context for horizon reuse."""
+
+    minutes_feature_columns = _minutes_feature_columns(minutes_mode, feature_mode)
+    component_model = fit_component_projection_model(
+        training,
+        feature_mode=feature_mode,
+        target_bps_rule_version=target_bps_rule_version,
+    )
+    minutes_model = None
+    minutes_band_model = None
+    if minutes_mode == "binary":
+        minutes_model = build_minutes_classifier(minutes_feature_columns)
+        minutes_model.fit(
+            training[minutes_feature_columns], (training["minutes"] >= 60).astype(int)
+        )
+    else:
+        minutes_band_model = fit_minutes_band_conditional_model(training, minutes_feature_columns)
+    start_model: Pipeline | None = None
+    start_fallback = 0.5
+    if minutes_mode == "availability_role":
+        start_model, start_fallback = _fit_start_probability_model(
+            training, minutes_feature_columns
+        )
+    return {
+        "component_model": component_model,
+        "minutes_model": minutes_model,
+        "minutes_band_model": minutes_band_model,
+        "start_model": start_model,
+        "start_fallback": start_fallback,
+    }
+
+
+def _m10_fixture_forecasts(
+    training: pd.DataFrame,
+    target: pd.DataFrame,
+    *,
+    season: str,
+    gameweek: int,
+    team_model: Any | None = None,
+) -> pd.DataFrame:
+    """Build target fixtures from schedule fields and pre-target outcomes only."""
+
+    rules = build_historical_season_rules(season)
+    if team_model is None:
+        team_model = fit_team_goal_model(
+            training,
+            cutoff_gameweek=gameweek,
+            season=season,
+            data_cutoff=f"{season}:GW{gameweek - 1:02d}",
+            rules_version=rules.rules_version,
+        )
+    rows = target[["gameweek", "team", "opponent_team", "home_or_away"]].copy()
+    home_mask = rows["home_or_away"].astype(str).str.upper().eq("H")
+    rows["_home_team"] = rows["team"].where(home_mask, rows["opponent_team"]).astype(str)
+    rows["_away_team"] = rows["opponent_team"].where(home_mask, rows["team"]).astype(str)
+    rows = rows.drop_duplicates(["gameweek", "_home_team", "_away_team"])
+    forecasts = []
+    for _, row in rows.iterrows():
+        home = str(row["_home_team"])
+        away = str(row["_away_team"])
+        forecasts.append(
+            team_model.predict_fixture(
+                {
+                    "fixture_id": f"{int(row['gameweek'])}:{home}:{away}",
+                    "gameweek": int(row["gameweek"]),
+                    "team_h": home,
+                    "team_a": away,
+                    "status": "historical-visible-schedule",
+                }
+            ).to_dict()
+        )
+    return pd.DataFrame(forecasts)
+
+
+def _m10_target_predictions(
+    training: pd.DataFrame,
+    target: pd.DataFrame,
+    *,
+    season: str,
+    gameweek: int,
+    feature_mode: str,
+    minutes_mode: str,
+    team_model: Any | None = None,
+    component_context: dict[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Build an opt-in team-context component projection for one GW."""
+
+    target = target.copy().reset_index(drop=True)
+    if training.empty:
+        output = target.copy()
+        output["probability_0_minutes"] = 0.5
+        output["probability_1_59_minutes"] = 0.0
+        output["probability_60_plus_minutes_v2"] = 0.5
+        output["probability_60_plus_minutes"] = 0.5
+        output["predicted_minutes_band"] = 2
+        for component in COMPONENT_MODEL_COLUMNS:
+            output[f"component_expected_{component}"] = 0.0
+        output["component_expected_points"] = 0.0
+        output["component_model_version"] = "m10-team-components-v1"
+        output["component_regime_status"] = "preseason_prior"
+    else:
+        minutes_context = component_context or _fit_m10_minutes_context(
+            training,
+            feature_mode=feature_mode,
+            minutes_mode=minutes_mode,
+        )
+        output = target.copy()
+        minutes_feature_columns = _minutes_feature_columns(minutes_mode, feature_mode)
+        if minutes_mode == "binary":
+            probability_60_plus = minutes_context["minutes_model"].predict_proba(
+                output[minutes_feature_columns]
+            )[:, 1]
+            band_probabilities = np.column_stack(
+                [1.0 - probability_60_plus, np.zeros(len(output)), probability_60_plus]
+            )
+        else:
+            band_probabilities = minutes_context["minutes_band_model"].predict_proba(
+                output[minutes_feature_columns]
+            )
+            probability_60_plus = band_probabilities[:, 2]
+        output["probability_0_minutes"] = band_probabilities[:, 0]
+        output["probability_1_59_minutes"] = band_probabilities[:, 1]
+        output["probability_60_plus_minutes_v2"] = band_probabilities[:, 2]
+        output["probability_60_plus_minutes"] = probability_60_plus
+        output["predicted_minutes_band"] = band_probabilities.argmax(axis=1)
+        for component in COMPONENT_MODEL_COLUMNS:
+            lagged = f"{component}_last_3"
+            output[f"component_expected_{component}"] = (
+                pd.to_numeric(output[lagged], errors="coerce").fillna(0.0) / 3.0
+                if lagged in output
+                else 0.0
+            )
+        if minutes_mode == "availability_role":
+            _add_role_probability_outputs(
+                output,
+                band_probabilities,
+                _start_probability(
+                    output,
+                    minutes_context["start_model"],
+                    minutes_context["start_fallback"],
+                    minutes_feature_columns,
+                ),
+            )
+        output["component_regime_status"] = "m10_team_bridge"
+
+    fixture_forecasts = _m10_fixture_forecasts(
+        training,
+        output,
+        season=season,
+        gameweek=gameweek,
+        team_model=team_model,
+    )
+    appearance = 1.0 - output["probability_0_minutes"].to_numpy(dtype=float)
+    bridge = build_player_fixture_components(
+        output,
+        fixture_forecasts,
+        appearance_probabilities=appearance,
+        data_cutoff=f"{season}:GW{gameweek - 1:02d}",
+        rules_version=build_historical_season_rules(season).rules_version,
+    )
+    for component in (
+        "goals_scored",
+        "assists",
+        "clean_sheets",
+        "saves",
+        "goals_conceded",
+        "defensive_contribution",
+    ):
+        output[f"component_expected_{component}"] = bridge[f"expected_{component}"].to_numpy()
+
+    component_frame = pd.DataFrame(
+        {
+            f"expected_{component}": output[f"component_expected_{component}"]
+            for component in COMPONENT_MODEL_COLUMNS
+        }
+    )
+    minute_probabilities = output[
+        [
+            "probability_0_minutes",
+            "probability_1_59_minutes",
+            "probability_60_plus_minutes_v2",
+        ]
+    ].to_numpy(dtype=float)
+    output["component_expected_points"] = score_expected_components(
+        component_frame,
+        output["position"],
+        minutes_probabilities=minute_probabilities,
+        dc_rule_versions=default_dc_rule_versions(output),
+    )
+    output["predicted_points"] = output["component_expected_points"]
+    output["expected_points_adjusted"] = output["component_expected_points"]
+    output["component_model_version"] = "m10-team-components-v1"
+    output["component_bridge_model_version"] = bridge["model_version"].iloc[0]
+    output["team_forecast_model_version"] = "m10-team-poisson-v1"
+    output["team_forecast_data_cutoff"] = bridge["data_cutoff"].iloc[0]
+    output["team_rules_version"] = bridge["rules_version"].iloc[0]
+    output["component_calibration_status"] = "unadjusted_event_intervals"
+    output["model"] = "M10 Team Components"
+    return output
+
+
+def _fit_m10_minutes_context(
+    training: pd.DataFrame,
+    *,
+    feature_mode: str,
+    minutes_mode: str,
+) -> dict[str, Any]:
+    """Fit only the reusable minutes context required by the M10 bridge."""
+
+    minutes_feature_columns = _minutes_feature_columns(minutes_mode, feature_mode)
+    minutes_model = None
+    minutes_band_model = None
+    if minutes_mode == "binary":
+        minutes_model = build_minutes_classifier(minutes_feature_columns)
+        minutes_model.fit(
+            training[minutes_feature_columns], (training["minutes"] >= 60).astype(int)
+        )
+    else:
+        minutes_band_model = fit_minutes_band_conditional_model(training, minutes_feature_columns)
+    start_model: Pipeline | None = None
+    start_fallback = 0.5
+    if minutes_mode == "availability_role":
+        start_model, start_fallback = _fit_start_probability_model(
+            training, minutes_feature_columns
+        )
+    return {
+        "minutes_model": minutes_model,
+        "minutes_band_model": minutes_band_model,
+        "start_model": start_model,
+        "start_fallback": start_fallback,
+    }
+
+
 def train_gameweek_predictions(
     players: pd.DataFrame,
     season: str,
@@ -446,6 +750,7 @@ def train_gameweek_predictions(
     projection_mode: str = DEFAULT_PROJECTION_MODE,
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
+    _model_context_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Train and predict one target gameweek using an expanding time window."""
 
@@ -456,9 +761,7 @@ def train_gameweek_predictions(
             "minutes_mode must be 'binary', 'conditional_bands', or 'availability_role'"
         )
     if projection_mode not in PROJECTION_MODES:
-        raise ValueError(
-            f"projection_mode must be one of {', '.join(PROJECTION_MODES)}"
-        )
+        raise ValueError(f"projection_mode must be one of {', '.join(PROJECTION_MODES)}")
     if minutes_mode == "availability_role" and not set(M9_MINUTES_FEATURE_COLUMNS).issubset(
         players.columns
     ):
@@ -481,24 +784,35 @@ def train_gameweek_predictions(
         # The earliest available season has no prior season file. GW1 therefore
         # uses the same preseason heuristic as the initial squad, without future
         # match results or current-season minutes.
-        preseason = build_preseason_scores(players, season=season, prior_season=None)
-        projection = preseason.set_index("player_id")["preseason_value_score"]
-        target["predicted_points"] = target["player_id"].map(projection).fillna(0.0)
-        target["probability_60_plus_minutes"] = 0.5
-        target["probability_0_minutes"] = 0.0
-        target["probability_1_59_minutes"] = 0.0
-        target["probability_60_plus_minutes_v2"] = 1.0
-        target["probability_start"] = 0.5
-        target["probability_substitute"] = 0.0
-        target["expected_minutes_if_start"] = 90.0
-        target["predicted_minutes_band"] = 2
+        if projection_mode == "m10_team_components":
+            target = _m10_target_predictions(
+                training,
+                target,
+                season=season,
+                gameweek=gameweek,
+                feature_mode=feature_mode,
+                minutes_mode=minutes_mode,
+            )
+        else:
+            preseason = build_preseason_scores(players, season=season, prior_season=None)
+            projection = preseason.set_index("player_id")["preseason_value_score"]
+            target["predicted_points"] = target["player_id"].map(projection).fillna(0.0)
+            target["probability_60_plus_minutes"] = 0.5
+            target["probability_0_minutes"] = 0.0
+            target["probability_1_59_minutes"] = 0.0
+            target["probability_60_plus_minutes_v2"] = 1.0
+            target["probability_start"] = 0.5
+            target["probability_substitute"] = 0.0
+            target["expected_minutes_if_start"] = 90.0
+            target["predicted_minutes_band"] = 2
+            target["expected_points_adjusted"] = target["predicted_points"]
+            target["model"] = "Preseason heuristic"
         target["minutes_model_mode"] = minutes_mode
         target["feature_mode"] = feature_mode
         target["projection_mode"] = projection_mode
-        target["expected_points_adjusted"] = target["predicted_points"]
         target["training_row_count"] = 0
         target["max_training_current_season_gameweek"] = None
-        target["model"] = "Preseason heuristic"
+        target["decision_price"] = target["price_before_deadline"].fillna(target["price"])
         return target, training
 
     if projection_mode == "components":
@@ -508,16 +822,31 @@ def train_gameweek_predictions(
             feature_mode=feature_mode,
             minutes_mode=minutes_mode,
         )
+    elif projection_mode == "m10_team_components":
+        target = _m10_target_predictions(
+            training,
+            target,
+            season=season,
+            gameweek=gameweek,
+            feature_mode=feature_mode,
+            minutes_mode=minutes_mode,
+        )
     else:
-        points_model: Pipeline = MODEL_BUILDERS[model_name](feature_columns)
-        points_model.fit(training[feature_columns], training["next_gameweek_points"])
+        context = _get_total_points_prediction_context(
+            training,
+            season=season,
+            gameweek=gameweek,
+            model_name=model_name,
+            minutes_mode=minutes_mode,
+            feature_mode=feature_mode,
+            cache=_model_context_cache,
+        )
+        points_model: Pipeline = context["points_model"]
 
         target["predicted_points"] = points_model.predict(target[feature_columns])
         if minutes_mode == "binary":
-            minutes_model = build_minutes_classifier(minutes_feature_columns)
-            minutes_model.fit(
-                training[minutes_feature_columns], (training["minutes"] >= 60).astype(int)
-            )
+            minutes_model = context["minutes_model"]
+            assert minutes_model is not None
             target["probability_60_plus_minutes"] = minutes_model.predict_proba(
                 target[minutes_feature_columns]
             )[:, 1]
@@ -527,12 +856,9 @@ def train_gameweek_predictions(
         else:
             # This is intentionally independent benchmark logic: it fits its own
             # three-class model and band-specific point estimators for each target GW.
-            minutes_band_model = fit_minutes_band_conditional_model(
-                training, minutes_feature_columns
-            )
-            band_probabilities = minutes_band_model.predict_proba(
-                target[minutes_feature_columns]
-            )
+            minutes_band_model = context["minutes_band_model"]
+            assert minutes_band_model is not None
+            band_probabilities = minutes_band_model.predict_proba(target[minutes_feature_columns])
             target["probability_0_minutes"] = band_probabilities[:, 0]
             target["probability_1_59_minutes"] = band_probabilities[:, 1]
             target["probability_60_plus_minutes_v2"] = band_probabilities[:, 2]
@@ -540,21 +866,17 @@ def train_gameweek_predictions(
             target["predicted_minutes_band"] = minutes_band_model.predict(
                 target[minutes_feature_columns]
             )
-            target["expected_points_adjusted"] = (
-                minutes_band_model.predict_expected_points(target[minutes_feature_columns])
-                .clip(0.0)
-            )
+            target["expected_points_adjusted"] = minutes_band_model.predict_expected_points(
+                target[minutes_feature_columns]
+            ).clip(0.0)
             if minutes_mode == "availability_role":
-                start_model, start_fallback = _fit_start_probability_model(
-                    training, minutes_feature_columns
-                )
                 _add_role_probability_outputs(
                     target,
                     band_probabilities,
                     _start_probability(
                         target,
-                        start_model,
-                        start_fallback,
+                        context["start_model"],
+                        context["start_fallback"],
                         minutes_feature_columns,
                     ),
                 )
@@ -568,7 +890,11 @@ def train_gameweek_predictions(
         None if current_training.empty else int(current_training["gameweek"].max())
     )
     target["model"] = (
-        "Component Projection" if projection_mode == "components" else model_name
+        "Component Projection"
+        if projection_mode == "components"
+        else "M10 Team Components"
+        if projection_mode == "m10_team_components"
+        else model_name
     )
     return target, training
 
@@ -603,9 +929,11 @@ def _point_in_time_future_frame(
     if target.empty:
         return target
 
-    safe = target.sort_values(["player_id", "gameweek"]).drop_duplicates(
-        "player_id", keep="last"
-    ).copy()
+    safe = (
+        target.sort_values(["player_id", "gameweek"])
+        .drop_duplicates("player_id", keep="last")
+        .copy()
+    )
     snapshot_by_id = snapshot.set_index("player_id")
     safe_by_id = safe.set_index("player_id")
 
@@ -647,6 +975,7 @@ def train_future_gameweek_predictions(
     horizons: Sequence[int] = (1, 2),
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
+    _model_context_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
 ) -> dict[int, pd.DataFrame]:
     """Forecast t+1/t+2 using only information available before gameweek t."""
 
@@ -659,9 +988,7 @@ def train_future_gameweek_predictions(
             "minutes_mode must be 'binary', 'conditional_bands', or 'availability_role'"
         )
     if projection_mode not in PROJECTION_MODES:
-        raise ValueError(
-            f"projection_mode must be one of {', '.join(PROJECTION_MODES)}"
-        )
+        raise ValueError(f"projection_mode must be one of {', '.join(PROJECTION_MODES)}")
     if minutes_mode == "availability_role" and not set(M9_MINUTES_FEATURE_COLUMNS).issubset(
         players.columns
     ):
@@ -677,28 +1004,42 @@ def train_future_gameweek_predictions(
     start_model: Pipeline | None = None
     start_fallback = 0.5
     component_model: Any | None = None
+    m10_team_model: Any | None = None
+    m10_component_context: dict[str, Any] | None = None
     if not training.empty:
         if projection_mode == "components":
             component_model = fit_component_projection_model(
                 training,
                 feature_mode=feature_mode,
             )
+        elif projection_mode == "m10_team_components":
+            m10_component_context = _fit_m10_minutes_context(
+                training,
+                feature_mode=feature_mode,
+                minutes_mode=minutes_mode,
+            )
+            m10_team_model = fit_team_goal_model(
+                training,
+                cutoff_gameweek=decision_gameweek + 1,
+                season=season,
+                data_cutoff=f"{season}:GW{decision_gameweek:02d}",
+                rules_version=build_historical_season_rules(season).rules_version,
+            )
         else:
-            points_model = MODEL_BUILDERS[model_name](feature_columns)
-            points_model.fit(training[feature_columns], training["next_gameweek_points"])
-            if minutes_mode == "binary":
-                minutes_model = build_minutes_classifier(minutes_feature_columns)
-                minutes_model.fit(
-                    training[minutes_feature_columns], (training["minutes"] >= 60).astype(int)
-                )
-            else:
-                minutes_band_model = fit_minutes_band_conditional_model(
-                    training, minutes_feature_columns
-                )
-            if minutes_mode == "availability_role":
-                start_model, start_fallback = _fit_start_probability_model(
-                    training, minutes_feature_columns
-                )
+            context = _get_total_points_prediction_context(
+                training,
+                season=season,
+                gameweek=decision_gameweek,
+                model_name=model_name,
+                minutes_mode=minutes_mode,
+                feature_mode=feature_mode,
+                cache=_model_context_cache,
+            )
+            points_model = context["points_model"]
+            minutes_model = context["minutes_model"]
+            minutes_band_model = context["minutes_band_model"]
+            start_model = context["start_model"]
+            start_fallback = context["start_fallback"]
 
     for horizon in horizons:
         target_gameweek = decision_gameweek + horizon
@@ -720,13 +1061,24 @@ def train_future_gameweek_predictions(
                 target_gameweek,
             )
 
-        if training.empty:
-            preseason = build_preseason_scores(
-                players, season=season, prior_season=None
-            ).set_index("player_id")
-            target["predicted_points"] = target["player_id"].map(
-                preseason["preseason_value_score"]
-            ).fillna(0.0)
+        if projection_mode == "m10_team_components":
+            target = _m10_target_predictions(
+                training,
+                target,
+                season=season,
+                gameweek=target_gameweek,
+                feature_mode=feature_mode,
+                minutes_mode=minutes_mode,
+                team_model=m10_team_model,
+                component_context=m10_component_context,
+            )
+        elif training.empty:
+            preseason = build_preseason_scores(players, season=season, prior_season=None).set_index(
+                "player_id"
+            )
+            target["predicted_points"] = (
+                target["player_id"].map(preseason["preseason_value_score"]).fillna(0.0)
+            )
             target["expected_points_adjusted"] = target["predicted_points"]
             target["probability_60_plus_minutes"] = 0.5
             target["probability_start"] = 0.5
@@ -739,9 +1091,9 @@ def train_future_gameweek_predictions(
                 minutes_model.fit(
                     training[minutes_feature_columns], (training["minutes"] >= 60).astype(int)
                 )
-                probability_60_plus = minutes_model.predict_proba(
-                    target[minutes_feature_columns]
-                )[:, 1]
+                probability_60_plus = minutes_model.predict_proba(target[minutes_feature_columns])[
+                    :, 1
+                ]
                 band_probabilities = np.column_stack(
                     [
                         1.0 - probability_60_plus,
@@ -791,8 +1143,7 @@ def train_future_gameweek_predictions(
                     target[feature_columns]
                 )[:, 1]
                 target["expected_points_adjusted"] = (
-                    target["predicted_points"]
-                    * target["probability_60_plus_minutes"]
+                    target["predicted_points"] * target["probability_60_plus_minutes"]
                 ).clip(lower=0.0)
             else:
                 assert minutes_band_model is not None
@@ -824,7 +1175,13 @@ def train_future_gameweek_predictions(
         target["max_training_current_season_gameweek"] = (
             decision_gameweek - 1 if decision_gameweek > 1 else None
         )
-        target["model"] = model_name if not training.empty else "Preseason heuristic"
+        target["model"] = (
+            "M10 Team Components"
+            if projection_mode == "m10_team_components"
+            else model_name
+            if not training.empty
+            else "Preseason heuristic"
+        )
         # Actual outcomes are deliberately excluded from the strategy-facing frame.
         output_columns = [
             "player_id",
@@ -853,6 +1210,16 @@ def train_future_gameweek_predictions(
                     "expected_minutes_if_start",
                 ]
             )
+        if projection_mode == "m10_team_components":
+            output_columns.extend(
+                [
+                    "component_bridge_model_version",
+                    "team_forecast_model_version",
+                    "team_forecast_data_cutoff",
+                    "team_rules_version",
+                    "component_calibration_status",
+                ]
+            )
         output[target_gameweek] = target[output_columns].copy()
     return output
 
@@ -869,7 +1236,7 @@ def train_realistic_captain_predictions(
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
 ) -> pd.DataFrame:
-    """Train a fresh point-in-time Ridge model for captain selection."""
+    """Train a fresh point-in-time model for captain selection."""
 
     training = get_training_data_for_season(players, season, gameweek)
     target = players[(players["season"] == season) & (players["gameweek"] == gameweek)].copy()
@@ -883,9 +1250,7 @@ def train_realistic_captain_predictions(
             gameweek,
         )
     if projection_mode not in PROJECTION_MODES:
-        raise ValueError(
-            f"projection_mode must be one of {', '.join(PROJECTION_MODES)}"
-        )
+        raise ValueError(f"projection_mode must be one of {', '.join(PROJECTION_MODES)}")
 
     current_training = training[training["season"] == season]
     max_current_gameweek = (
@@ -906,12 +1271,25 @@ def train_realistic_captain_predictions(
             feature_mode=feature_mode,
             minutes_mode=minutes_mode,
         )
-        target["captain_predicted_points"] = component_target[
-            "component_expected_points"
-        ]
+        target["captain_predicted_points"] = component_target["component_expected_points"]
         target["captain_model"] = "Component Projection"
+    elif projection_mode == "m10_team_components":
+        component_target = _m10_target_predictions(
+            training,
+            target,
+            season=season,
+            gameweek=gameweek,
+            feature_mode=feature_mode,
+            minutes_mode=minutes_mode,
+        )
+        target["captain_predicted_points"] = component_target["component_expected_points"]
+        target["captain_model"] = "M10 Team Components"
     else:
-        model = build_ridge_model(feature_columns_for_mode(feature_mode))
+        if model_name not in MODEL_BUILDERS:
+            raise ValueError(
+                f"Unknown model {model_name!r}; choose from {', '.join(MODEL_BUILDERS)}"
+            )
+        model = MODEL_BUILDERS[model_name]()
         model.fit(
             training[feature_columns_for_mode(feature_mode)],
             training["next_gameweek_points"],
@@ -920,6 +1298,7 @@ def train_realistic_captain_predictions(
             target[feature_columns_for_mode(feature_mode)]
         )
         target["captain_model"] = model_name
+    target["captain_model_name"] = target["captain_model"]
 
     target["captain_training_row_count"] = len(training)
     target["captain_max_training_current_season_gameweek"] = max_current_gameweek
@@ -977,6 +1356,7 @@ def score_realistic_gameweek(
         vice_captain_actual_points=vice_actual_points,
         vice_captain_fallback=vice_captain_fallback,
         starting_ids=tuple(active_ids),
+        bench_ids=lineup.bench_ids,
         autosub_ids=autosub_ids,
         formation=lineup.formation,
     )
@@ -996,17 +1376,21 @@ def run_season_benchmark(
     projection_mode: str = DEFAULT_PROJECTION_MODE,
     chip_mode: str = CHIP_MODE_DEFAULT,
     hit_policy: str = "current_gw",
+    projection_portfolio: ProjectionPortfolio | None = None,
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
     prediction_cache: dict[
-        tuple[str, int, str, str, str, str], tuple[pd.DataFrame, pd.DataFrame]
-    ] | None = None,
-    captain_prediction_cache: dict[
-        tuple[str, int, str, str, str], pd.DataFrame
-    ] | None = None,
-    future_prediction_cache: dict[
-        tuple[str, int, str, str, str, str], dict[int, pd.DataFrame]
-    ] | None = None,
+        tuple[str, int, str, str, str, str],
+        tuple[pd.DataFrame, pd.DataFrame | None],
+    ]
+    | None = None,
+    captain_prediction_cache: dict[tuple[str, int, str, str, str, str], pd.DataFrame]
+    | None = None,
+    future_prediction_cache: dict[tuple[str, int, str, str, str, str], dict[int, pd.DataFrame]]
+    | None = None,
+    initial_squad_override: pd.DataFrame | None = None,
+    initial_squad_mode: str = IDENTITY_SAFE_INITIAL_SQUAD_MODE,
+    initial_squad_version: str = IDENTITY_SAFE_INITIAL_SQUAD_VERSION,
 ) -> SeasonBenchmarkResult:
     """Run one strategy through every available gameweek in one season."""
 
@@ -1014,6 +1398,19 @@ def run_season_benchmark(
         raise ValueError(f"chip_mode must be one of {', '.join(CHIP_MODES)}")
     if hit_policy not in HIT_POLICIES:
         raise ValueError(f"hit_policy must be one of {', '.join(HIT_POLICIES)}")
+    portfolio = projection_portfolio or ProjectionPortfolio(
+        transfer_model=model_name,
+        captain_model=model_name,
+        chip_model=model_name,
+    )
+    if portfolio.transfer_model != model_name:
+        raise ValueError(
+            "projection_portfolio.transfer_model must match model_name; "
+            "the benchmark's model_name remains the ordinary transfer model."
+        )
+    captain_model_name = portfolio.captain_model
+    chip_model_name = portfolio.chip_model
+    lineup_model_name = portfolio.lineup_model
     if minutes_mode == "availability_role" and not set(M9_MINUTES_FEATURE_COLUMNS).issubset(
         players.columns
     ):
@@ -1025,13 +1422,42 @@ def run_season_benchmark(
         raise ValueError(f"Expected {season} data starting at GW1")
 
     prior_season = _previous_season(players, season)
-    initial_squad = build_initial_squad(
-        players,
-        season=season,
-        prior_season=prior_season,
-        minutes_floor=900 if prior_season else None,
-    )
+    if initial_squad_override is None:
+        initial_squad = build_initial_squad(
+            players,
+            season=season,
+            prior_season=prior_season,
+            minutes_floor=None,
+        )
+    else:
+        requested_ids = {
+            int(value)
+            for value in initial_squad_override["player_id"].dropna().tolist()
+        }
+        gw1 = (
+            season_players[season_players["gameweek"] == 1]
+            .sort_values(["player_id", "gameweek"])
+            .drop_duplicates("player_id")
+        )
+        initial_squad = gw1[gw1["player_id"].astype(int).isin(requested_ids)].copy()
+        if len(requested_ids) != 15 or len(initial_squad) != 15:
+            raise ValueError(
+                "Initial-squad override must contain 15 unique players present in "
+                f"{season} GW1"
+            )
+        initial_squad["price"] = pd.to_numeric(
+            initial_squad["price_before_deadline"], errors="coerce"
+        ).where(
+            pd.to_numeric(initial_squad["price_before_deadline"], errors="coerce") > 0,
+            pd.to_numeric(initial_squad["price"], errors="coerce"),
+        )
+        violations = validate_squad(initial_squad)
+        if violations:
+            raise ValueError(
+                "Initial-squad override is invalid: " + "; ".join(violations)
+            )
     squad = initial_squad.copy()
+    initial_squad_hash = _squad_hash(initial_squad)
     initial_bank = round(INITIAL_BUDGET - float(squad["price"].sum()), 1)
     bank = initial_bank
     free_transfers = 1
@@ -1056,6 +1482,7 @@ def run_season_benchmark(
         hit_policy=hit_policy,
         max_transfers=2 if hit_policy == "horizon_value" else 6,
     )
+    model_context_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
     fixture_scenario_cache: dict[tuple[int, int], Any] = {}
     historical_raw, historical_teams = load_historical_raw([season])
 
@@ -1074,7 +1501,12 @@ def run_season_benchmark(
             projection_mode,
         )
         if prediction_cache is not None and cache_key in prediction_cache:
-            target, available_data = prediction_cache[cache_key]
+            target, cached_available_data = prediction_cache[cache_key]
+            available_data = (
+                cached_available_data
+                if cached_available_data is not None
+                else get_training_data_for_season(players, season, gameweek)
+            )
         else:
             target, available_data = train_gameweek_predictions(
                 players,
@@ -1086,9 +1518,15 @@ def run_season_benchmark(
                 projection_mode=projection_mode,
                 availability_events=availability_events,
                 availability_cutoff=availability_cutoff,
+                _model_context_cache=model_context_cache,
             )
             if prediction_cache is not None:
-                prediction_cache[cache_key] = (target, available_data)
+                # Training data expands every Gameweek and can contain tens of
+                # thousands of rows. Retaining one full copy per cache key made
+                # multi-candidate tournaments consume gigabytes before the
+                # first season checkpoint. Predictions are the reusable asset;
+                # point-in-time training history is cheap to reconstruct.
+                prediction_cache[cache_key] = (target, None)
         needs_future = getattr(strategy, "requires_future_predictions", False)
         needs_future = needs_future or chip_mode in {CHIP_MODE_BASELINE, CHIP_MODE_BEAM}
         if needs_future:
@@ -1108,17 +1546,99 @@ def run_season_benchmark(
                     horizons=(
                         tuple(range(1, 9))
                         if chip_mode == CHIP_MODE_BASELINE
-                        else (
-                            (1, 2, 3, 4, 5, 6)
-                            if chip_mode == CHIP_MODE_BEAM
-                            else (1, 2, 3)
-                        )
+                        else ((1, 2, 3, 4, 5, 6) if chip_mode == CHIP_MODE_BEAM else (1, 2, 3))
                     ),
+                    _model_context_cache=model_context_cache,
                 )
                 if future_prediction_cache is not None:
                     future_prediction_cache[cache_key] = future_predictions
         else:
             future_predictions = {}
+        predictions = target.copy()
+        lineup_predictions = predictions
+        if lineup_model_name != model_name:
+            lineup_cache_key = (
+                season,
+                gameweek,
+                lineup_model_name,
+                minutes_mode,
+                feature_mode,
+                projection_mode,
+            )
+            if prediction_cache is not None and lineup_cache_key in prediction_cache:
+                lineup_predictions, _ = prediction_cache[lineup_cache_key]
+            else:
+                lineup_predictions, _ = train_gameweek_predictions(
+                    players,
+                    season,
+                    gameweek,
+                    model_name=lineup_model_name,
+                    minutes_mode=minutes_mode,
+                    feature_mode=feature_mode,
+                    projection_mode=projection_mode,
+                    availability_events=availability_events,
+                    availability_cutoff=availability_cutoff,
+                    _model_context_cache=model_context_cache,
+                )
+                if prediction_cache is not None:
+                    prediction_cache[lineup_cache_key] = (
+                        lineup_predictions,
+                        None,
+                    )
+        chip_predictions = predictions
+        chip_future_predictions = future_predictions
+        if chip_mode in {CHIP_MODE_BASELINE, CHIP_MODE_BEAM} and chip_model_name != model_name:
+            chip_cache_key = (
+                season,
+                gameweek,
+                chip_model_name,
+                minutes_mode,
+                feature_mode,
+                projection_mode,
+            )
+            if prediction_cache is not None and chip_cache_key in prediction_cache:
+                chip_predictions, _ = prediction_cache[chip_cache_key]
+            else:
+                chip_predictions, _ = train_gameweek_predictions(
+                    players,
+                    season,
+                    gameweek,
+                    model_name=chip_model_name,
+                    minutes_mode=minutes_mode,
+                    feature_mode=feature_mode,
+                    projection_mode=projection_mode,
+                    availability_events=availability_events,
+                    availability_cutoff=availability_cutoff,
+                    _model_context_cache=model_context_cache,
+                )
+            if prediction_cache is not None:
+                prediction_cache[chip_cache_key] = (chip_predictions, None)
+            if needs_future:
+                if (
+                    future_prediction_cache is not None
+                    and chip_cache_key in future_prediction_cache
+                ):
+                    chip_future_predictions = future_prediction_cache[chip_cache_key]
+                else:
+                    chip_future_predictions = train_future_gameweek_predictions(
+                        players,
+                        season,
+                        gameweek,
+                        model_name=chip_model_name,
+                        minutes_mode=minutes_mode,
+                        feature_mode=feature_mode,
+                        projection_mode=projection_mode,
+                        availability_events=availability_events,
+                        availability_cutoff=availability_cutoff,
+                        horizons=(
+                            tuple(range(1, 9))
+                            if chip_mode == CHIP_MODE_BASELINE
+                            else (1, 2, 3, 4, 5, 6)
+                        ),
+                        _model_context_cache=model_context_cache,
+                    )
+                    if future_prediction_cache is not None:
+                        future_prediction_cache[chip_cache_key] = chip_future_predictions
         prices = _latest_prices(players, season, gameweek)
         scenario_key = (gameweek, 8)
         if scenario_key not in fixture_scenario_cache:
@@ -1132,7 +1652,6 @@ def run_season_benchmark(
             )
         fixture_scenario = fixture_scenario_cache[scenario_key]
         squad["price"] = squad["player_id"].map(prices).fillna(squad["price"])
-        predictions = target.copy()
         bank_before = bank
         free_transfers_before = free_transfers
         pre_chip_squad = squad.copy()
@@ -1180,8 +1699,8 @@ def run_season_benchmark(
                 chip_state,
                 gameweek,
                 pre_chip_squad.copy(),
-                predictions.copy(),
-                {gw: frame.copy() for gw, frame in future_predictions.items()},
+                chip_predictions.copy(),
+                {gw: frame.copy() for gw, frame in chip_future_predictions.items()},
                 bank=bank,
                 rules=rules,
                 no_chip_squad=post_transfer_squad.copy(),
@@ -1201,6 +1720,11 @@ def run_season_benchmark(
                 future_predictions={
                     target_gameweek: frame.copy()
                     for target_gameweek, frame in future_predictions.items()
+                },
+                chip_predictions=chip_predictions.copy(),
+                future_chip_predictions={
+                    target_gameweek: frame.copy()
+                    for target_gameweek, frame in chip_future_predictions.items()
                 },
                 rules=rules,
                 fixture_scenario=fixture_scenario,
@@ -1230,8 +1754,7 @@ def run_season_benchmark(
                     expected_points=beam_action.expected_points,
                     no_chip_expected_points=beam_action.no_chip_expected_points,
                     expected_gain=(
-                        beam_action.expected_horizon_points
-                        - beam_action.no_chip_horizon_points
+                        beam_action.expected_horizon_points - beam_action.no_chip_horizon_points
                     ),
                     decision_status="planned",
                     reason=beam_action.reason,
@@ -1296,15 +1819,19 @@ def run_season_benchmark(
                 transfers_made += 1
                 total_hit_cost += decision.hit_cost
 
-        projections = predictions.set_index("player_id")["expected_points_adjusted"].to_dict()
-        original_lineup = select_starting_xi(squad, projections)
-        score = score_gameweek(squad, target, projections)
+        active_squad = squad.copy()
+        projections = lineup_predictions.set_index("player_id")[
+            "expected_points_adjusted"
+        ].to_dict()
+        original_lineup = select_starting_xi(active_squad, projections)
+        score = score_gameweek(active_squad, target, projections)
         captain_cache_key = (
             season,
             gameweek,
             minutes_mode,
             feature_mode,
             projection_mode,
+            captain_model_name,
         )
         if captain_prediction_cache is not None and captain_cache_key in captain_prediction_cache:
             captain_predictions = captain_prediction_cache[captain_cache_key]
@@ -1313,24 +1840,22 @@ def run_season_benchmark(
                 players,
                 season,
                 gameweek,
-                model_name=model_name,
                 minutes_mode=minutes_mode,
                 feature_mode=feature_mode,
                 projection_mode=projection_mode,
+                model_name=captain_model_name,
                 availability_events=availability_events,
                 availability_cutoff=availability_cutoff,
             )
             if captain_prediction_cache is not None:
                 captain_prediction_cache[captain_cache_key] = captain_predictions
         realistic_score = score_realistic_gameweek(
-            squad,
+            active_squad,
             target,
             projections,
             captain_predictions,
         )
-        score_bench_points = bench_points_not_autosubbed(
-            target, score.bench_ids, score.autosub_ids
-        )
+        score_bench_points = bench_points_not_autosubbed(target, score.bench_ids, score.autosub_ids)
         realistic_bench_points = bench_points_not_autosubbed(
             target, original_lineup.bench_ids, realistic_score.autosub_ids
         )
@@ -1353,8 +1878,32 @@ def run_season_benchmark(
             chip=chip_definition,
             bench_points=realistic_bench_points,
         )
-        chip_realized_gain = chip_score_points - score.points
-        realistic_chip_realized_gain = realistic_chip_points - realistic_score.points
+        no_chip_score_points = score.points
+        realistic_no_chip_score_points = realistic_score.points
+        if chip_replaces_ordinary_transfer(chip_definition):
+            no_chip_score_points = score_gameweek(
+                post_transfer_squad,
+                target,
+                projections,
+            ).points
+            realistic_no_chip_score_points = score_realistic_gameweek(
+                post_transfer_squad,
+                target,
+                projections,
+                captain_predictions,
+            ).points
+        chip_realized_gain = _realized_chip_gain(
+            chip_definition,
+            scored_points=chip_score_points,
+            active_squad_base_points=score.points,
+            no_chip_counterfactual_points=no_chip_score_points,
+        )
+        realistic_chip_realized_gain = _realized_chip_gain(
+            chip_definition,
+            scored_points=realistic_chip_points,
+            active_squad_base_points=realistic_score.points,
+            no_chip_counterfactual_points=realistic_no_chip_score_points,
+        )
         chip_points += chip_realized_gain
         gross_points += chip_score_points
         total_points += chip_score_points - decision.hit_cost
@@ -1367,11 +1916,7 @@ def run_season_benchmark(
         bank_after = bank
         free_transfers_after = min(transfer_cap, free_transfers + 1)
         post_gameweek_squad_hash = _squad_hash(squad)
-        active_squad_hash = _squad_hash(
-            post_chip_squad
-            if chip_definition is not None and chip_definition.free_hit_reversion
-            else squad
-        )
+        active_squad_hash = _squad_hash(active_squad)
         counterfactuals = json.dumps(
             [asdict(value) for value in chip_decision.counterfactuals],
             sort_keys=True,
@@ -1381,6 +1926,9 @@ def run_season_benchmark(
                 "season": season,
                 "gameweek": gameweek,
                 "strategy_name": strategy.name,
+                "initial_squad_mode": initial_squad_mode,
+                "initial_squad_version": initial_squad_version,
+                "initial_squad_hash": initial_squad_hash,
                 "model": target["model"].iloc[0],
                 "gross_points": chip_score_points,
                 "raw_starter_points": score.raw_starter_points,
@@ -1404,20 +1952,39 @@ def run_season_benchmark(
                 "realistic_captain_actual_points": realistic_score.captain_actual_points,
                 "realistic_vice_captain_actual_points": realistic_score.vice_captain_actual_points,
                 "realistic_vice_captain_fallback": realistic_score.vice_captain_fallback,
+                "squad_ids": "+".join(
+                    str(value)
+                    for value in squad["player_id"].astype(int).sort_values().tolist()
+                ),
+                "active_squad_ids": "+".join(
+                    str(value)
+                    for value in active_squad["player_id"].astype(int).sort_values().tolist()
+                ),
+                "selected_starting_ids": "+".join(
+                    str(value) for value in original_lineup.starting_ids
+                ),
+                "selected_bench_ids": "+".join(
+                    str(value) for value in original_lineup.bench_ids
+                ),
+                "realistic_starting_ids": "+".join(
+                    str(value) for value in realistic_score.starting_ids
+                ),
+                "realistic_autosub_ids": "+".join(
+                    str(value) for value in realistic_score.autosub_ids
+                ),
+                "realistic_formation": realistic_score.formation,
                 "starting_ids": "+".join(str(value) for value in score.starting_ids),
                 "autosub_ids": "+".join(str(value) for value in score.autosub_ids),
                 "formation": score.formation,
                 "transfers_made": int(decision.made),
+                "outgoing_id": decision.outgoing_id,
+                "incoming_id": decision.incoming_id,
                 "outgoing": decision.outgoing_name,
                 "incoming": decision.incoming_name,
                 "projected_gain": round(decision.projected_gain, 3),
                 "net_projected_gain": round(decision.net_projected_gain, 3),
-                "transfer_expected_horizon_gain": round(
-                    transfer_expected_horizon_gain, 4
-                ),
-                "transfer_expected_horizon_net_gain": round(
-                    transfer_expected_horizon_net_gain, 4
-                ),
+                "transfer_expected_horizon_gain": round(transfer_expected_horizon_gain, 4),
+                "transfer_expected_horizon_net_gain": round(transfer_expected_horizon_net_gain, 4),
                 "bank_before": round(bank_before, 1),
                 "free_transfers_before": free_transfers_before,
                 "bank_after": round(bank_after, 1),
@@ -1435,6 +2002,9 @@ def run_season_benchmark(
                 "captain_max_training_current_season_gameweek": captain_predictions[
                     "captain_max_training_current_season_gameweek"
                 ].iloc[0],
+                "captain_model_name": captain_predictions["captain_model_name"].iloc[0],
+                "chip_model_name": chip_model_name,
+                "lineup_model_name": lineup_model_name,
                 "chip_mode": chip_mode,
                 "hit_policy": hit_policy,
                 "chip_key": chip_decision.chip_key,
@@ -1447,19 +2017,11 @@ def run_season_benchmark(
                 "squad_after_hash": active_squad_hash,
                 "post_gameweek_squad_hash": post_gameweek_squad_hash,
                 "remaining_chips": "+".join(chip_state.remaining),
-                "expected_gameweek_points": round(
-                    chip_decision.expected_gameweek_points, 4
-                ),
-                "expected_horizon_points": round(
-                    chip_decision.expected_horizon_points, 4
-                ),
-                "no_chip_horizon_points": round(
-                    chip_decision.no_chip_horizon_points, 4
-                ),
+                "expected_gameweek_points": round(chip_decision.expected_gameweek_points, 4),
+                "expected_horizon_points": round(chip_decision.expected_horizon_points, 4),
+                "no_chip_horizon_points": round(chip_decision.no_chip_horizon_points, 4),
                 "chip_expected_gain": round(chip_decision.expected_gain, 4),
-                "future_opportunity_cost": round(
-                    chip_decision.future_opportunity_cost, 4
-                ),
+                "future_opportunity_cost": round(chip_decision.future_opportunity_cost, 4),
                 "uncertainty_penalty": round(chip_decision.uncertainty_penalty, 4),
                 "chip_realized_gain": round(chip_realized_gain, 4),
                 "realistic_chip_realized_gain": round(realistic_chip_realized_gain, 4),
@@ -1469,6 +2031,7 @@ def run_season_benchmark(
                 **fixture_scenario.metadata(),
             }
         )
+        model_context_cache.clear()
         free_transfers = free_transfers_after
         if verbose:
             print(
@@ -1501,6 +2064,8 @@ def run_season_benchmark(
         chips_used=chips_used,
         minutes_mode=minutes_mode,
         hit_policy=hit_policy,
+        initial_squad_mode=initial_squad_mode,
+        initial_squad_version=initial_squad_version,
     )
     _assert_no_lookahead(result.rows, season)
     return result
@@ -1528,18 +2093,14 @@ def run_benchmark_suite(
     ):
         players = add_m9_historical_features(players)
     selected_strategies = list(
-        strategies
-        or (NoTransfersStrategy(), DeterministicTransferStrategy())
+        strategies or (NoTransfersStrategy(), DeterministicTransferStrategy())
     )
     prediction_cache: dict[
-        tuple[str, int, str, str, str, str], tuple[pd.DataFrame, pd.DataFrame]
+        tuple[str, int, str, str, str, str],
+        tuple[pd.DataFrame, pd.DataFrame | None],
     ] = {}
-    captain_prediction_cache: dict[
-        tuple[str, int, str, str, str], pd.DataFrame
-    ] = {}
-    future_prediction_cache: dict[
-        tuple[str, int, str, str, str, str], dict[int, pd.DataFrame]
-    ] = {}
+    captain_prediction_cache: dict[tuple[str, int, str, str, str, str], pd.DataFrame] = {}
+    future_prediction_cache: dict[tuple[str, int, str, str, str, str], dict[int, pd.DataFrame]] = {}
     return [
         run_season_benchmark(
             players,
@@ -1650,16 +2211,20 @@ def append_result_to_history(
         columns=HISTORY_COLUMNS,
     )
     key = pd.DataFrame(
-        [{
-            "run_id": run_id,
-            "variant_name": variant_name,
-            "season": result.season,
-            "strategy_name": result.strategy_name,
-        }]
+        [
+            {
+                "run_id": run_id,
+                "variant_name": variant_name,
+                "season": result.season,
+                "strategy_name": result.strategy_name,
+            }
+        ]
     )
-    if pd.concat([history[list(key_columns)], key], ignore_index=True).duplicated(
-        list(key_columns), keep=False
-    ).any():
+    if (
+        pd.concat([history[list(key_columns)], key], ignore_index=True)
+        .duplicated(list(key_columns), keep=False)
+        .any()
+    ):
         raise ValueError("History row would duplicate run/variant/season/strategy")
     history_path.parent.mkdir(parents=True, exist_ok=True)
     pd.concat([history, record], ignore_index=True)[HISTORY_COLUMNS].to_csv(
@@ -1775,9 +2340,7 @@ def _previous_season(players: pd.DataFrame, season: str) -> str | None:
 def _latest_prices(players: pd.DataFrame, season: str, gameweek: int) -> dict[int, float]:
     cutoff = gameweek if gameweek == 1 else gameweek - 1
     rows = players[(players["season"] == season) & (players["gameweek"] <= cutoff)]
-    latest = rows.sort_values(["player_id", "gameweek"]).drop_duplicates(
-        "player_id", keep="last"
-    )
+    latest = rows.sort_values(["player_id", "gameweek"]).drop_duplicates("player_id", keep="last")
     return {int(row.player_id): float(row.price) for row in latest.itertuples()}
 
 
@@ -1836,10 +2399,7 @@ def _assert_no_lookahead(rows: pd.DataFrame, season: str) -> None:
     ):
         leakage = rows[
             rows[training_column].notna()
-            & (
-                pd.to_numeric(rows[training_column])
-                >= pd.to_numeric(rows["gameweek"])
-            )
+            & (pd.to_numeric(rows[training_column]) >= pd.to_numeric(rows["gameweek"]))
         ]
         assert leakage.empty, (
             f"No-lookahead assertion failed for {season} ({training_column}): "
@@ -1854,9 +2414,7 @@ def _empty_decision() -> TransferDecision:
 def _beam_counterfactual(beam_action: Any, selected_action: Any) -> ChipCounterfactual:
     candidate_key = beam_action.chip.key if beam_action.chip is not None else "none"
     selected_key = selected_action.chip.key if selected_action.chip is not None else "none"
-    expected_gain = (
-        beam_action.expected_horizon_points - beam_action.no_chip_horizon_points
-    )
+    expected_gain = beam_action.expected_horizon_points - beam_action.no_chip_horizon_points
     return ChipCounterfactual(
         chip_key=candidate_key,
         chip_number=beam_action.chip.number if beam_action.chip is not None else None,
@@ -1882,6 +2440,23 @@ def _squad_hash(squad: pd.DataFrame) -> str:
     records = squad[columns].copy().sort_values("player_id").to_dict("records")
     payload = json.dumps(records, sort_keys=True, default=str, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _realized_chip_gain(
+    chip: ChipDefinition | None,
+    *,
+    scored_points: float,
+    active_squad_base_points: float,
+    no_chip_counterfactual_points: float,
+) -> float:
+    """Return direct GW gain against the correct no-chip counterfactual squad."""
+
+    baseline = (
+        no_chip_counterfactual_points
+        if chip_replaces_ordinary_transfer(chip)
+        else active_squad_base_points
+    )
+    return float(scored_points - baseline)
 
 
 def _parse_args() -> argparse.Namespace:

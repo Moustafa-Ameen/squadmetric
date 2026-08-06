@@ -231,21 +231,19 @@ def test_pruned_wildcard_pool_matches_full_small_pool_oracle():
     assert pruned_score == full_score
 
 
-def test_future_opportunity_cost_is_not_silently_zero():
+def test_future_opportunity_cost_values_saving_the_same_bench_boost():
     rules = build_historical_season_rules("2025-26")
     definitions = {chip.key: chip for chip in chip_definitions(rules)}
     state = ChipState(
         season=rules.season,
         rules_version=rules.rules_version,
-        remaining=("bboost:1", "3xc:1"),
+        remaining=("bboost:1",),
     )
     current_chip_state = apply_chip(state, definitions["bboost:1"], 1, rules)
     squad = _squad()
-    current = squad.copy()
-    current["expected_points_adjusted"] = 1.0
     future = squad.copy()
     future["expected_points_adjusted"] = 1.0
-    future.loc[future["player_id"] == 6, "expected_points_adjusted"] = 12.0
+    future.loc[future["player_id"] == 2, "expected_points_adjusted"] = 12.0
 
     cost = _future_opportunity_cost(
         state,
@@ -258,6 +256,232 @@ def test_future_opportunity_cost_is_not_silently_zero():
     )
 
     assert cost > 0.0
+
+
+def test_future_opportunity_cost_values_saving_the_same_triple_captain():
+    rules = build_historical_season_rules("2025-26")
+    definitions = {chip.key: chip for chip in chip_definitions(rules)}
+    state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("3xc:1",),
+    )
+    current_chip_state = apply_chip(state, definitions["3xc:1"], 1, rules)
+    squad = _squad()
+    future = squad.copy()
+    future["expected_points_adjusted"] = 1.0
+    future.loc[future["player_id"] == 8, "expected_points_adjusted"] = 12.0
+
+    cost = _future_opportunity_cost(
+        state,
+        chip=definitions["3xc:1"],
+        future={2: future},
+        retained_squad=squad,
+        next_chip_state=current_chip_state,
+        rules=rules,
+        current_expected_gain=1.0,
+    )
+
+    assert cost == 11.0
+
+
+def test_future_opportunity_cost_does_not_borrow_value_from_another_chip():
+    rules = build_historical_season_rules("2025-26")
+    definitions = {chip.key: chip for chip in chip_definitions(rules)}
+    state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("bboost:1", "3xc:1"),
+    )
+    current_chip_state = apply_chip(state, definitions["bboost:1"], 1, rules)
+    squad = _squad()
+    future = squad.copy()
+    future["expected_points_adjusted"] = 0.0
+    future.loc[future["player_id"].isin([1, 2]), "expected_points_adjusted"] = 4.0
+    future.loc[future["player_id"] == 8, "expected_points_adjusted"] = 20.0
+
+    cost = _future_opportunity_cost(
+        state,
+        chip=definitions["bboost:1"],
+        future={2: future},
+        retained_squad=squad,
+        next_chip_state=current_chip_state,
+        rules=rules,
+        current_expected_gain=0.0,
+    )
+
+    assert cost == 4.0
+
+
+def test_future_opportunity_cost_respects_the_same_chip_availability_window():
+    rules = build_historical_season_rules("2025-26")
+    definitions = {chip.key: chip for chip in chip_definitions(rules)}
+    state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("bboost:1",),
+    )
+    current_chip_state = apply_chip(state, definitions["bboost:1"], 19, rules)
+    squad = _squad()
+    future = squad.copy()
+    future["expected_points_adjusted"] = 1.0
+    future.loc[future["player_id"] == 2, "expected_points_adjusted"] = 12.0
+
+    cost = _future_opportunity_cost(
+        state,
+        chip=definitions["bboost:1"],
+        future={20: future},
+        retained_squad=squad,
+        next_chip_state=current_chip_state,
+        rules=rules,
+        current_expected_gain=0.0,
+    )
+
+    assert cost == 0.0
+
+
+def test_future_opportunity_cost_values_a_saved_free_hit_squad():
+    rules = build_historical_season_rules("2025-26")
+    definitions = {chip.key: chip for chip in chip_definitions(rules)}
+    state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("freehit:1",),
+    )
+    squad = _squad()
+    future = squad.copy()
+    future["expected_points_adjusted"] = 1.0
+    upgrade = squad.iloc[[7]].copy()
+    upgrade["player_id"] = 100
+    upgrade["player_name"] = "Free Hit Upgrade"
+    upgrade["team"] = "Free Hit Team"
+    upgrade["expected_points_adjusted"] = 20.0
+    future = pd.concat([future, upgrade], ignore_index=True)
+
+    cost = _future_opportunity_cost(
+        state,
+        chip=definitions["freehit:1"],
+        future={3: future},
+        retained_squad=squad,
+        rules=rules,
+        current_expected_gain=0.0,
+    )
+
+    assert cost > 0.0
+
+
+def test_future_opportunity_cost_values_a_saved_wildcard_horizon():
+    rules = build_historical_season_rules("2025-26")
+    definitions = {chip.key: chip for chip in chip_definitions(rules)}
+    state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("wildcard:1",),
+    )
+    squad = _squad()
+    future = squad.copy()
+    future["expected_points_adjusted"] = 1.0
+    upgrade = squad.iloc[[7]].copy()
+    upgrade["player_id"] = 100
+    upgrade["player_name"] = "Wildcard Upgrade"
+    upgrade["team"] = "Wildcard Team"
+    upgrade["expected_points_adjusted"] = 10.0
+    future = pd.concat([future, upgrade], ignore_index=True)
+    later = future.copy()
+    later.loc[later["player_id"] == 100, "expected_points_adjusted"] = 15.0
+
+    cost = _future_opportunity_cost(
+        state,
+        chip=definitions["wildcard:1"],
+        future={3: future, 4: later},
+        retained_squad=squad,
+        rules=rules,
+        current_expected_gain=0.0,
+    )
+
+    assert cost > 0.0
+
+
+def test_beam_saves_triple_captain_for_the_stronger_same_chip_window():
+    rules = build_historical_season_rules("2025-26")
+    chip_state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("3xc:1",),
+    )
+    squad = _squad()
+    current = squad.copy()
+    current["expected_points_adjusted"] = 1.0
+    future = current.copy()
+    future.loc[future["player_id"] == 8, "expected_points_adjusted"] = 12.0
+    planner = DeterministicBeamPlanner(beam_width=4, horizon=1, max_transfers=2)
+
+    save_action = planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=0.0,
+        free_transfers=1,
+        chip_state=chip_state,
+        predictions=current,
+        future_predictions={3: future},
+        rules=rules,
+    )
+    triple_captain_counterfactual = next(
+        action
+        for action in planner.last_counterfactuals
+        if action.chip is not None and action.chip.key == "3xc:1"
+    )
+
+    assert save_action.chip is None
+    assert triple_captain_counterfactual.future_opportunity_cost == 11.0
+
+    use_action = planner.decide(
+        gameweek=3,
+        squad=squad,
+        bank=0.0,
+        free_transfers=1,
+        chip_state=chip_state,
+        predictions=future,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert use_action.chip is not None
+    assert use_action.chip.key == "3xc:1"
+
+
+def test_beam_does_not_double_charge_opportunities_inside_its_search_horizon():
+    rules = build_historical_season_rules("2025-26")
+    chip_state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("3xc:1",),
+    )
+    squad = _squad()
+    current = squad.copy()
+    current["expected_points_adjusted"] = 1.0
+    future = current.copy()
+    future.loc[future["player_id"] == 8, "expected_points_adjusted"] = 12.0
+    planner = DeterministicBeamPlanner(beam_width=4, horizon=2, max_transfers=2)
+
+    action = planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=0.0,
+        free_transfers=1,
+        chip_state=chip_state,
+        predictions=current,
+        future_predictions={3: future},
+        rules=rules,
+    )
+    triple_captain_counterfactual = next(
+        candidate
+        for candidate in planner.last_counterfactuals
+        if candidate.chip is not None and candidate.chip.key == "3xc:1"
+    )
+
+    assert action.chip is None
+    assert triple_captain_counterfactual.future_opportunity_cost == 0.0
 
 
 def test_beam_exposes_one_counterfactual_per_legal_chip():
@@ -288,3 +512,55 @@ def test_beam_exposes_one_counterfactual_per_legal_chip():
     assert "freehit:1" in keys
     assert "bboost:1" in keys
     assert "3xc:1" in keys
+
+
+def test_beam_keeps_transfer_and_chip_projection_paths_separate():
+    squad = _squad()
+    transfer_upgrade = squad.iloc[[8]].copy()
+    transfer_upgrade["player_id"] = 100
+    transfer_upgrade["player_name"] = "Transfer Upgrade"
+    transfer_upgrade["team"] = "New Team"
+    transfer_upgrade["expected_points_adjusted"] = 8.0
+    transfer_predictions = pd.concat([squad, transfer_upgrade], ignore_index=True)
+
+    chip_low = transfer_predictions.copy()
+    chip_low["expected_points_adjusted"] = 1.0
+    chip_high = chip_low.copy()
+    chip_high["expected_points_adjusted"] = 2.0
+    rules = build_historical_season_rules("2025-26")
+    chip_state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("bboost:1",),
+    )
+
+    def run(chip_predictions: pd.DataFrame) -> DeterministicBeamPlanner:
+        planner = DeterministicBeamPlanner(beam_width=4, horizon=1, max_transfers=4)
+        planner.decide(
+            gameweek=2,
+            squad=squad,
+            bank=0.0,
+            free_transfers=1,
+            chip_state=chip_state,
+            predictions=transfer_predictions,
+            future_predictions={},
+            chip_predictions=chip_predictions,
+            future_chip_predictions={},
+            rules=rules,
+        )
+        return planner
+
+    low_planner = run(chip_low)
+    high_planner = run(chip_high)
+    low_actions = {
+        action.chip.key if action.chip else "none": action
+        for action in low_planner.last_counterfactuals
+    }
+    high_actions = {
+        action.chip.key if action.chip else "none": action
+        for action in high_planner.last_counterfactuals
+    }
+
+    assert low_actions["none"].transfer.incoming_id == 100
+    assert high_actions["none"].transfer.incoming_id == 100
+    assert low_actions["bboost:1"].expected_points != high_actions["bboost:1"].expected_points

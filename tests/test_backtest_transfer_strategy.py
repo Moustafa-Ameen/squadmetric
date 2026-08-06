@@ -3,6 +3,7 @@ import pandas as pd
 from fpl_intelligence.backtest_transfer_strategy import (
     TwoGameweekLookaheadStrategy,
     build_initial_squad,
+    build_preseason_scores,
     choose_transfer,
     score_gameweek,
     select_starting_xi,
@@ -28,6 +29,76 @@ def _squad_rows() -> list[dict[str, object]]:
             )
             player_id += 1
     return rows
+
+
+def test_preseason_scores_match_players_by_name_not_season_local_id():
+    rows = []
+    prior_players = [
+        (1, "Alice Star", "MID", "A", 10),
+        (2, "Bob Role", "MID", "B", 2),
+    ]
+    for player_id, name, position, team, points in prior_players:
+        for gameweek in (1, 2):
+            rows.append(
+                {
+                    "season": "2024-25",
+                    "gameweek": gameweek,
+                    "player_id": player_id,
+                    "player_name": name,
+                    "position": position,
+                    "team": team,
+                    "price": 5.0,
+                    "price_before_deadline": 5.0,
+                    "selected_by_percent": 1.0,
+                    "total_points": points,
+                    "minutes": 90,
+                }
+            )
+    # The IDs are deliberately swapped in the following season.
+    rows.extend(
+        [
+            {
+                "season": "2025-26",
+                "gameweek": 1,
+                "player_id": 1,
+                "player_name": "Bob Role",
+                "position": "MID",
+                "team": "B",
+                "price": 5.0,
+                "price_before_deadline": 5.0,
+                "selected_by_percent": 1.0,
+                "total_points": 0,
+                "minutes": 0,
+            },
+            {
+                "season": "2025-26",
+                "gameweek": 1,
+                "player_id": 2,
+                "player_name": "Alice Star",
+                "position": "MID",
+                "team": "A",
+                "price": 5.0,
+                "price_before_deadline": 5.0,
+                "selected_by_percent": 1.0,
+                "total_points": 0,
+                "minutes": 0,
+            },
+        ]
+    )
+
+    scored = build_preseason_scores(
+        pd.DataFrame(rows),
+        season="2025-26",
+        prior_season="2024-25",
+    ).set_index("player_id")
+
+    assert scored.loc[2, "prior_player_id"] == 1
+    assert scored.loc[1, "prior_player_id"] == 2
+    assert scored.loc[2, "prior_points"] > scored.loc[1, "prior_points"]
+    assert (
+        scored.loc[2, "preseason_value_score"]
+        > scored.loc[1, "preseason_value_score"]
+    )
 
 
 def _lookahead_context(future_player_101_points: float) -> StrategyContext:

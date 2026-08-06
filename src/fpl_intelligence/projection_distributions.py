@@ -22,6 +22,7 @@ class ProjectionDistribution:
     interval_method: str
     data_cutoff: str
     model_version: str
+    calibration_cutoff: str = "not_calibrated"
     version: str = PROJECTION_DISTRIBUTION_VERSION
 
     def to_frame(self) -> pd.DataFrame:
@@ -113,6 +114,95 @@ def build_empirical_component_distribution(
         coverage=coverage,
         interval_method="empirical_residual_interval",
         data_cutoff=data_cutoff,
+        model_version=model_version,
+        calibration_cutoff=data_cutoff,
+    )
+
+
+@dataclass(frozen=True)
+class EmpiricalIntervalCalibrator:
+    """Held-out residual quantiles that can be applied to future predictions."""
+
+    lower_residuals: dict[str, float]
+    upper_residuals: dict[str, float]
+    calibration_cutoff: str
+    sample_count: int
+    model_version: str
+    version: str = PROJECTION_DISTRIBUTION_VERSION
+
+    def apply(
+        self,
+        expected: pd.DataFrame,
+        *,
+        data_cutoff: str,
+    ) -> ProjectionDistribution:
+        means = expected.apply(pd.to_numeric, errors="coerce").fillna(0.0).clip(lower=0.0)
+        lower = pd.DataFrame(
+            {
+                column: np.maximum(means[column] + self.lower_residuals.get(column, 0.0), 0.0)
+                for column in means.columns
+            },
+            index=means.index,
+        )
+        upper = pd.DataFrame(
+            {
+                column: np.maximum(
+                    means[column] + self.upper_residuals.get(column, 0.0), lower[column]
+                )
+                for column in means.columns
+            },
+            index=means.index,
+        )
+        return ProjectionDistribution(
+            expected=means,
+            lower=lower,
+            upper=upper,
+            coverage=1.0
+            - (
+                self.upper_residuals.get("__alpha__", 0.1)
+                + (-self.lower_residuals.get("__alpha__", 0.1))
+            ),
+            interval_method="heldout_empirical_residual_interval",
+            data_cutoff=data_cutoff,
+            model_version=self.model_version,
+            calibration_cutoff=self.calibration_cutoff,
+        )
+
+
+def fit_empirical_interval_calibrator(
+    expected: pd.DataFrame,
+    actual: pd.DataFrame,
+    *,
+    coverage: float = 0.8,
+    calibration_cutoff: str,
+    model_version: str = "unknown",
+    min_samples: int = 20,
+) -> EmpiricalIntervalCalibrator:
+    """Fit residual quantiles on a declared held-out calibration sample."""
+
+    _validate_coverage(coverage)
+    if list(expected.columns) != list(actual.columns) or len(expected) != len(actual):
+        raise ValueError("expected and actual must have identical columns and row counts")
+    if len(expected) < min_samples:
+        raise ValueError(
+            f"held-out calibration requires at least {min_samples} rows; got {len(expected)}"
+        )
+    means = expected.apply(pd.to_numeric, errors="coerce").fillna(0.0).clip(lower=0.0)
+    observed = actual.apply(pd.to_numeric, errors="coerce")
+    alpha = (1.0 - coverage) / 2.0
+    lower: dict[str, float] = {"__alpha__": -alpha}
+    upper: dict[str, float] = {"__alpha__": alpha}
+    for column in means.columns:
+        residuals = (observed[column] - means[column]).dropna().to_numpy(dtype=float)
+        if len(residuals) < min_samples:
+            raise ValueError(f"held-out calibration has insufficient valid values for {column}")
+        lower[column] = float(np.quantile(residuals, alpha))
+        upper[column] = float(np.quantile(residuals, 1.0 - alpha))
+    return EmpiricalIntervalCalibrator(
+        lower_residuals=lower,
+        upper_residuals=upper,
+        calibration_cutoff=calibration_cutoff,
+        sample_count=int(len(expected)),
         model_version=model_version,
     )
 

@@ -40,6 +40,8 @@ class OptimizedLineup:
 
 def position_group(position: object) -> str:
     value = str(position or "").upper()
+    if value in {"GKP", "GOALKEEPER"}:
+        return "GK"
     return "MID" if value == "AM" else value
 
 

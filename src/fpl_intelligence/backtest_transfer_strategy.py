@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
+from fpl_intelligence.preseason import build_identity_safe_preseason_pool
 from fpl_intelligence.squad_optimizer import optimize_squad, optimize_starting_xi
 from fpl_intelligence.step4_models import (
     FEATURE_COLUMNS,
@@ -124,6 +125,8 @@ def position_group(position: Any) -> str:
     """Map the historical position labels to the four FPL squad buckets."""
 
     value = str(position or "").upper()
+    if value in {"GKP", "GOALKEEPER"}:
+        return "GK"
     return "MID" if value == "AM" else value
 
 
@@ -189,42 +192,14 @@ def build_preseason_scores(
     season: str = TEST_SEASON,
     prior_season: str | None = "2024-25",
 ) -> pd.DataFrame:
-    """Build a GW1-only score from the previous season and current GW1 context.
+    """Build a GW1 score without treating season-local IDs as identities."""
 
-    Prior-season output and points-per-price provide the main signal. Current GW1
-    ownership is only a fallback context signal, so players without prior-season
-    rows can still enter the deterministic candidate pool. This remains a known
-    weak-GW1 limitation of the benchmark rather than a production model feature;
-    the roadmap schedules its replacement for Phase M3.5's lightweight optimizer.
-    """
-
-    gw1 = players[(players["season"] == season) & (players["gameweek"] == 1)].copy()
-    gw1 = gw1.sort_values(["player_id", "gameweek"]).drop_duplicates("player_id")
-    prior = players[players["season"] == prior_season].copy()
-    prior_summary = (
-        prior.groupby("player_id", as_index=False)
-        .agg(
-            prior_points=("total_points", "sum"),
-            prior_minutes=("minutes", "sum"),
-            prior_gameweeks=("gameweek", "nunique"),
-            prior_price=("price", "last"),
-        )
-        .assign(
-            prior_points_per_game=lambda frame: frame["prior_points"]
-            / frame["prior_gameweeks"].clip(lower=1),
-            prior_value=lambda frame: frame["prior_points"]
-            / frame["prior_price"].replace(0, np.nan),
-        )
-        .fillna(0.0)
+    scored = build_identity_safe_preseason_pool(
+        players,
+        season=season,
+        prior_season=prior_season,
     )
-    scored = gw1.merge(prior_summary, on="player_id", how="left").fillna(0.0)
-    scored["position_group"] = scored["position"].map(position_group)
-    scored["preseason_value_score"] = (
-        0.55 * _normalise(scored["prior_points_per_game"])
-        + 0.30 * _normalise(scored["prior_value"])
-        + 0.10 * _normalise(scored["prior_minutes"])
-        + 0.05 * _normalise(scored["selected_by_percent"])
-    )
+    scored["preseason_value_score"] = scored["identity_value_score"]
     return scored
 
 
@@ -256,13 +231,16 @@ def build_initial_squad(
     players: pd.DataFrame,
     season: str = TEST_SEASON,
     prior_season: str | None = "2024-25",
-    minutes_floor: int | None = MIN_PRESEASON_MINUTES,
+    minutes_floor: int | None = None,
 ) -> pd.DataFrame:
-    """Select the highest-scoring legal GW1 squad with the exact MILP optimizer."""
+    """Select a legal identity-safe GW1 squad with the exact MILP optimizer."""
 
     candidates = build_preseason_scores(players, season=season, prior_season=prior_season)
     if minutes_floor is not None:
-        candidates = candidates[candidates["prior_minutes"] >= minutes_floor].copy()
+        candidates = candidates[
+            ~candidates["prior_matched"]
+            | (candidates["prior_minutes"] >= minutes_floor)
+        ].copy()
     missing_positions = [
         position
         for position, required in POSITION_QUOTAS.items()

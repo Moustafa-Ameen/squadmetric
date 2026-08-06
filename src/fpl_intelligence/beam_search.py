@@ -115,14 +115,25 @@ class DeterministicBeamPlanner:
         chip_state: ChipState,
         predictions: pd.DataFrame,
         future_predictions: dict[int, pd.DataFrame],
+        chip_predictions: pd.DataFrame | None = None,
+        future_chip_predictions: dict[int, pd.DataFrame] | None = None,
         rules: SeasonRules,
         fixture_scenario: Any | None = None,
     ) -> BeamAction:
         """Return the first action from the best deterministic beam path."""
 
+        chip_predictions = chip_predictions if chip_predictions is not None else predictions
+        future_chip_predictions = (
+            future_chip_predictions
+            if future_chip_predictions is not None
+            else future_predictions
+        )
         projection = _projection_map(predictions)
         self._chip_squad_cache = {}
-        self._projection_cache = {id(predictions): projection}
+        self._projection_cache = {
+            id(predictions): projection,
+            id(chip_predictions): _projection_map(chip_predictions),
+        }
         self.last_counterfactuals = ()
         lineup = _fast_lineup(squad, projection)
         root = DecisionState(
@@ -141,13 +152,22 @@ class DeterministicBeamPlanner:
             rules_version=rules.rules_version,
         )
         frames = {gameweek: predictions, **future_predictions}
+        chip_frames = {gameweek: chip_predictions, **future_chip_predictions}
         beam = [root]
         for offset in range(self.horizon):
             target_gameweek = gameweek + offset
             frame = frames.get(target_gameweek, pd.DataFrame())
+            chip_frame = chip_frames.get(target_gameweek, pd.DataFrame())
             next_beam: list[DecisionState] = []
             for state in beam:
-                branches = self._expand_state(state, frame, frames, rules)
+                branches = self._expand_state(
+                    state,
+                    frame,
+                    frames,
+                    rules,
+                    chip_predictions=chip_frame,
+                    chip_frames=chip_frames,
+                )
                 next_beam.extend(branches)
                 if offset == 0:
                     self.last_counterfactuals = _deduplicate_actions(
@@ -175,12 +195,20 @@ class DeterministicBeamPlanner:
         predictions: pd.DataFrame,
         frames: dict[int, pd.DataFrame],
         rules: SeasonRules,
+        *,
+        chip_predictions: pd.DataFrame,
+        chip_frames: dict[int, pd.DataFrame],
     ) -> list[DecisionState]:
         if predictions.empty:
             return []
         future = {
             gameweek: frame
             for gameweek, frame in frames.items()
+            if gameweek > state.gameweek
+        }
+        future_chip = {
+            gameweek: frame
+            for gameweek, frame in chip_frames.items()
             if gameweek > state.gameweek
         }
         is_first_action = state.first_action is None
@@ -203,17 +231,17 @@ class DeterministicBeamPlanner:
         branches: list[DecisionState] = []
         for chip in chips:
             if chip is not None and chip.name == "assistant_manager":
-                if _assistant_manager_expected_points(predictions) is None:
+                if _assistant_manager_expected_points(chip_predictions) is None:
                     continue
             if chip is not None and chip.name in {"wildcard", "freehit"}:
                 try:
                     budget = state.bank + float(state.squad["price"].sum())
                     chip_squad = self._build_chip_squad(
-                        predictions,
+                        chip_predictions,
                         squad=state.squad,
                         chip=chip,
                         budget=budget,
-                        future_predictions=future,
+                        future_predictions=future_chip,
                     )
                 except ValueError:
                     continue
@@ -229,6 +257,8 @@ class DeterministicBeamPlanner:
                         predictions,
                         future,
                         rules,
+                        chip_predictions=chip_predictions,
+                        chip_future=future_chip,
                         transfer=transfer,
                         chip=chip,
                         chip_squad=chip_squad,
@@ -274,6 +304,8 @@ class DeterministicBeamPlanner:
         future: dict[int, pd.DataFrame],
         rules: SeasonRules,
         *,
+        chip_predictions: pd.DataFrame,
+        chip_future: dict[int, pd.DataFrame],
         transfer: TransferDecision,
         chip: ChipDefinition | None,
         chip_squad: pd.DataFrame | None,
@@ -310,7 +342,10 @@ class DeterministicBeamPlanner:
         if chip is not None:
             next_chip_state = apply_chip(next_chip_state, chip, state.gameweek, rules)
 
-        projection = self._projection_for(predictions)
+        transfer_projection = self._projection_for(predictions)
+        valuation_predictions = chip_predictions if chip is not None else predictions
+        valuation_future = chip_future if chip is not None else future
+        projection = self._projection_for(valuation_predictions)
         base_value, lineup, captain, bench = _fast_gameweek_value(active_squad, projection)
         before_value = _fast_gameweek_value(before_squad, projection)[0]
         no_chip_value = _fast_gameweek_value(after_transfer, projection)[0]
@@ -320,7 +355,7 @@ class DeterministicBeamPlanner:
             _transfer_horizon_gain(
                 before_squad,
                 after_transfer,
-                projection,
+                transfer_projection,
                 future,
             )
             if is_first_action
@@ -332,7 +367,7 @@ class DeterministicBeamPlanner:
         elif chip is not None and chip.name == "3xc":
             chip_value = captain
         elif chip is not None and chip.name == "assistant_manager":
-            chip_value = _assistant_manager_expected_points(predictions) or 0.0
+            chip_value = _assistant_manager_expected_points(chip_predictions) or 0.0
         expected_points = base_value + chip_value
         if is_first_action:
             future_squads = (
@@ -351,7 +386,9 @@ class DeterministicBeamPlanner:
             )
             future_frames = [
                 frame
-                for _, frame in sorted(future.items())[: max(0, valuation_horizon - 1)]
+                for _, frame in sorted(valuation_future.items())[
+                    : max(0, valuation_horizon - 1)
+                ]
             ]
             expected_horizon = expected_points + sum(
                 _fast_gameweek_value(
@@ -372,19 +409,27 @@ class DeterministicBeamPlanner:
             no_chip_horizon = no_chip_value
         uncertainty = _fast_uncertainty_penalty(
             active_squad,
-            predictions,
+            valuation_predictions,
             lineup,
             include_bench=chip is not None and chip.name == "bboost",
         )
         opportunity_cost = (
             _future_opportunity_cost(
-                state,
+                state.remaining_chips,
                 chip=chip,
-                future=future,
-                retained_squad=retained_squad,
+                future={
+                    gameweek: frame
+                    for gameweek, frame in valuation_future.items()
+                    if gameweek >= state.gameweek + self.horizon
+                },
+                retained_squad=after_transfer,
+                bank_if_saved=bank_after_transfer,
                 next_chip_state=next_chip_state,
                 rules=rules,
-                current_expected_gain=max(0.0, expected_points - no_chip_value),
+                current_expected_gain=max(
+                    0.0,
+                    expected_horizon - no_chip_horizon,
+                ),
             )
             if is_first_action
             else 0.0
@@ -787,43 +832,111 @@ def _future_score_by_player(
 
 
 def _future_opportunity_cost(
-    state: DecisionState,
+    chip_state: ChipState,
     *,
     chip: ChipDefinition | None,
     future: dict[int, pd.DataFrame],
     retained_squad: pd.DataFrame,
-    next_chip_state: ChipState,
     rules: SeasonRules,
     current_expected_gain: float,
+    bank_if_saved: float = 0.0,
+    next_chip_state: ChipState | None = None,
 ) -> float:
-    """Estimate the value lost by consuming a chip at this deadline.
+    """Compare using a chip now with saving that exact chip for a later deadline."""
 
-    Bench Boost and Triple Captain are evaluated exactly on the retained squad.
-    Squad-changing chips use a conservative zero lower bound here; their
-    multi-Gameweek value is already handled by the horizon squad objective and
-    is audited separately through future counterfactual runs.
-    """
-
-    if chip is None or not future:
+    if chip is None or not future or chip.key not in chip_state.remaining:
         return 0.0
     best_future_gain = 0.0
-    for gameweek, frame in sorted(future.items())[:6]:
-        legal = legal_chip_options(next_chip_state, gameweek, rules)
-        if not legal:
+    future_items = sorted(future.items())[:6]
+    for index, (gameweek, frame) in enumerate(future_items):
+        legal_keys = {
+            option.key for option in legal_chip_options(chip_state, gameweek, rules)
+        }
+        if chip.key not in legal_keys or frame.empty:
             continue
         projection = _projection_map(frame)
-        no_chip_value, lineup, captain, bench = _fast_gameweek_value(
+        no_chip_value, _, captain, bench = _fast_gameweek_value(
             retained_squad,
             projection,
         )
-        for future_chip in legal:
-            if future_chip.name == "bboost":
-                gain = bench
-            elif future_chip.name == "3xc":
-                gain = captain
-            elif future_chip.name == "assistant_manager":
-                gain = 0.0
-            else:
-                gain = 0.0
-            best_future_gain = max(best_future_gain, gain)
+        following = dict(future_items[index + 1 :])
+        if chip.name == "bboost":
+            gain = bench
+        elif chip.name == "3xc":
+            gain = captain
+        elif chip.name == "freehit":
+            gain = _future_free_hit_gain(
+                retained_squad,
+                frame,
+                projection=projection,
+                budget=float(retained_squad["price"].sum()) + bank_if_saved,
+                no_chip_value=no_chip_value,
+            )
+        elif chip.name == "wildcard":
+            gain = _future_wildcard_gain(
+                retained_squad,
+                frame,
+                following,
+                budget=float(retained_squad["price"].sum()) + bank_if_saved,
+            )
+        elif chip.name == "assistant_manager":
+            gain = _assistant_manager_expected_points(frame) or 0.0
+        else:
+            gain = 0.0
+        best_future_gain = max(best_future_gain, gain)
     return round(max(0.0, best_future_gain - current_expected_gain), 4)
+
+
+def _future_free_hit_gain(
+    retained_squad: pd.DataFrame,
+    predictions: pd.DataFrame,
+    *,
+    projection: dict[int, float],
+    budget: float,
+    no_chip_value: float,
+) -> float:
+    """Return the one-Gameweek squad gain from saving Free Hit for this frame."""
+
+    try:
+        candidates = _prune_candidates(predictions, retained_squad)
+        free_hit_squad = build_chip_squad(candidates, budget=budget)
+    except ValueError:
+        return 0.0
+    free_hit_value = _fast_gameweek_value(free_hit_squad, projection)[0]
+    return max(0.0, free_hit_value - no_chip_value)
+
+
+def _future_wildcard_gain(
+    retained_squad: pd.DataFrame,
+    predictions: pd.DataFrame,
+    future_predictions: dict[int, pd.DataFrame],
+    *,
+    budget: float,
+) -> float:
+    """Return the permanent squad gain from a future Wildcard horizon."""
+
+    horizon_future = dict(sorted(future_predictions.items())[:5])
+    try:
+        candidates = _prune_candidates(
+            predictions,
+            retained_squad,
+            future_predictions=horizon_future,
+        )
+        aggregated = _aggregate_horizon_predictions(
+            candidates,
+            horizon_future,
+            minimum_gameweeks=6,
+        )
+        wildcard_squad = build_chip_squad(aggregated, budget=budget)
+    except ValueError:
+        return 0.0
+    frames = [predictions, *horizon_future.values()]
+    wildcard_value = sum(
+        _fast_gameweek_value(wildcard_squad, _projection_map(frame))[0]
+        for frame in frames
+    )
+    retained_value = sum(
+        _fast_gameweek_value(retained_squad, _projection_map(frame))[0]
+        for frame in frames
+    )
+    return max(0.0, wildcard_value - retained_value)

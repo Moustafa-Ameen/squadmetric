@@ -26,6 +26,9 @@ RULE_MANIFEST_DIR = PROJECT_ROOT / "data" / "processed" / "rules"
 PROMOTED_TEAMS_BY_SEASON: dict[str, tuple[str, ...]] = {
     "2026-27": ("Coventry City", "Ipswich Town", "Hull City"),
 }
+RELEGATED_TEAMS_BY_SEASON: dict[str, tuple[str, ...]] = {
+    "2026-27": ("Burnley", "West Ham United", "Wolverhampton Wanderers"),
+}
 
 HISTORICAL_RULE_SOURCE_URLS = {
     "2023-24": "https://www.premierleague.com/en/news/4026959",
@@ -86,6 +89,32 @@ def canonical_json(value: Any) -> str:
 
 def payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def rules_contract_hash(rules: SeasonRules) -> str:
+    """Hash only decision-relevant rules, excluding source observation metadata."""
+
+    contract = rules.to_dict()
+    for source_field in (
+        "source_url",
+        "retrieved_at",
+        "cutoff_at",
+        "payload_hash",
+    ):
+        contract.pop(source_field, None)
+    return hashlib.sha256(canonical_json(contract).encode("utf-8")).hexdigest()
+
+
+def infer_season_from_bootstrap(bootstrap: Mapping[str, Any]) -> str:
+    deadlines = [
+        str(event.get("deadline_time"))
+        for event in bootstrap.get("events") or []
+        if isinstance(event, Mapping) and event.get("deadline_time")
+    ]
+    if not deadlines:
+        return "unknown"
+    year = int(min(deadlines)[:4])
+    return f"{year}-{str(year + 1)[-2:]}"
 
 
 def build_snapshot_metadata(
@@ -347,6 +376,7 @@ def save_immutable_snapshot(
     metadata: Mapping[str, Any],
     *,
     root: Path = RAW_SNAPSHOT_DIR,
+    artifact_name: str = "bootstrap",
 ) -> tuple[Path, Path]:
     """Save a content-addressed raw snapshot and adjacent metadata file.
 
@@ -359,7 +389,12 @@ def save_immutable_snapshot(
     timestamp = timestamp.replace("+00", "").replace("Z", "")
     digest = str(metadata["payload_hash"])
     directory = root / season
-    snapshot_path = directory / f"bootstrap-{timestamp}-{digest[:16]}.json"
+    safe_name = "".join(
+        character for character in artifact_name if character.isalnum() or character in {"-", "_"}
+    )
+    if not safe_name:
+        raise ValueError("artifact_name must contain at least one safe character")
+    snapshot_path = directory / f"{safe_name}-{timestamp}-{digest[:16]}.json"
     metadata_path = snapshot_path.with_suffix(".metadata.json")
     raw_text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     metadata_text = json.dumps(dict(metadata), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -383,11 +418,22 @@ def save_rules_manifest(
 ) -> Path:
     """Persist the normalized manifest without changing its content."""
 
-    path = root / rules.season / f"{rules.rules_version}.json"
+    path = (
+        root
+        / rules.season
+        / f"{rules.rules_version}-{rules.payload_hash[:16]}.json"
+    )
     content = json.dumps(rules.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.read_text(encoding="utf-8") != content:
-        raise FileExistsError(f"Rules manifest conflict: {path}")
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        proposed = rules.to_dict()
+        for volatile_key in ("retrieved_at", "cutoff_at"):
+            existing.pop(volatile_key, None)
+            proposed.pop(volatile_key, None)
+        if existing != proposed:
+            raise FileExistsError(f"Rules manifest conflict: {path}")
+        return path
     if not path.exists():
         path.write_text(content, encoding="utf-8")
     return path
@@ -418,7 +464,9 @@ def validate_bootstrap_onboarding(
     for required_team in PROMOTED_TEAMS_BY_SEASON.get(season, ()):
         if required_team not in team_names:
             errors.append(f"missing required {season} team: {required_team}")
-
+    for relegated_team in RELEGATED_TEAMS_BY_SEASON.get(season, ()):
+        if relegated_team in team_names:
+            errors.append(f"relegated team still present for {season}: {relegated_team}")
     team_id_set = set(team_ids)
     position_id_set = set(position_ids)
     for player in elements:

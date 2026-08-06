@@ -1,0 +1,77 @@
+{
+  "schema_version": "pdc-p2-rank-reference-v1",
+  "retrieved_at": "2026-07-28T00:00:00Z",
+  "seasons": [
+    {
+      "season": "2023-24",
+      "status": "unavailable",
+      "total_managers": null,
+      "top_one_percent_rank": null,
+      "known_inside_points": null,
+      "known_inside_rank": null,
+      "known_outside_points": null,
+      "known_outside_rank": null,
+      "note": "Official entry histories preserve points and ranks, but this audit did not obtain a trustworthy official final manager count. No top-1% points boundary is asserted.",
+      "sources": [
+        {
+          "label": "Official 2023/24 FPL records recap",
+          "url": "https://www.premierleague.com/en/news/4026959/fpl-records-and-amazing-stats-from-202324"
+        },
+        {
+          "label": "Official FPL entry history example",
+          "url": "https://fantasy.premierleague.com/entry/260/history"
+        }
+      ]
+    },
+    {
+      "season": "2024-25",
+      "status": "bounded_approximate_population",
+      "total_managers": 11500000,
+      "top_one_percent_rank": 115000,
+      "known_inside_points": 2508,
+      "known_inside_rank": 108904,
+      "known_outside_points": 2504,
+      "known_outside_rank": 117958,
+      "note": "The official recap reports approximately 11.5 million managers. Official entry histories bound, but do not identify exactly, the points threshold around the resulting approximate top-1% rank.",
+      "sources": [
+        {
+          "label": "Official 2024/25 FPL records recap",
+          "url": "https://www.premierleague.com/en/news/4320685/fpl-records-and-amazing-stats-from-202425"
+        },
+        {
+          "label": "Official inside-bound entry history",
+          "url": "https://fantasy.premierleague.com/entry/2939383/history"
+        },
+        {
+          "label": "Official outside-bound entry history",
+          "url": "https://fantasy.premierleague.com/entry/205204/history"
+        }
+      ]
+    },
+    {
+      "season": "2025-26",
+      "status": "bounded",
+      "total_managers": 13107732,
+      "top_one_percent_rank": 131077,
+      "known_inside_points": 2319,
+      "known_inside_rank": 119680,
+      "known_outside_points": 2296,
+      "known_outside_rank": 198790,
+      "note": "The final manager count is preserved by official FPL entry history. Official entry histories bound, but do not identify exactly, the points threshold around the top-1% rank.",
+      "sources": [
+        {
+          "label": "Official FPL history with final manager count",
+          "url": "https://fantasy.premierleague.com/entry/260/history"
+        },
+        {
+          "label": "Official inside-bound entry history",
+          "url": "https://fantasy.premierleague.com/entry/115/history"
+        },
+        {
+          "label": "Official outside-bound entry history",
+          "url": "https://fantasy.premierleague.com/entry/79228/history"
+        }
+      ]
+    }
+  ]
+}
