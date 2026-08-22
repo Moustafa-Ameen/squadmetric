@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ErrorState, PitchSkeleton } from "@/components/LoadingState";
+import { DecisionStatusNotice } from "@/components/DecisionStatusNotice";
 import { Panel } from "@/components/Panel";
 import { PitchView } from "@/components/PitchView";
 import { SectionHeader } from "@/components/SectionHeader";
 import { isSeasonEndedState, SeasonTransitionNotice } from "@/components/SeasonTransitionNotice";
-import { getCurrentGameweek, getSeasonState, getSquad, getTeam } from "@/lib/api";
+import { apiErrorCode, getCurrentGameweek, getSeasonState, getSquad, getTeam } from "@/lib/api";
 import { points, positionCode, price } from "@/lib/format";
 import { selectCurrentSquadMetrics } from "@/lib/squadMetrics";
 import type { SeasonState, SquadPlayer, TeamData } from "@/lib/types";
@@ -18,6 +19,7 @@ export default function SquadPage() {
   const [showBench, setShowBench] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export default function SquadPage() {
       getSeasonState()
         .then((state) => {
           setSeasonState(state);
-          if (isSeasonEndedState(state.season_state)) return null;
+          if (isSeasonEndedState(state.season_state) || !state.recommendations_ready) return null;
           return getCurrentGameweek().then((gw) =>
             Promise.all([getSquad(savedTeamId, gw.current_gw ?? 1), getTeam(savedTeamId)]),
           );
@@ -42,7 +44,10 @@ export default function SquadPage() {
           setSquad(squadRows);
           setTeam(teamData);
         })
-        .catch(() => setError(true))
+        .catch((caught: unknown) => {
+          setErrorCode(apiErrorCode(caught));
+          setError(true);
+        })
         .finally(() => setLoading(false));
     });
   }, []);
@@ -54,7 +59,7 @@ export default function SquadPage() {
     for (const position of ["GKP", "GK", "DEF", "MID", "FWD"]) {
       const rows = displayedSquad.filter((player) => positionCode(player.position) === positionCode(position));
       averages[position] = rows.length
-        ? rows.reduce((sum, player) => sum + (player.predicted_pts ?? 0), 0) / rows.length
+        ? rows.reduce((sum, player) => sum + (player.expected_points ?? 0), 0) / rows.length
         : 0;
     }
     return averages;
@@ -71,6 +76,24 @@ export default function SquadPage() {
   }
 
   if (loading) return <PitchSkeleton />;
+  if (seasonState && !seasonState.recommendations_ready) {
+    return (
+      <div className="space-y-5">
+        <SectionHeader title="My Squad" subtitle={`Team #${teamId}`} />
+        <DecisionStatusNotice seasonState={seasonState} />
+      </div>
+    );
+  }
+  if (errorCode === "squad_unavailable") {
+    return (
+      <div className="space-y-5">
+        <SectionHeader title="My Squad" subtitle={`Team #${teamId} saved`} />
+        <div className="rounded-lg border border-fpl-amber/30 bg-fpl-amber/10 p-5 text-sm leading-6 text-secondary">
+          Public squad picks are not available for this team and gameweek yet. Your Team ID is saved, but the website is not treating it as a connected squad.
+        </div>
+      </div>
+    );
+  }
   if (error) return <ErrorState />;
   if (seasonState && isSeasonEndedState(seasonState.season_state)) {
     return (

@@ -31,8 +31,8 @@ export function PlayerRow({ player, compact = false }: PlayerRowProps) {
         <StartLikelihood value={player.start_likelihood} />
       </td>
       <td className={`${rowPadding} pr-4 font-mono text-primary`}>{points(player.value)}</td>
-      <td className={`${rowPadding} pr-4 font-mono text-primary`}>{points(player.captain_score)}</td>
-      <td className={`${rowPadding} pr-4 font-mono text-primary`}>{points(player.transfer_score)}</td>
+      <td className={`${rowPadding} pr-4 font-mono text-primary`}>{points(player.captain_rank_score)}</td>
+      <td className={`${rowPadding} pr-4 font-mono text-primary`}>{points(player.transfer_rank_score)}</td>
     </tr>
   );
 }

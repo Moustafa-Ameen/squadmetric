@@ -4,13 +4,18 @@ import type {
   CaptainPick,
   ChipStatusResponse,
   ChipTipsResponse,
+  DraftWorkspaceResponse,
+  DecisionCenterResponse,
+  DeadlineReadinessResponse,
   Fixture,
   FixtureTick,
   InitialSquadResponse,
+  OverviewResponse,
   Player,
   PlayerComparisonResponse,
   PlayerHistoryPoint,
   PlannerResponse,
+  PostGameweekReviewResponse,
   SeasonState,
   SquadPlayer,
   TeamData,
@@ -18,16 +23,51 @@ import type {
   TransferTarget,
 } from "./types";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const CLIENT_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+const SERVER_API_BASE =
+  process.env.FPL_API_SERVER_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://localhost:8000";
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly detail: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export function apiErrorCode(error: unknown): string | null {
+  return error instanceof ApiError ? error.code : null;
+}
 
 async function fetchJson<T>(
   path: string,
   options: RequestInit & { next?: { revalidate: number } } = { next: { revalidate: 300 } },
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, options);
+  const base = typeof window === "undefined" ? SERVER_API_BASE : CLIENT_API_BASE;
+  const response = await fetch(`${base}${path}`, options);
   if (!response.ok) {
-    throw new Error(`API request failed: ${path}`);
+    let detail: unknown = null;
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      detail = body.detail ?? body;
+    } catch {
+      detail = null;
+    }
+    const structured = detail && typeof detail === "object" ? detail as Record<string, unknown> : null;
+    const message =
+      (structured && typeof structured.message === "string" && structured.message) ||
+      (typeof detail === "string" && detail) ||
+      `API request failed: ${path}`;
+    const code =
+      (structured && typeof structured.code === "string" && structured.code) ||
+      `http_${response.status}`;
+    throw new ApiError(message, response.status, code, detail);
   }
   return response.json() as Promise<T>;
 }
@@ -58,15 +98,15 @@ export async function comparePlayers(elementIds: number[]): Promise<PlayerCompar
   return fetchJson(`/api/players/compare?ids=${encodeURIComponent(ids)}`, { cache: "no-store" });
 }
 
-export async function getCaptains(): Promise<CaptainPick[]> {
+export async function getCaptains(): Promise<Player[]> {
   return fetchJson("/api/players/captains");
 }
 
-export async function getTransferTargets(): Promise<TransferTarget[]> {
+export async function getTransferTargets(): Promise<Player[]> {
   return fetchJson("/api/players/transfers");
 }
 
-export async function getDifferentials(): Promise<TransferTarget[]> {
+export async function getDifferentials(): Promise<Player[]> {
   return fetchJson("/api/players/differentials");
 }
 
@@ -96,13 +136,18 @@ export async function getPlayerHistory(name: string): Promise<PlayerHistoryPoint
   return fetchJson(`/api/players/${encodeURIComponent(name)}/history`);
 }
 
-export async function getCaptaincyPredictions(gw?: number): Promise<CaptainPick[]> {
-  const suffix = gw ? `?gw=${gw}` : "";
-  return fetchJson(`/api/predictions/captaincy${suffix}`);
+export async function getCaptaincyPredictions(gw?: number, limit = 50): Promise<CaptainPick[]> {
+  const search = new URLSearchParams({ limit: String(limit) });
+  if (gw) search.set("gw", String(gw));
+  return fetchJson(`/api/predictions/captaincy?${search}`);
 }
 
 export async function getPredictionTransfers(): Promise<TransferTarget[]> {
   return fetchJson("/api/predictions/transfers");
+}
+
+export async function getOverview(): Promise<OverviewResponse> {
+  return fetchJson("/api/predictions/overview");
 }
 
 export async function getTeam(teamId: string): Promise<TeamData> {
@@ -125,8 +170,41 @@ export async function getPlanner(teamId: string, horizon: number): Promise<Plann
   return fetchJson(`/api/predictions/planner?team_id=${encodeURIComponent(teamId)}&horizon=${horizon}`);
 }
 
-export async function getInitialSquad(horizon: number): Promise<InitialSquadResponse> {
-  return fetchJson(`/api/predictions/initial-squad?horizon=${horizon}`, {
+export async function getDecisionCenter(
+  teamId: string,
+  horizon: 3 | 5 | 8 = 3,
+): Promise<DecisionCenterResponse> {
+  return fetchJson(
+    `/api/predictions/decision-center?team_id=${encodeURIComponent(teamId)}&horizon=${horizon}`,
+    { cache: "no-store" },
+  );
+}
+
+export async function getInitialSquad(
+  horizon: number,
+  riskProfile: "maximum_points" | "balanced" | "safe" = "balanced",
+): Promise<InitialSquadResponse> {
+  return fetchJson(`/api/predictions/initial-squad?horizon=${horizon}&risk_profile=${riskProfile}`, {
+    cache: "no-store",
+  });
+}
+
+export async function getDraftWorkspace(
+  horizon: 3 | 5 | 8 = 8,
+  riskProfile: "maximum_points" | "balanced" | "safe" = "balanced",
+): Promise<DraftWorkspaceResponse> {
+  return fetchJson(
+    `/api/predictions/draft-workspace?horizon=${horizon}&risk_profile=${riskProfile}`,
+    { cache: "no-store" },
+  );
+}
+
+export async function getDeadlineReadiness(): Promise<DeadlineReadinessResponse> {
+  return fetchJson("/api/operations/deadline-readiness", { cache: "no-store" });
+}
+
+export async function getPostGameweekReview(teamId: string): Promise<PostGameweekReviewResponse> {
+  return fetchJson(`/api/review/post-gameweek?team_id=${encodeURIComponent(teamId)}`, {
     cache: "no-store",
   });
 }

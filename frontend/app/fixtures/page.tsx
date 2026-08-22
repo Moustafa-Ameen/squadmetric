@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { FixtureChip } from "@/components/FixtureChip";
 import { ErrorState, TableSkeleton } from "@/components/LoadingState";
+import { SquadScopeNotice } from "@/components/DecisionStatusNotice";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { useDrawer } from "@/context/DrawerContext";
-import { getCurrentGameweek, getFixtureTicker, getSquad } from "@/lib/api";
+import { apiErrorCode, getCurrentGameweek, getFixtureTicker, getSquad } from "@/lib/api";
+import { squadAccessState } from "@/lib/decisionState";
 import { fixtureTickerRows, visibleFixtures } from "@/lib/fixtures";
 import type { FixtureTick, SquadPlayer } from "@/lib/types";
 
@@ -20,6 +22,7 @@ export default function FixturesPage() {
   const [fixtures, setFixtures] = useState<FixtureTick[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [teamId, setTeamId] = useState("");
+  const [squadErrorCode, setSquadErrorCode] = useState<string | null>(null);
   const [range, setRange] = useState<FixtureRange>(5);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -36,7 +39,10 @@ export default function FixturesPage() {
       savedTeamId
         ? getCurrentGameweek()
             .then((gw) => getSquad(savedTeamId, gw.current_gw ?? 1))
-            .catch(() => [])
+            .catch((caught: unknown) => {
+              setSquadErrorCode(apiErrorCode(caught));
+              return [];
+            })
         : Promise.resolve([]),
     ])
       .then(([fixtureRows, squadRows]) => {
@@ -57,6 +63,7 @@ export default function FixturesPage() {
   }, []);
 
   const fixtureRows = useMemo(() => fixtureTickerRows(fixtures), [fixtures]);
+  const squadState = squadAccessState(teamId, squad.length, squadErrorCode, false);
   const fixtureMeta = fixtureRows[0];
   const squadFixtureRows = useMemo(
     () =>
@@ -112,7 +119,7 @@ export default function FixturesPage() {
             <p className="mt-1 text-[13px] text-secondary">Tap a player to see more</p>
           </div>
 
-          {teamId ? (
+          {squad.length ? (
             <div className="space-y-2">
               {squadFixtureRows.map(({ player, fixtures: upcoming, average }) => (
                 <button
@@ -148,13 +155,13 @@ export default function FixturesPage() {
               ))}
             </div>
           ) : (
-            <div className="rounded-[10px] border border-fpl-border bg-fpl-raised p-4">
-              <p className="text-sm text-secondary">
-                Connect your FPL team ID in Settings to see your squad&apos;s fixtures
-              </p>
-              <Link href="/settings" className="mt-3 inline-flex text-sm font-semibold text-fpl-green hover:text-primary">
-                Open Settings
-              </Link>
+            <div className="space-y-3">
+              <SquadScopeNotice state={squadState} />
+              {!teamId ? (
+                <Link href="/settings" className="inline-flex text-sm font-semibold text-fpl-green hover:text-primary">
+                  Open Settings
+                </Link>
+              ) : null}
             </div>
           )}
         </Panel>

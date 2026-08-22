@@ -195,8 +195,9 @@ export default function ChipsPage() {
   }, []);
 
   const teamConnected = Boolean(
-    (chipStatus && chipStatus.status !== "no_team") ||
-      (chipTips && chipTips.status !== "no_team"),
+    chipStatus?.status === "ready" ||
+      chipTips?.status === "ready" ||
+      chipTips?.status === "insufficient_data",
   );
   const liveChips = chipStatus?.status === "ready" ? chipStatus.chips.map(liveChipCard) : [];
   const chipCards = liveChips.length ? liveChips : fallbackChips;
@@ -215,7 +216,9 @@ export default function ChipsPage() {
           </div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-fpl-gold">AI Tip</div>
-            <h2 className="mt-1 text-[18px] font-semibold text-primary">Personalized chip timing</h2>
+            <h2 className="mt-1 text-[18px] font-semibold text-primary">
+              {teamConnected ? "Personalized chip timing" : "Chip timing status"}
+            </h2>
             <p className="mt-1 text-[13px] text-secondary">
               Recommendations come from the same point-in-time chip and transfer engine used by the benchmark.
             </p>

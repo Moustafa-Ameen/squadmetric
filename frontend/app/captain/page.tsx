@@ -3,12 +3,14 @@
 import { ArrowRight, Crown, Info, Repeat2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ErrorState, HeroSkeleton } from "@/components/LoadingState";
+import { DecisionStatusNotice, SquadScopeNotice } from "@/components/DecisionStatusNotice";
 import { Panel } from "@/components/Panel";
 import { isSeasonEndedState, SeasonTransitionNotice } from "@/components/SeasonTransitionNotice";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StartLikelihood } from "@/components/StartLikelihood";
 import { useDrawer } from "@/context/DrawerContext";
-import { getCaptaincyPredictions, getCurrentGameweek, getSeasonState, getSquad } from "@/lib/api";
+import { apiErrorCode, getCaptaincyPredictions, getCurrentGameweek, getSeasonState, getSquad } from "@/lib/api";
+import { squadAccessState } from "@/lib/decisionState";
 import { kitUrl, normalized, points, positionCode } from "@/lib/format";
 import type { CaptainPick, SeasonState, SquadPlayer } from "@/lib/types";
 
@@ -17,6 +19,8 @@ export default function CaptainPage() {
   const [picks, setPicks] = useState<CaptainPick[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [teamConnected, setTeamConnected] = useState(false);
+  const [savedTeamId, setSavedTeamId] = useState("");
+  const [squadErrorCode, setSquadErrorCode] = useState<string | null>(null);
   const [showMethod, setShowMethod] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -24,18 +28,21 @@ export default function CaptainPage() {
 
   useEffect(() => {
     const teamId = window.localStorage.getItem("fpl_team_id");
-    queueMicrotask(() => setTeamConnected(Boolean(teamId)));
+    queueMicrotask(() => setSavedTeamId(teamId ?? ""));
 
     getSeasonState()
       .then((state) => {
         setSeasonState(state);
-        if (isSeasonEndedState(state.season_state)) return null;
+        if (isSeasonEndedState(state.season_state) || !state.recommendations_ready) return null;
         return Promise.all([
           getCaptaincyPredictions(),
           teamId
             ? getCurrentGameweek()
                 .then((gw) => getSquad(teamId, gw.current_gw ?? 1))
-                .catch(() => [])
+                .catch((error: unknown) => {
+                  setSquadErrorCode(apiErrorCode(error));
+                  return [];
+                })
             : Promise.resolve([]),
         ]);
       })
@@ -44,6 +51,7 @@ export default function CaptainPage() {
         const [predictionRows, squadRows] = result;
         setPicks(predictionRows);
         setSquad(squadRows);
+        setTeamConnected(squadRows.length > 0);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
@@ -62,9 +70,18 @@ export default function CaptainPage() {
     [picks, squad],
   );
   const rankingRows = teamConnected && squadCaptainRows.length ? squadCaptainRows : picks.slice(0, 10);
+  const squadState = squadAccessState(savedTeamId, squad.length, squadErrorCode, false);
 
   if (loading) return <HeroSkeleton />;
   if (error) return <ErrorState />;
+  if (seasonState && !seasonState.recommendations_ready) {
+    return (
+      <div className="space-y-5">
+        <SectionHeader title="Who should I captain?" subtitle="Captaincy recommendations are not decision-ready" />
+        <DecisionStatusNotice seasonState={seasonState} />
+      </div>
+    );
+  }
   if (seasonState && isSeasonEndedState(seasonState.season_state)) {
     return (
       <div className="space-y-5">
@@ -84,8 +101,9 @@ export default function CaptainPage() {
     <div className="space-y-6">
       <SectionHeader
         title="Who should I captain this week?"
-        subtitle="A squad-aware captaincy view using predicted points and start likelihood."
+        subtitle={teamConnected ? "Squad-aware captaincy using expected points and start likelihood." : "Generic captaincy ranking until your squad is available."}
       />
+      <SquadScopeNotice state={squadState} />
 
       <button
         type="button"
@@ -107,7 +125,7 @@ export default function CaptainPage() {
               {heroPick.team} · {positionCode(heroPick.position)}
             </div>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-secondary">
-              {heroPick.reasoning ?? "Best blend of predicted points and likelihood of starting."}
+              {heroPick.reasoning ?? "Best blend of expected points and likelihood of starting."}
             </p>
             {viceCaptain ? (
               <p className="mt-3 text-[13px] text-muted">or consider {viceCaptain.name} as VC</p>
@@ -131,7 +149,7 @@ export default function CaptainPage() {
         <div className="flex items-center gap-3 rounded-lg border border-fpl-gold/20 bg-fpl-card/80 px-4 py-3 text-sm text-secondary">
           <Repeat2 className="h-4 w-4 shrink-0 text-fpl-gold" />
           <span>
-            {globalTop.name} is the top predicted captain this week but isn&apos;t in your squad.
+            {globalTop.name} has the highest captaincy expected points but isn&apos;t in your squad.
             Consider transferring him in.
           </span>
         </div>
@@ -152,7 +170,7 @@ export default function CaptainPage() {
                 <th className="pb-3 pr-3">Kit</th>
                 <th className="pb-3 pr-3">Player</th>
                 <th className="pb-3 pr-3">Team</th>
-                <th className="pb-3 pr-3 text-right">Predicted Pts</th>
+                <th className="pb-3 pr-3 text-right">Expected Pts</th>
                 <th className="pb-3 pr-3 text-right">Start %</th>
                 <th className="pb-3 text-right">Raw xP</th>
               </tr>
@@ -182,7 +200,7 @@ export default function CaptainPage() {
                   </td>
                   <td className="py-3 pr-3 font-semibold text-primary">{player.name}</td>
                   <td className="py-3 pr-3 text-muted">{player.team}</td>
-                  <td className="py-3 pr-3 text-right font-mono text-primary">{points(player.predicted_pts)}</td>
+                  <td className="py-3 pr-3 text-right font-mono text-primary">{points(player.expected_points)}</td>
                   <td className="py-3 pr-3 text-right">
                     <StartLikelihood value={player.start_likelihood} />
                   </td>
@@ -208,7 +226,7 @@ export default function CaptainPage() {
         >
           <span className="flex items-center gap-2 text-sm font-semibold text-primary">
             <Info className="h-4 w-4 text-fpl-gold" />
-            How is captaincy score calculated?
+            How are captain expected points calculated?
           </span>
           <span className="text-xs text-muted">{showMethod ? "Hide" : "Show"}</span>
         </button>
@@ -216,11 +234,11 @@ export default function CaptainPage() {
         {showMethod ? (
           <div className="mt-5">
             <div className="grid gap-3 md:grid-cols-[1fr_32px_1fr_32px_1fr] md:items-center">
-              <MethodStep label="Predicted points" value="8.4 pts" />
+              <MethodStep label="Raw xP" value={`${points(heroPick.raw_xp)} pts`} />
               <ArrowRight className="mx-auto hidden h-5 w-5 text-muted md:block" />
-              <MethodStep label="Start likelihood" value="86%" />
+              <MethodStep label="Start likelihood" value={`${Math.round(heroPick.start_likelihood * 100)}%`} />
               <ArrowRight className="mx-auto hidden h-5 w-5 text-muted md:block" />
-              <MethodStep label="Adjusted score" value="7.2" accent />
+              <MethodStep label="Expected points" value={points(heroPick.expected_points)} accent />
             </div>
             <p className="mt-4 text-sm leading-6 text-secondary">
               Captain scores double points. Triple Captain scores triple, so use your TC chip on a
@@ -241,9 +259,12 @@ function toCaptainPick(player: SquadPlayer, prediction?: CaptainPick): CaptainPi
     position: prediction?.position ?? player.position,
     price: prediction?.price ?? player.price ?? undefined,
     start_likelihood: prediction?.start_likelihood ?? player.start_likelihood ?? 0,
-    captain_score: prediction?.captain_score ?? player.predicted_pts ?? 0,
-    predicted_pts: prediction?.predicted_pts ?? player.predicted_pts ?? 0,
-    adjusted_pts: prediction?.adjusted_pts ?? prediction?.captain_score ?? player.predicted_pts ?? 0,
+    raw_xp: prediction?.raw_xp ?? player.raw_xp ?? 0,
+    expected_points: prediction?.expected_points ?? player.expected_points ?? 0,
+    start_adjusted_xp: prediction?.start_adjusted_xp ?? player.expected_points ?? 0,
+    captain_expected_points: prediction?.captain_expected_points ?? 2 * (player.expected_points ?? 0),
+    captaincy_score: prediction?.captaincy_score ?? player.expected_points ?? 0,
+    projection_contract_version: prediction?.projection_contract_version ?? "w2-v1",
     team_code: prediction?.team_code ?? player.team_code,
     web_name: prediction?.web_name ?? player.web_name,
     reasoning: prediction?.reasoning ?? "Best captain option from your connected squad.",
@@ -251,7 +272,7 @@ function toCaptainPick(player: SquadPlayer, prediction?: CaptainPick): CaptainPi
 }
 
 function score(player: CaptainPick): number {
-  return player.predicted_pts ?? player.adjusted_pts ?? player.captain_score ?? 0;
+  return player.expected_points ?? 0;
 }
 
 function MethodStep({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {

@@ -12,7 +12,7 @@ interface PitchCardProps {
 
 export function PitchCard({ player, average, bench = false }: PitchCardProps) {
   const { openDrawer } = useDrawer();
-  const predicted = player.predicted_pts ?? 0;
+  const predicted = player.expected_points ?? 0;
   const color = predicted >= average ? "text-fpl-green" : "text-fpl-red";
   const dotColor = startDotColor(player.start_likelihood);
   const teamCode = player.team_code ?? 1;

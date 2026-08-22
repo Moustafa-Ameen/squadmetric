@@ -3,10 +3,11 @@
 import { Info, Search, Scale, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FixtureChip } from "@/components/FixtureChip";
+import { DecisionStatusNotice } from "@/components/DecisionStatusNotice";
 import { ErrorState, TableSkeleton } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
-import { comparePlayers, getPlayers } from "@/lib/api";
+import { comparePlayers, getPlayers, getSeasonState } from "@/lib/api";
 import {
   displayPlayerName,
   displayTeam,
@@ -15,7 +16,7 @@ import {
   matchesPlayerSearch,
   positionCode,
 } from "@/lib/format";
-import type { ComparisonPlayer, Player, PlayerComparisonResponse } from "@/lib/types";
+import type { ComparisonPlayer, Player, PlayerComparisonResponse, SeasonState } from "@/lib/types";
 
 const SLOT_COUNT = 3;
 
@@ -29,9 +30,14 @@ export default function ComparePage() {
   const [loadingComparison, setLoadingComparison] = useState(false);
   const [error, setError] = useState(false);
   const [comparisonError, setComparisonError] = useState(false);
+  const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
 
   useEffect(() => {
-    getPlayers({ limit: 1000, sort_by: "name" })
+    getSeasonState()
+      .then((state) => {
+        setSeasonState(state);
+        return state.recommendations_ready ? getPlayers({ limit: 1000, sort_by: "name" }) : [];
+      })
       .then(setPlayers)
       .catch(() => setError(true))
       .finally(() => setLoadingPlayers(false));
@@ -91,6 +97,15 @@ export default function ComparePage() {
       <div className="space-y-5">
         <SectionHeader title="Compare Players" subtitle="Put up to three players side by side." />
         <TableSkeleton rows={5} />
+      </div>
+    );
+  }
+
+  if (seasonState && !seasonState.recommendations_ready) {
+    return (
+      <div className="space-y-5">
+        <SectionHeader title="Compare Players" subtitle="Current comparisons are awaiting a validated refresh" />
+        <DecisionStatusNotice seasonState={seasonState} />
       </div>
     );
   }
@@ -359,7 +374,14 @@ function ComparisonPanel({ comparison }: { comparison: PlayerComparisonResponse 
               />
               <ComparisonRow
                 label="Expected points (xP)"
-                values={players.map((player) => player.captain_score)}
+                values={players.map((player) => player.expected_points)}
+                format={formatNumber}
+                higherIsBetter
+                unavailable={transition}
+              />
+              <ComparisonRow
+                label="Captain rank (0–1)"
+                values={players.map((player) => player.captain_rank_score)}
                 format={formatNumber}
                 higherIsBetter
                 unavailable={transition}

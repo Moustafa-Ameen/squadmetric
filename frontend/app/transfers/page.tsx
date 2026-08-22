@@ -4,19 +4,21 @@ import { ArrowRight, ChevronDown, Info, TrendingDown, TrendingUp } from "lucide-
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/LoadingState";
+import { DecisionStatusNotice, SquadScopeNotice } from "@/components/DecisionStatusNotice";
 import { Panel } from "@/components/Panel";
 import { isSeasonEndedState, SeasonTransitionNotice } from "@/components/SeasonTransitionNotice";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StartLikelihood } from "@/components/StartLikelihood";
 import { useDrawer } from "@/context/DrawerContext";
-import { getCurrentGameweek, getPlayers, getSeasonState, getSquad, getTeam } from "@/lib/api";
+import { apiErrorCode, getCaptaincyPredictions, getCurrentGameweek, getPlayers, getSeasonState, getSquad, getTeam } from "@/lib/api";
+import { squadAccessState } from "@/lib/decisionState";
 import { displayPlayerName, displayTeam, kitUrl, normalized, points, positionCode, price } from "@/lib/format";
 import { playerXp, selectCurrentSquadMetrics } from "@/lib/squadMetrics";
-import type { Player, SeasonState, SquadPlayer, TeamData } from "@/lib/types";
+import type { CaptainPick, Player, SeasonState, SquadPlayer, TeamData } from "@/lib/types";
 
 type Tab = "best" | "prices";
 type PositionFilter = "All" | "GK" | "DEF" | "MID" | "FWD";
-type Candidate = Player;
+type Candidate = Player & Pick<CaptainPick, "raw_xp" | "expected_points" | "start_adjusted_xp" | "captain_expected_points" | "captaincy_score" | "projection_contract_version">;
 
 const positionFilters: PositionFilter[] = ["All", "GK", "DEF", "MID", "FWD"];
 
@@ -26,6 +28,8 @@ export default function TransfersPage() {
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [team, setTeam] = useState<TeamData | null>(null);
   const [teamConnected, setTeamConnected] = useState(false);
+  const [savedTeamId, setSavedTeamId] = useState("");
+  const [squadErrorCode, setSquadErrorCode] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("best");
   const [position, setPosition] = useState<PositionFilter>("All");
   const [expanded, setExpanded] = useState(false);
@@ -36,18 +40,24 @@ export default function TransfersPage() {
 
   useEffect(() => {
     const teamId = window.localStorage.getItem("fpl_team_id");
-    queueMicrotask(() => setTeamConnected(Boolean(teamId)));
+    queueMicrotask(() => setSavedTeamId(teamId ?? ""));
 
     getSeasonState()
       .then((state) => {
         setSeasonState(state);
-        if (isSeasonEndedState(state.season_state)) return null;
+        if (isSeasonEndedState(state.season_state) || !state.recommendations_ready) return null;
         return Promise.all([
-          getPlayers({ limit: 1000, sort_by: "transfer_score" }),
+          Promise.all([
+            getPlayers({ limit: 1000, sort_by: "transfer_rank_score" }),
+            getCaptaincyPredictions(),
+          ]).then(([ranked, projected]) => mergeCandidateProjections(ranked, projected)),
           teamId
             ? getCurrentGameweek()
                 .then((gw) => getSquad(teamId, gw.current_gw ?? 1))
-                .catch(() => [])
+                .catch((error: unknown) => {
+                  setSquadErrorCode(apiErrorCode(error));
+                  return [];
+                })
             : Promise.resolve([]),
           teamId ? getTeam(teamId).catch(() => null) : Promise.resolve(null),
         ]);
@@ -58,12 +68,14 @@ export default function TransfersPage() {
         setCandidates(playerRows);
         setSquad(squadRows);
         setTeam(teamData);
+        setTeamConnected(squadRows.length > 0);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
   const squadKeys = useMemo(() => new Set(squad.map(playerKey)), [squad]);
+  const squadState = squadAccessState(savedTeamId, squad.length, squadErrorCode, false);
   const squadMetrics = useMemo(() => selectCurrentSquadMetrics(squad), [squad]);
   const displayedSquad = useMemo(() => [...squadMetrics.starters, ...squadMetrics.bench], [squadMetrics]);
   const upgradeGroups = useMemo(
@@ -86,7 +98,7 @@ export default function TransfersPage() {
     () =>
       [...candidates]
         .filter((player) => !squadKeys.has(playerKey(player)))
-        .sort((a, b) => (b.transfer_score ?? 0) - (a.transfer_score ?? 0))
+        .sort((a, b) => (b.transfer_rank_score ?? 0) - (a.transfer_rank_score ?? 0))
         .slice(0, 15),
     [candidates, squadKeys],
   );
@@ -95,6 +107,14 @@ export default function TransfersPage() {
 
   if (loading) return <TableSkeleton />;
   if (error) return <ErrorState />;
+  if (seasonState && !seasonState.recommendations_ready) {
+    return (
+      <div className="space-y-5">
+        <SectionHeader title="Who should I bring in?" subtitle="Transfer recommendations are not decision-ready" />
+        <DecisionStatusNotice seasonState={seasonState} />
+      </div>
+    );
+  }
   if (seasonState && isSeasonEndedState(seasonState.season_state)) {
     return (
       <div className="space-y-5">
@@ -109,8 +129,9 @@ export default function TransfersPage() {
     <div className="space-y-6">
       <SectionHeader
         title="Who should I bring in?"
-        subtitle="Squad-aware upgrades, top transfer targets, and separated price movement signals."
+        subtitle={teamConnected ? "Squad-aware upgrades, top targets, and price movement signals." : "Generic targets only until your squad is available."}
       />
+      <SquadScopeNotice state={squadState} />
 
       <div className="rounded-xl border border-fpl-border bg-[linear-gradient(135deg,rgba(0,255,135,0.08),rgba(255,255,255,0.025))] p-4 text-sm text-secondary shadow-[0_16px_40px_rgba(0,0,0,0.26)]">
         Remember: transfers beyond your free allowance cost <span className="font-mono text-fpl-red">-4 pts</span>{" "}
@@ -202,7 +223,9 @@ export default function TransfersPage() {
           ) : (
             <Panel>
               <p className="text-sm text-muted">
-                Connect your FPL team ID in Settings to see upgrade suggestions from your actual squad.
+                {savedTeamId
+                  ? "Your Team ID is saved, but its squad is unavailable. Squad-relative upgrades are hidden."
+                  : "Save your FPL Team ID in Settings to see upgrades from your actual squad."}
               </p>
             </Panel>
           )}
@@ -454,7 +477,7 @@ function PriceMoverPanel({
 
 function TransferSignal({ player }: { player: Candidate }) {
   const start = player.start_likelihood ?? 0;
-  const score = player.transfer_score ?? 0;
+  const score = player.transfer_rank_score ?? 0;
   if (start < 0.4) return <SignalPill tone="amber">Minutes risk</SignalPill>;
   if (player.safety_tier === "Risky") return <SignalPill tone="amber">Risky</SignalPill>;
   if (player.safety_tier === "Safe") return <SignalPill tone="green">Safe</SignalPill>;
@@ -530,7 +553,7 @@ function replacementsFor(outgoing: SquadPlayer, candidates: Candidate[], squadKe
   const strict = replacementCandidates(outgoing, candidates, squadKeys, 1.5);
   const pool = strict.length ? strict : replacementCandidates(outgoing, candidates, squadKeys, 3);
   return pool
-    .sort((a, b) => projected(b) - projected(a) || (b.transfer_score ?? 0) - (a.transfer_score ?? 0))
+    .sort((a, b) => projected(b) - projected(a) || (b.transfer_rank_score ?? 0) - (a.transfer_rank_score ?? 0))
     .slice(0, 3)
     .map((incoming) => ({
       outgoing,
@@ -571,7 +594,7 @@ function buildFallers(candidates: Candidate[], riserNames: Set<string>): Candida
     .filter((player) => {
       if (riserNames.has(player.name)) return false;
       const ownedEnough = (player.selected_by_percent ?? 0) >= 1;
-      const weakSignal = player.start_likelihood < 0.45 || player.transfer_score < 0.05 || player.total_points <= 15;
+      const weakSignal = player.start_likelihood < 0.45 || player.transfer_rank_score < 0.05 || player.total_points <= 15;
       return ownedEnough && weakSignal;
     })
     .sort((a, b) => dropScore(b) - dropScore(a))
@@ -583,12 +606,35 @@ function predicted(player: SquadPlayer): number {
 }
 
 function projected(player: Candidate): number {
-  return (player.ppg ?? 0) * (player.start_likelihood ?? 0);
+  return player.expected_points;
+}
+
+function mergeCandidateProjections(ranked: Player[], projections: CaptainPick[]): Candidate[] {
+  const byId = new Map(
+    projections
+      .filter((player): player is CaptainPick & { element_id: number } => typeof player.element_id === "number")
+      .map((player) => [player.element_id, player]),
+  );
+  return ranked.flatMap((player) => {
+    const projection = typeof player.element_id === "number" ? byId.get(player.element_id) : undefined;
+    return projection
+      ? [{
+          ...player,
+          raw_xp: projection.raw_xp,
+          expected_points: projection.expected_points,
+          start_adjusted_xp: projection.start_adjusted_xp,
+          captain_expected_points: projection.captain_expected_points,
+          captaincy_score: projection.captaincy_score,
+          projection_contract_version: projection.projection_contract_version,
+          start_likelihood: projection.start_likelihood,
+        }]
+      : [];
+  });
 }
 
 function riseScore(player: Candidate): number {
   return (
-    (player.transfer_score ?? 0) * 100 +
+    (player.transfer_rank_score ?? 0) * 100 +
     (player.start_likelihood ?? 0) * 16 +
     (player.ppg ?? 0) * 3 +
     Math.min(player.selected_by_percent ?? 0, 35) * 0.2
@@ -599,7 +645,7 @@ function dropScore(player: Candidate): number {
   return (
     Math.min(player.selected_by_percent ?? 0, 35) * 1.2 +
     (1 - (player.start_likelihood ?? 0)) * 30 +
-    Math.max(0, 0.08 - (player.transfer_score ?? 0)) * 100
+    Math.max(0, 0.08 - (player.transfer_rank_score ?? 0)) * 100
   );
 }
 

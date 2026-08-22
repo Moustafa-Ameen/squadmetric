@@ -5,13 +5,15 @@ import { ArrowRight, Crown, ShieldCheck, Sparkles, Target, TrendingUp } from "lu
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { FixtureChip } from "@/components/FixtureChip";
+import { SquadScopeNotice } from "@/components/DecisionStatusNotice";
 import { EmptyState } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { isSeasonEndedState, SeasonTransitionNotice } from "@/components/SeasonTransitionNotice";
 import { StartLikelihood } from "@/components/StartLikelihood";
 import { StatCard } from "@/components/StatCard";
 import { useDrawer } from "@/context/DrawerContext";
-import { getCurrentGameweek, getSquad } from "@/lib/api";
+import { apiErrorCode, getCurrentGameweek, getSquad } from "@/lib/api";
+import { squadAccessMessage, squadAccessState } from "@/lib/decisionState";
 import { fixtureTickerRows, visibleFixtures } from "@/lib/fixtures";
 import { displayPlayerName, displayTeam, kitUrl, normalized, points, positionCode } from "@/lib/format";
 import { selectCurrentSquadMetrics } from "@/lib/squadMetrics";
@@ -34,24 +36,25 @@ type ProjectionPlayer = Pick<
   | "team_code"
   | "web_name"
   | "start_likelihood"
-  | "predicted_pts"
-  | "adjusted_pts"
-  | "captain_score"
+  | "raw_xp"
+  | "expected_points"
+  | "captain_expected_points"
+  | "captaincy_score"
 >;
 
 interface OverviewClientProps {
-  players: Player[];
+  playerCount: number;
   captains: CaptainPick[];
   predictions: CaptainPick[];
   transfers: TransferTarget[];
   fixtures: FixtureTick[];
-  gems: TransferTarget[];
+  gems: Player[];
   accuracy: AccuracyResult[];
   seasonState: SeasonState;
 }
 
 export function OverviewClient({
-  players,
+  playerCount,
   captains,
   predictions,
   transfers,
@@ -62,20 +65,33 @@ export function OverviewClient({
 }: OverviewClientProps) {
   const { openDrawer } = useDrawer();
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
-  const [connected, setConnected] = useState(false);
+  const [savedTeamId, setSavedTeamId] = useState("");
+  const [squadErrorCode, setSquadErrorCode] = useState<string | null>(null);
+  const [squadLoading, setSquadLoading] = useState(false);
 
   useEffect(() => {
     const teamId = window.localStorage.getItem("fpl_team_id");
-    queueMicrotask(() => setConnected(Boolean(teamId)));
+    queueMicrotask(() => setSavedTeamId(teamId ?? ""));
     if (!teamId) return;
+
+    queueMicrotask(() => setSquadLoading(true));
 
     getCurrentGameweek()
       .then((gw) => getSquad(teamId, gw.current_gw ?? 1))
-      .then(setSquad)
-      .catch(() => setSquad([]));
+      .then((rows) => {
+        setSquad(rows);
+        setSquadErrorCode(null);
+      })
+      .catch((error: unknown) => {
+        setSquad([]);
+        setSquadErrorCode(apiErrorCode(error));
+      })
+      .finally(() => setSquadLoading(false));
   }, []);
 
   const squadMetrics = useMemo(() => selectCurrentSquadMetrics(squad), [squad]);
+  const squadState = squadAccessState(savedTeamId, squad.length, squadErrorCode, squadLoading);
+  const personalized = squadState === "personalized";
   const projectionPlayers = useMemo<ProjectionPlayer[]>(() => {
     if (squadMetrics.starters.length) {
       return squadMetrics.starters.map((player) => ({
@@ -86,9 +102,10 @@ export function OverviewClient({
         team_code: player.team_code,
         web_name: player.web_name,
         start_likelihood: player.start_likelihood ?? 0,
-        predicted_pts: player.predicted_pts ?? 0,
-        adjusted_pts: player.predicted_pts ?? 0,
-        captain_score: player.predicted_pts ?? 0,
+        raw_xp: player.raw_xp ?? 0,
+        expected_points: player.expected_points ?? 0,
+        captain_expected_points: 2 * (player.expected_points ?? 0),
+        captaincy_score: player.expected_points ?? 0,
       }));
     }
     return predictions.slice(0, 11);
@@ -96,17 +113,17 @@ export function OverviewClient({
 
   const predictedGwPoints = squadMetrics.starters.length
     ? squadMetrics.totalStartingXp
-    : projectionPlayers.reduce((sum, player) => sum + (player.adjusted_pts ?? player.predicted_pts ?? 0), 0);
+    : projectionPlayers.reduce((sum, player) => sum + player.expected_points, 0);
   const captainEdgeName = squadMetrics.captainPick?.web_name ?? squadMetrics.captainPick?.name ?? captains[0]?.name ?? "-";
   const viceCaptainEdgeName = squadMetrics.viceCaptainPick?.web_name ?? squadMetrics.viceCaptainPick?.name ?? "VC";
-  const captaincyEdge = squadMetrics.captainPick ? squadMetrics.captaincyEdge : (captains[0]?.captain_score ?? captains[0]?.adjusted_pts ?? 0);
+  const captaincyEdge = squadMetrics.captainPick ? squadMetrics.captaincyEdge : (captains[0]?.expected_points ?? 0);
   const topCaptain = captains[0];
   const bestAccuracy = accuracy.find((row) => row.model === "FPL Intelligence (best)") ?? accuracy[0];
-  const suggestions = buildSuggestions(squad, transfers, players);
+  const suggestions = buildSuggestions(squad, transfers);
   const fixtureRows = fixtureTickerRows(fixtures);
   const fixtureMeta = fixtureRows[0];
 
-  if (!players.length) return <EmptyState />;
+  if (!playerCount) return <EmptyState />;
   if (isSeasonEndedState(seasonState.season_state)) {
     return (
       <div className="space-y-5">
@@ -151,24 +168,22 @@ export function OverviewClient({
             <div>
               <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Squad link</div>
               <div className="mt-2 text-lg font-semibold text-primary">
-                {connected ? "Personalized" : "Team ID needed"}
+                {personalized ? "Personalized" : savedTeamId ? "Team ID saved" : "Team ID needed"}
               </div>
             </div>
-            <ShieldCheck className={`h-8 w-8 ${connected ? "text-fpl-green" : "text-muted"}`} />
+            <ShieldCheck className={`h-8 w-8 ${personalized ? "text-fpl-green" : "text-muted"}`} />
           </div>
           <p className="mt-4 text-sm leading-6 text-secondary">
-            {connected
-              ? "Moves are filtered against your saved squad and current gameweek."
-              : "Connect your FPL team ID to turn generic recommendations into squad-aware moves."}
+            {squadAccessMessage(squadState)}
           </p>
         </div>
       </section>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Predicted GW Points"
+          label="Expected GW Points"
           value={points(predictedGwPoints)}
-          subLabel={connected ? "Your starting XI projection" : "Top 11 adjusted picks"}
+          subLabel={personalized ? "Your starting XI projection" : "Generic top 11 adjusted picks"}
         />
         <StatCard
           label="Captaincy Edge"
@@ -180,24 +195,25 @@ export function OverviewClient({
           value={points(bestAccuracy?.adjusted_MAE ?? bestAccuracy?.raw_MAE)}
           subLabel="Lower is better"
         />
-        <StatCard label="Players Tracked" value={players.length} subLabel="Current player pool" />
+        <StatCard label="Players Tracked" value={playerCount} subLabel="Current player pool" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.9fr)]">
         <div className="space-y-6">
-          <Panel title={connected ? "Your squad projection" : "Top projected XI · this gameweek"}>
+          <Panel title={personalized ? "Your squad projection" : "Generic top projected XI · this gameweek"}>
             <p className="mb-3 text-[13px] leading-5 text-secondary">
-              {connected
+              {personalized
                 ? "This is your current FPL starting XI with this gameweek's model projection beside each player."
-                : "This is the highest projected XI from the full player pool for this gameweek."}
+                : "This is a generic highest-projected XI, not a recommendation for your saved team."}
             </p>
+            <div className="mb-3"><SquadScopeNotice state={squadState} /></div>
             <ProjectionPitch players={projectionPlayers} onSelect={openDrawer} />
           </Panel>
 
           <Panel title="Suggested Moves">
-            {!connected ? (
+            {!personalized ? (
               <p className="mb-4 text-sm italic text-muted">
-                Connect your FPL team ID in Settings for personalised suggestions
+                Generic targets only—no outgoing player below comes from your squad.
               </p>
             ) : null}
             <div className="space-y-4">
@@ -258,7 +274,7 @@ export function OverviewClient({
                     </button>
                   </div>
                   <div className="mt-3 border-t border-white/[0.06] pt-2 pl-1 text-[13px] font-semibold text-fpl-green">
-                    +{points(Math.max(gain, 0))} predicted pts gain
+                    {outgoing ? `+${points(Math.max(gain, 0))} expected-points gain` : `${points(gain)} expected points`}
                   </div>
                 </div>
               ))}
@@ -372,7 +388,7 @@ export function OverviewClient({
               <ProofMetric
                 icon={<TrendingUp className="h-4 w-4" />}
                 label="Pool"
-                value={players.length.toLocaleString()}
+                value={playerCount.toLocaleString()}
               />
             </div>
           </Panel>
@@ -385,29 +401,27 @@ export function OverviewClient({
 function buildSuggestions(
   squad: SquadPlayer[],
   transfers: TransferTarget[],
-  players: Player[],
 ): { outgoing?: SquadPlayer | Player; incoming: TransferTarget; gain: number }[] {
   if (!squad.length) {
-    const outCandidates = [...players].sort((a, b) => a.captain_score - b.captain_score).slice(0, 5);
-    return transfers.slice(0, 2).map((incoming, index) => ({
+    return transfers.slice(0, 2).map((incoming) => ({
       incoming,
-      outgoing: outCandidates[index],
-      gain: (incoming.adjusted_pts ?? incoming.transfer_score ?? 0) - (outCandidates[index]?.captain_score ?? 0),
+      outgoing: undefined,
+      gain: incoming.expected_points,
     }));
   }
 
   const squadKeys = new Set(squad.map(playerKey));
   const candidates = squad
     .filter((player) => !player.is_captain)
-    .sort((a, b) => (a.predicted_pts ?? 0) - (b.predicted_pts ?? 0))
+    .sort((a, b) => (a.expected_points ?? 0) - (b.expected_points ?? 0))
     .slice(0, 2);
   return candidates.flatMap((outgoing) => {
     const outgoingPosition = positionCode(outgoing.position);
     const outgoingPrice = outgoing.price;
-    const outgoingProjected = outgoing.predicted_pts ?? 0;
+    const outgoingProjected = outgoing.expected_points ?? 0;
     const incoming = transfers
       .filter((player) => {
-        const incomingProjected = player.adjusted_pts ?? player.predicted_pts ?? 0;
+        const incomingProjected = player.expected_points;
         const priceGap = typeof outgoingPrice === "number" ? Math.abs(player.price - outgoingPrice) : 0;
         return (
           !squadKeys.has(playerKey(player)) &&
@@ -416,13 +430,13 @@ function buildSuggestions(
           priceGap <= 1
         );
       })
-      .sort((a, b) => b.transfer_score - a.transfer_score)[0];
+      .sort((a, b) => b.transfer_rank_score - a.transfer_rank_score)[0];
     return incoming
       ? [
           {
             outgoing,
             incoming,
-            gain: (incoming.adjusted_pts ?? incoming.transfer_score ?? 0) - (outgoing.predicted_pts ?? 0),
+            gain: incoming.expected_points - (outgoing.expected_points ?? 0),
           },
         ]
       : [];
@@ -466,7 +480,7 @@ function ProjectionCard({ player, onSelect }: { player: ProjectionPlayer; onSele
         {displayPlayerName(player.name, player.web_name)}
       </div>
       <div className="font-mono text-xs font-bold text-fpl-green">
-        {points(player.adjusted_pts ?? player.predicted_pts ?? player.captain_score)} xP
+        {points(player.expected_points)} xP
       </div>
     </button>
   );

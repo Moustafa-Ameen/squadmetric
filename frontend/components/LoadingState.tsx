@@ -1,5 +1,16 @@
 export function LoadingState() {
-  return <CardGridSkeleton />;
+  return <div role="status" aria-label="Loading decision data"><CardGridSkeleton /></div>;
+}
+
+export function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" role="status" aria-label="Loading your gameweek dashboard">
+      <div className="space-y-3"><div className="skeleton h-4 w-28" /><div className="skeleton h-10 w-80 max-w-full" /><div className="skeleton h-4 w-[430px] max-w-full" /></div>
+      <div className="skeleton h-20 rounded-2xl" />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)]"><div className="skeleton h-72 rounded-3xl" /><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1"><div className="skeleton h-32 rounded-3xl" /><div className="skeleton h-32 rounded-3xl" /></div></div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-44 rounded-3xl" />)}</div>
+    </div>
+  );
 }
 
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {
@@ -105,7 +116,7 @@ export function HeroSkeleton() {
 
 export function PlannerSkeleton() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" role="status" aria-label="Loading planner data">
       <div className="skeleton h-16 rounded-[10px] border border-fpl-border bg-fpl-card" />
       <div className="rounded-[10px] border border-fpl-border bg-fpl-card p-4">
         <div className="mb-4 flex gap-2">
@@ -137,16 +148,16 @@ export function PlannerSkeleton() {
 
 export function ErrorState() {
   return (
-    <div className="rounded-[10px] border border-border-muted bg-card p-5 text-sm text-muted">
-      Could not load data. Make sure the FPL Intelligence API is running on port 8000.
+    <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">
+      This section could not load. Retry shortly; if the problem continues, check the SquadMetric data service.
     </div>
   );
 }
 
 export function EmptyState() {
   return (
-    <div className="rounded-[10px] border border-border-muted bg-card p-5 text-sm text-muted">
-      No data available yet.
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+      No recommendations are available yet. Complete team setup or return after the next data refresh.
     </div>
   );
 }

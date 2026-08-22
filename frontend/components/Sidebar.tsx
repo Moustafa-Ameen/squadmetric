@@ -4,12 +4,16 @@ import {
   BarChart3,
   CalendarDays,
   CalendarRange,
+  Clock3,
+  ClipboardList,
+  ListChecks,
   Crown,
   GitCompare,
   Edit2,
   Home,
   Settings,
   Shield,
+  ScanSearch,
   TrendingUp,
   Trophy,
   Users,
@@ -26,7 +30,10 @@ const navGroups = [
     label: "Main",
     items: [
       { href: "/", label: "Overview", icon: Home },
+      { href: "/decisions", label: "This Week", icon: ListChecks },
+      { href: "/deadline", label: "Deadline Center", icon: Clock3 },
       { href: "/squad", label: "My Squad", icon: Shield },
+      { href: "/drafts", label: "Draft Workspace", icon: ClipboardList },
     ],
   },
   {
@@ -45,6 +52,7 @@ const navGroups = [
       { href: "/stats", label: "All Players", icon: Users },
       { href: "/compare", label: "Compare Players", icon: GitCompare },
       { href: "/proof", label: "Proof It Works", icon: BarChart3 },
+      { href: "/review", label: "Post-GW Review", icon: ScanSearch },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -100,6 +108,7 @@ export function Sidebar({
         />
       ) : null}
       <aside
+        aria-label="Primary navigation"
         className={`fixed inset-y-0 left-0 z-40 flex w-[244px] flex-col border-r border-white/10 bg-[#070b0a]/96 shadow-[18px_0_60px_rgba(0,0,0,0.45)] backdrop-blur transition-transform md:translate-x-0 md:w-[76px] lg:w-[244px] ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -107,6 +116,7 @@ export function Sidebar({
         <button
           type="button"
           onClick={onCloseMobile}
+          aria-label="Close menu"
           className="absolute right-3 top-3 rounded p-1 text-muted hover:text-primary md:hidden"
         >
           <X className="h-4 w-4" />
@@ -130,7 +140,7 @@ export function Sidebar({
           </div>
         </div>
 
-        <nav className="mt-5 space-y-6">
+        <nav aria-label="FPL Intelligence sections" className="mt-5 space-y-6">
           {navGroups.map((group) => (
             <div key={group.label}>
               <div className="mb-2 px-5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted md:hidden lg:block">
@@ -151,7 +161,7 @@ export function Sidebar({
           <div className="md:hidden lg:block">
             {teamId ? (
               <div>
-                <div className="text-xs font-semibold text-fpl-green">Team #{teamId} connected</div>
+                <div className="text-xs font-semibold text-fpl-green">Team #{teamId} saved</div>
                 <button
                   type="button"
                   onClick={editTeamId}

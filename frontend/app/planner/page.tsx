@@ -4,18 +4,21 @@ import Link from "next/link";
 import { ArrowRight, CircleAlert, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
+import { DecisionStatusNotice } from "@/components/DecisionStatusNotice";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
-import { getInitialSquad, getPlanner } from "@/lib/api";
+import { getInitialSquad, getPlanner, getSeasonState } from "@/lib/api";
 import { points, positionCode } from "@/lib/format";
 import type {
   InitialSquadResponse,
   PlannerPlayer,
   PlannerProjection,
   PlannerResponse,
+  SeasonState,
 } from "@/lib/types";
 
 type Horizon = 3 | 5 | 8;
+type RiskProfile = "maximum_points" | "balanced" | "safe";
 type StagedMove = { gameweek: number; outgoingId: number; incomingId: number };
 type RosterEntry = { player: PlannerPlayer; starter: boolean; pickOrder: number };
 type Roster = Map<number, RosterEntry>;
@@ -38,7 +41,8 @@ interface SimulationRow {
 }
 
 export default function PlannerPage() {
-  const [horizon, setHorizon] = useState<Horizon>(3);
+  const [horizon, setHorizon] = useState<Horizon>(8);
+  const [riskProfile, setRiskProfile] = useState<RiskProfile>("balanced");
   const [teamId, setTeamId] = useState("");
   const [data, setData] = useState<PlannerResponse | null>(null);
   const [initialSquad, setInitialSquad] = useState<InitialSquadResponse | null>(null);
@@ -48,6 +52,7 @@ export default function PlannerPage() {
   const [incomingId, setIncomingId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
 
   useEffect(() => {
     const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
@@ -56,25 +61,24 @@ export default function PlannerPage() {
       setLoading(true);
       setError(false);
     });
-    if (!savedTeamId) {
-      getInitialSquad(horizon)
-        .then(setInitialSquad)
-        .catch(() => setError(true))
-        .finally(() => setLoading(false));
-      return;
-    }
-
-    getPlanner(savedTeamId, horizon)
-      .then((response) => {
-        setData(response);
-        setSelectedGameweek(response.start_gameweek);
-        setStagedMoves([]);
-        setOutgoingId("");
-        setIncomingId("");
+    getSeasonState()
+      .then(async (state) => {
+        setSeasonState(state);
+        if (!state.recommendations_ready) return;
+        if (savedTeamId) {
+          const response = await getPlanner(savedTeamId, horizon);
+          setData(response);
+          setSelectedGameweek(response.start_gameweek);
+          setStagedMoves([]);
+          setOutgoingId("");
+          setIncomingId("");
+        } else {
+          setInitialSquad(await getInitialSquad(horizon, riskProfile));
+        }
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [horizon]);
+  }, [horizon, riskProfile]);
 
   const simulation = useMemo(
     () => (data && data.season_state === "in_season" ? simulatePlan(data, stagedMoves) : []),
@@ -100,6 +104,15 @@ export default function PlannerPage() {
   if (loading) return <PlannerSkeleton />;
 
   if (error) return <ErrorState />;
+
+  if (seasonState && !seasonState.recommendations_ready) {
+    return (
+      <div className="space-y-5">
+        <SectionHeader title="Transfer Planner" subtitle="Planning is paused until current data passes validation" />
+        <DecisionStatusNotice seasonState={seasonState} />
+      </div>
+    );
+  }
 
   if (!teamId && initialSquad) {
     return (
@@ -141,6 +154,64 @@ export default function PlannerPage() {
             <Info label="Captain" value={initialSquadLabel(initialSquad, initialSquad.captain_id)} />
             <Info label="Vice-captain" value={initialSquadLabel(initialSquad, initialSquad.vice_captain_id)} />
           </div>
+          {horizon === 8 ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              {initialSquad.decision_alternatives.map((alternative) => (
+                <button
+                  key={alternative.profile}
+                  type="button"
+                  onClick={() => setRiskProfile(alternative.profile)}
+                  className={`rounded-lg border p-3 text-left ${
+                    alternative.selected
+                      ? "border-fpl-green bg-fpl-green/10"
+                      : "border-fpl-border bg-fpl-raised"
+                  }`}
+                >
+                  <span className="text-xs font-semibold uppercase tracking-wide text-secondary">
+                    {profileLabel(alternative.profile)}
+                  </span>
+                  <span className="mt-1 block font-mono text-sm text-primary">
+                    {points(alternative.expected_gw1_points)} GW1 xP
+                  </span>
+                  <span className="mt-1 block text-xs text-secondary">
+                    Bench reliability {Math.round(alternative.outfield_bench_start_probability * 100)}%
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {initialSquad.decision_audit.low_reliability_bench.length > 0 ? (
+            <div className="mt-4 rounded-lg border border-fpl-gold/40 bg-fpl-gold/10 p-3 text-xs leading-5 text-secondary">
+              <span className="font-semibold text-primary">Bench risk:</span>{" "}
+              {initialSquad.decision_audit.low_reliability_bench.join(", ")} currently fall below
+              35% starting likelihood. Compare the safer-depth profile and refresh after final team news.
+            </div>
+          ) : null}
+          {initialSquad.deadline_finalization ? (
+            <div
+              className={`mt-4 rounded-lg border p-3 text-xs leading-5 ${
+                initialSquad.deadline_finalization.lock_ready
+                  ? "border-fpl-green/40 bg-fpl-green/10"
+                  : "border-fpl-gold/40 bg-fpl-gold/10"
+              }`}
+            >
+              <span className="font-semibold text-primary">
+                {initialSquad.deadline_finalization.lock_ready
+                  ? "Deadline-ready:"
+                  : "Deadline monitoring:"}
+              </span>{" "}
+              {initialSquad.deadline_finalization.lock_ready
+                ? "Official data and final-news checks are complete."
+                : "The squad is the current leader, but remains preliminary until the final 24-hour refresh and official team-news review."}
+              {initialSquad.deadline_finalization.primary_challenger ? (
+                <span className="mt-1 block text-secondary">
+                  Main challenger ({Math.round(initialSquad.deadline_finalization.primary_challenger.scenario_rate * 100)}%):{" "}
+                  {initialSquad.deadline_finalization.primary_challenger.players_out.join(" + ")} →{" "}
+                  {initialSquad.deadline_finalization.primary_challenger.players_in.join(" + ")}.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </Panel>
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <Panel>
@@ -238,13 +309,22 @@ export default function PlannerPage() {
             {data.decision ? (
               <>
                 <h2 className="mt-2 text-[20px] font-semibold text-primary">
-                  {data.decision.transfer.incoming_name
-                    ? `${data.decision.transfer.outgoing_name} → ${data.decision.transfer.incoming_name}`
+                  {data.decision.transfer_count > 0
+                    ? `${data.decision.transfer_count} transfer${data.decision.transfer_count === 1 ? "" : "s"}`
                     : "Roll the transfer"}
-                  {data.decision.transfer.hit_selected
-                    ? ` · -${data.decision.transfer.hit_cost} hit`
+                  {data.decision.total_hit_cost > 0
+                    ? ` · -${data.decision.total_hit_cost} hit`
                     : ""}
                 </h2>
+                {data.decision.transfers.length > 0 ? (
+                  <div className="mt-2 space-y-1 text-sm text-primary">
+                    {data.decision.transfers.map((move) => (
+                      <div key={`${move.outgoing_id}-${move.incoming_id}`}>
+                        {move.outgoing_name} → {move.incoming_name}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-secondary">
                   {data.decision.reason}
                 </p>
@@ -617,6 +697,12 @@ function initialSquadLabel(data: InitialSquadResponse, elementId: number): strin
   );
 }
 
+function profileLabel(profile: RiskProfile): string {
+  if (profile === "maximum_points") return "Maximum points";
+  if (profile === "safe") return "Safer depth";
+  return "Balanced";
+}
+
 function InitialPlayer({
   player,
 }: {
@@ -639,7 +725,38 @@ function InitialPlayer({
       </div>
       <div className="mt-2 text-[10px] text-muted">
         {player.horizon_points.toFixed(1)} pts over selected horizon
+        {player.start_likelihood !== undefined
+          ? ` · ${Math.round(player.start_likelihood * 100)}% start likelihood`
+          : ""}
       </div>
+      {player.robustness_class ? (
+        <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-secondary">
+          {player.robustness_class} · {Math.round((player.scenario_selection_rate ?? 0) * 100)}% of scenarios
+        </div>
+      ) : null}
+      {player.set_piece &&
+      (player.set_piece.penalties_rank !== null ||
+        player.set_piece.direct_free_kicks_rank !== null ||
+        player.set_piece.corners_indirect_rank !== null) ? (
+        <div className="mt-2 text-[10px] text-secondary">
+          {[
+            player.set_piece.penalties_rank !== null
+              ? `Pens #${player.set_piece.penalties_rank}`
+              : null,
+            player.set_piece.direct_free_kicks_rank !== null
+              ? `Direct FK #${player.set_piece.direct_free_kicks_rank}`
+              : null,
+            player.set_piece.corners_indirect_rank !== null
+              ? `Corners #${player.set_piece.corners_indirect_rank}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          {Math.abs(player.set_piece.transition_adjustment_per_start) >= 0.01
+            ? ` · ${player.set_piece.transition_adjustment_per_start > 0 ? "+" : ""}${player.set_piece.transition_adjustment_per_start.toFixed(2)} role xP/start`
+            : ""}
+        </div>
+      ) : null}
     </div>
   );
 }

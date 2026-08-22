@@ -47,7 +47,7 @@ export function selectCurrentSquadMetrics(squad: SquadPlayer[]): CurrentSquadMet
 }
 
 export function playerXp(player: SquadPlayer | null | undefined): number {
-  return player?.predicted_pts ?? 0;
+  return player?.expected_points ?? 0;
 }
 
 function inferredFormation(starters: SquadPlayer[]): string {
