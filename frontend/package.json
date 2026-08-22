@@ -2,27 +2,43 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:production": "node scripts/verify-production-env.mjs && next start",
+    "verify:production": "node scripts/verify-production-env.mjs",
     "lint": "eslint",
-    "test:search": "node --experimental-strip-types --test lib/search.test.mjs"
+    "test:search": "node --experimental-strip-types --test lib/search.test.mjs",
+    "test:decision-state": "node --experimental-strip-types --test lib/decisionState.test.mjs",
+    "test:drafts": "node --experimental-strip-types --test lib/draftWorkspace.test.mjs",
+    "test:decision-center": "node --experimental-strip-types --test lib/decisionCenter.test.mjs",
+    "test:deadline": "node --experimental-strip-types --test lib/deadlineIntelligence.test.mjs",
+    "test:review": "node --experimental-strip-types --test lib/reviewMode.test.mjs",
+    "test:auth": "node --experimental-strip-types --test lib/auth.test.mjs lib/fplTeam.test.mjs",
+    "test:unit": "node --experimental-strip-types --test lib/search.test.mjs lib/decisionState.test.mjs lib/draftWorkspace.test.mjs lib/decisionCenter.test.mjs lib/deadlineIntelligence.test.mjs lib/reviewMode.test.mjs lib/auth.test.mjs lib/fplTeam.test.mjs lib/launchContract.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
     "lucide-react": "^1.23.0",
-    "next": "16.2.10",
+    "next": "^16.3.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "^16.3.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

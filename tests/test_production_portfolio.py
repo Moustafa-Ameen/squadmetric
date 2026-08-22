@@ -34,6 +34,7 @@ def test_invalid_portfolio_setting_fails_safely():
         production_portfolio.get_production_portfolio("unknown")
 
 
+@pytest.mark.requires_local_artifacts
 def test_planner_model_loader_selects_requested_consumer_artifact(monkeypatch):
     loaded_paths = []
     monkeypatch.setattr(

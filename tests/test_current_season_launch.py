@@ -6,6 +6,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
+import pytest
 from api.routers.fpl_live import _detect_season_state
 
 from fpl_intelligence.artifact_contract import (
@@ -22,6 +23,7 @@ from fpl_intelligence.season_rules import (
 )
 
 
+@pytest.mark.requires_local_artifacts
 def test_current_2026_27_artifacts_pass_real_readiness():
     readiness = validate_current_artifacts(
         expected_season="2026-27",
@@ -34,6 +36,7 @@ def test_current_2026_27_artifacts_pass_real_readiness():
     assert readiness.manifest["team_count"] == 20
 
 
+@pytest.mark.requires_local_artifacts
 def test_current_teams_are_promoted_and_relegated_correctly():
     manifest = json.loads(
         CURRENT_ARTIFACT_MANIFEST_PATH.read_text(encoding="utf-8")
@@ -57,6 +60,7 @@ def test_current_teams_are_promoted_and_relegated_correctly():
     assert rules["dc_rule_version"] == "dc_v1"
 
 
+@pytest.mark.requires_local_artifacts
 def test_live_minutes_artifact_uses_importable_class():
     model = joblib.load(LIVE_MINUTES_BAND_MODEL_PATH)
 

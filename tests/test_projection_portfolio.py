@@ -38,6 +38,7 @@ def test_projection_portfolio_rejects_unknown_consumer():
         ProjectionPortfolio().model_for("minutes")  # type: ignore[arg-type]
 
 
+@pytest.mark.requires_local_artifacts
 def test_captain_model_override_is_not_silently_replaced_by_ridge():
     players = load_historical_player_gameweeks()
     predictions = train_realistic_captain_predictions(
@@ -51,6 +52,7 @@ def test_captain_model_override_is_not_silently_replaced_by_ridge():
     assert predictions["captain_model_name"].eq("Gradient Boosting Regressor").all()
 
 
+@pytest.mark.requires_local_artifacts
 def test_transfer_prediction_model_name_is_preserved():
     players = load_historical_player_gameweeks()
     predictions, _ = train_gameweek_predictions(

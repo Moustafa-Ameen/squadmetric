@@ -162,6 +162,7 @@ def test_benchmark_autosubs_an_eligible_playing_bench_player():
     assert score.points == 24
 
 
+@pytest.mark.requires_local_artifacts
 def test_no_transfer_strategy_runs_a_complete_historical_season(tmp_path: Path):
     from fpl_intelligence.season_benchmark import NoTransfersStrategy
 
@@ -236,6 +237,7 @@ def test_no_transfer_strategy_runs_a_complete_historical_season(tmp_path: Path):
     assert conditional_result.realistic_total_points != result.realistic_total_points
 
 
+@pytest.mark.requires_local_artifacts
 def test_append_history_handles_old_narrow_schema(tmp_path: Path):
     players = load_historical_player_gameweeks()
     result = run_season_benchmark(
@@ -264,6 +266,7 @@ def test_append_history_handles_old_narrow_schema(tmp_path: Path):
     assert history.iloc[1]["run_id"] == "new-run"
 
 
+@pytest.mark.requires_local_artifacts
 def test_future_predictions_are_point_in_time_safe_for_both_horizons():
     players = load_historical_player_gameweeks()
     original = train_future_gameweek_predictions(
@@ -309,6 +312,7 @@ def test_future_predictions_are_point_in_time_safe_for_both_horizons():
         )
 
 
+@pytest.mark.requires_local_artifacts
 def test_component_projection_is_selectable_without_changing_control_default():
     players = load_historical_player_gameweeks()
     component_target, training = train_gameweek_predictions(
@@ -330,6 +334,7 @@ def test_component_projection_is_selectable_without_changing_control_default():
     assert control_target["model"].eq("Ridge Regression").all()
 
 
+@pytest.mark.requires_local_artifacts
 def test_m10_team_components_mode_is_opt_in_and_point_in_time_safe():
     players = load_historical_player_gameweeks()
     target, training = train_gameweek_predictions(
@@ -375,6 +380,7 @@ def test_m10_team_components_mode_is_opt_in_and_point_in_time_safe():
     assert future[11]["team_forecast_data_cutoff"].eq("2024-25:GW10").all()
 
 
+@pytest.mark.requires_local_artifacts
 def test_availability_role_mode_exposes_point_in_time_role_probabilities():
     players = load_historical_player_gameweeks()
     target, training = train_gameweek_predictions(
@@ -393,6 +399,7 @@ def test_availability_role_mode_exposes_point_in_time_role_probabilities():
     assert int(training[training["season"] == "2024-25"]["gameweek"].max()) == 9
 
 
+@pytest.mark.requires_local_artifacts
 def test_future_availability_role_predictions_freeze_role_features_at_decision():
     players = load_historical_player_gameweeks()
     original = train_future_gameweek_predictions(
@@ -444,6 +451,7 @@ def test_historical_transfer_caps_are_rule_versioned():
     assert load_max_free_transfers("2025-26") == 5
 
 
+@pytest.mark.requires_local_artifacts
 def test_realistic_captain_model_training_stops_before_target_gameweek():
     players = load_historical_player_gameweeks()
     target_gameweek = 10

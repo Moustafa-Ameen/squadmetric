@@ -363,6 +363,7 @@ def test_lagged_component_features_never_use_target_gameweek_values():
         assert target[f"{column}_last_1"] != 2.0
 
 
+@pytest.mark.requires_local_artifacts
 def test_processed_xg_xa_and_dc_rule_versions_cover_all_local_seasons():
     from fpl_intelligence.step4_models import load_historical_player_gameweeks
 

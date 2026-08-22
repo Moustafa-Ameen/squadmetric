@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from fpl_intelligence.model_ablation import (
     BASELINE_VARIANT,
@@ -231,6 +232,7 @@ def test_strategy_acceptance_compares_candidate_to_control_per_variant(tmp_path:
     assert xg_xa.metrics["aggregate_realistic_delta"] == 4.0
 
 
+@pytest.mark.requires_local_artifacts
 def test_multi_season_baseline_reproduces_identity_safe_no_chip_totals():
     result = run_multi_season_ablation(
         load_historical_player_gameweeks(),
@@ -257,6 +259,7 @@ def test_multi_season_baseline_reproduces_identity_safe_no_chip_totals():
     )
 
 
+@pytest.mark.requires_local_artifacts
 def test_dc_variant_is_explicitly_not_applicable_before_rule_start():
     called = False
 

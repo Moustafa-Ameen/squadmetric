@@ -3,6 +3,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
+import pytest
 from api.main import app
 from api.readiness import (
     LiveDecisionReadiness,
@@ -132,6 +133,7 @@ def test_deadline_readiness_requires_current_shadow_and_reviewed_news(
     assert not checklist["final_team_news"]
 
 
+@pytest.mark.requires_local_artifacts
 def test_players_returns_plain_english_fields():
     response = asyncio.run(_get("/api/players"))
 
@@ -144,6 +146,7 @@ def test_players_returns_plain_english_fields():
     assert "player_name" not in players[0]
 
 
+@pytest.mark.requires_local_artifacts
 def test_captains_returns_ten_players():
     response = asyncio.run(_get("/api/players/captains"))
 
@@ -151,6 +154,7 @@ def test_captains_returns_ten_players():
     assert len(response.json()) == 10
 
 
+@pytest.mark.requires_local_artifacts
 def test_transfers_includes_rotation_risk_boolean():
     response = asyncio.run(_get("/api/players/transfers"))
 
@@ -1090,6 +1094,7 @@ def test_chip_tips_returns_clear_no_team_state():
     assert response.json()["alerts"] == []
 
 
+@pytest.mark.requires_local_artifacts
 def test_chip_status_without_team_returns_official_inventory(monkeypatch):
     async def fake_bootstrap():
         return players_router.data_service.bootstrap_static()
@@ -1230,6 +1235,7 @@ def test_chip_tips_returns_transition_state_without_projection(monkeypatch):
     assert "season" in payload["message"].lower()
 
 
+@pytest.mark.requires_local_artifacts
 def test_backtest_accuracy_uses_plain_english_model_names():
     response = asyncio.run(_get("/api/backtest/accuracy"))
 

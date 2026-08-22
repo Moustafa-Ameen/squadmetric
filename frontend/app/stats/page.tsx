@@ -3,17 +3,19 @@
 import { LayoutGrid, Search, Star, Table2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/LoadingState";
+import { DecisionStatusNotice } from "@/components/DecisionStatusNotice";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StartLikelihood } from "@/components/StartLikelihood";
 import { useDrawer } from "@/context/DrawerContext";
-import { getPlayers } from "@/lib/api";
+import { getPlayers, getSeasonState } from "@/lib/api";
+import { persistWatchlist, readWatchlist } from "@/lib/accountStorage";
 import { kitUrl, matchesPlayerSearch, points, positionCode, price } from "@/lib/format";
-import type { Player } from "@/lib/types";
+import type { Player, SeasonState } from "@/lib/types";
 
 type ViewMode = "table" | "card";
 type ListMode = "all" | "watchlist";
-type SortKey = "name" | "team" | "position" | "price" | "ppg" | "form" | "captain_score" | "start_likelihood" | "value";
+type SortKey = "name" | "team" | "position" | "price" | "ppg" | "form" | "captain_rank_score" | "start_likelihood" | "value";
 type PositionFilter = "All" | "GK" | "DEF" | "MID" | "FWD";
 
 const positions: PositionFilter[] = ["All", "GK", "DEF", "MID", "FWD"];
@@ -24,7 +26,7 @@ const columns: { label: string; key: SortKey; align?: "right" }[] = [
   { label: "Price", key: "price", align: "right" },
   { label: "PPG", key: "ppg", align: "right" },
   { label: "Form", key: "form", align: "right" },
-  { label: "Predicted", key: "captain_score", align: "right" },
+  { label: "Captain rank", key: "captain_rank_score", align: "right" },
   { label: "Start %", key: "start_likelihood", align: "right" },
   { label: "Value", key: "value", align: "right" },
 ];
@@ -41,17 +43,22 @@ export default function StatsPage() {
   const [position, setPosition] = useState<PositionFilter>("All");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("captain_score");
+  const [sortKey, setSortKey] = useState<SortKey>("captain_rank_score");
   const [ascending, setAscending] = useState(false);
   const [page, setPage] = useState(1);
+  const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
 
   useEffect(() => {
-    getPlayers({ limit: 1000 })
+    getSeasonState()
+      .then((state) => {
+        setSeasonState(state);
+        return state.recommendations_ready ? getPlayers({ limit: 1000 }) : [];
+      })
       .then(setPlayers)
       .catch(() => setError(true))
       .finally(() => setLoading(false));
     queueMicrotask(() => {
-      setWatchlist(JSON.parse(window.localStorage.getItem("watchlist") ?? "[]") as string[]);
+      setWatchlist(readWatchlist());
     });
   }, []);
 
@@ -59,7 +66,7 @@ export default function StatsPage() {
     const groups = new Map<string, number[]>();
     for (const player of players) {
       const code = positionCode(player.position);
-      groups.set(code, [...(groups.get(code) ?? []), predicted(player)]);
+      groups.set(code, [...(groups.get(code) ?? []), captainRank(player)]);
     }
     return Object.fromEntries(
       [...groups.entries()].map(([key, values]) => [key, values.reduce((sum, value) => sum + value, 0) / values.length]),
@@ -90,17 +97,25 @@ export default function StatsPage() {
     setPage(1);
   }
 
-  function toggleWatch(playerName: string) {
+  function toggleWatch(player: Player) {
     setWatchlist((current) => {
-      const next = current.includes(playerName)
-        ? current.filter((item) => item !== playerName)
-        : [...current, playerName];
-      window.localStorage.setItem("watchlist", JSON.stringify(next));
+      const next = current.includes(player.name)
+        ? current.filter((item) => item !== player.name)
+        : [...current, player.name];
+      persistWatchlist(players.filter((candidate) => next.includes(candidate.name)));
       return next;
     });
   }
 
   if (loading) return <TableSkeleton />;
+  if (seasonState && !seasonState.recommendations_ready) {
+    return (
+      <div className="space-y-5">
+        <SectionHeader title="Player Stats" subtitle="Current player rankings are awaiting a validated refresh" />
+        <DecisionStatusNotice seasonState={seasonState} />
+      </div>
+    );
+  }
   if (error) return <ErrorState />;
   if (!players.length) return <EmptyState />;
 
@@ -185,7 +200,7 @@ export default function StatsPage() {
               }}
               className="h-10 rounded-lg border border-fpl-border bg-fpl-raised px-3 text-sm text-primary outline-none focus:border-fpl-green"
             >
-              <option value="captain_score">Sort by predicted</option>
+              <option value="captain_rank_score">Sort by captain rank</option>
               <option value="price">Sort by price</option>
               <option value="ppg">Sort by PPG</option>
               <option value="form">Sort by form</option>
@@ -269,7 +284,7 @@ function PlayerTable({
   sortKey: SortKey;
   ascending: boolean;
   onSort: (key: SortKey) => void;
-  onToggleWatch: (name: string) => void;
+  onToggleWatch: (player: Player) => void;
   onSelect: (name: string) => void;
 }) {
   return (
@@ -303,7 +318,7 @@ function PlayerTable({
                   active={watchlist.includes(player.name)}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onToggleWatch(player.name);
+                    onToggleWatch(player);
                   }}
                 />
               </td>
@@ -317,7 +332,7 @@ function PlayerTable({
               <td className="py-3 pr-3 text-right font-mono text-primary">{points(player.ppg)}</td>
               <td className="py-3 pr-3 text-right font-mono text-primary">{points(player.form)}</td>
               <td className={`py-3 pr-3 text-right font-mono font-bold ${predictedClass(player, averages)}`}>
-                {points(predicted(player))}
+                {points(captainRank(player))}
               </td>
               <td className="py-3 pr-3 text-right">
                 <StartLikelihood value={player.start_likelihood} />
@@ -339,14 +354,14 @@ function PlayerCard({
 }: {
   player: Player;
   watched: boolean;
-  onToggleWatch: (name: string) => void;
+  onToggleWatch: (player: Player) => void;
   onSelect: (name: string) => void;
 }) {
   return (
     <div className="relative rounded-lg border border-[rgba(123,47,190,0.2)] bg-[#161616] p-4 text-center transition hover:scale-[1.02] hover:border-fpl-green">
       <button
         type="button"
-        onClick={() => onToggleWatch(player.name)}
+        onClick={() => onToggleWatch(player)}
         aria-label={watched ? "Remove from watchlist" : "Add to watchlist"}
         className="absolute right-3 top-3"
       >
@@ -357,7 +372,7 @@ function PlayerCard({
         <div className="mt-3 truncate text-sm font-bold text-primary">{player.name}</div>
         <div className="mt-1 text-xs text-muted">{player.team}</div>
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <CardMetric label="Predicted" value={points(predicted(player))} />
+          <CardMetric label="Captain rank" value={points(captainRank(player))} />
           <CardMetric label="Price" value={price(player.price)} />
           <div>
             <div className="text-[11px] text-muted">Start %</div>
@@ -435,17 +450,17 @@ function CardMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function predicted(player: Player): number {
-  return player.captain_score ?? 0;
+function captainRank(player: Player): number {
+  return player.captain_rank_score ?? 0;
 }
 
 function predictedClass(player: Player, averages: Record<string, number>): string {
   const average = averages[positionCode(player.position)] ?? 0;
-  return predicted(player) >= average ? "text-fpl-green" : "text-fpl-red";
+  return captainRank(player) >= average ? "text-fpl-green" : "text-fpl-red";
 }
 
 function valueForSort(player: Player, key: SortKey): string | number {
-  if (key === "captain_score") return predicted(player);
+  if (key === "captain_rank_score") return captainRank(player);
   if (key === "position") return positionCode(player.position);
   return player[key] as string | number;
 }

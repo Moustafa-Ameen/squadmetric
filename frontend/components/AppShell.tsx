@@ -1,72 +1,52 @@
 "use client";
 
-import { Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { DrawerProvider } from "@/context/DrawerContext";
 import { getSeasonState } from "@/lib/api";
 import type { SeasonState } from "@/lib/types";
-import { LiveMatchBar } from "./LiveMatchBar";
-import { LogoLoader } from "./LogoLoader";
+import { AppNavigation } from "./AppNavigation";
+import { AccountSessionHydrator } from "./AccountSessionHydrator";
+import { DecisionStatusNotice } from "./DecisionStatusNotice";
 import { PlayerDrawer } from "./PlayerDrawer";
-import { Sidebar } from "./Sidebar";
+
+const SHELLLESS_ROUTES = new Set(["/", "/login", "/signup", "/forgot-password", "/update-password", "/onboarding", "/consent", "/privacy", "/terms", "/auth/error"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [progressState, setProgressState] = useState<"idle" | "loading" | "done">("loading");
-  const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
   const pathname = usePathname();
+  const publicRoute = SHELLLESS_ROUTES.has(pathname);
+  const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
+  const [seasonStateError, setSeasonStateError] = useState(false);
 
   useEffect(() => {
-    queueMicrotask(() => setProgressState("loading"));
-    const doneTimer = window.setTimeout(() => setProgressState("done"), 5000);
-    const idleTimer = window.setTimeout(() => setProgressState("idle"), 5600);
-    return () => {
-      window.clearTimeout(doneTimer);
-      window.clearTimeout(idleTimer);
-    };
-  }, [pathname]);
+    if (publicRoute) return;
+    getSeasonState()
+      .then((state) => {
+        setSeasonState(state);
+        setSeasonStateError(false);
+      })
+      .catch(() => {
+        setSeasonState(null);
+        setSeasonStateError(true);
+      });
+  }, [publicRoute]);
 
-  useEffect(() => {
-    getSeasonState().then(setSeasonState).catch(() => setSeasonState(null));
-  }, []);
+  if (publicRoute) return children;
 
   return (
     <DrawerProvider>
-      {progressState !== "idle" ? <LogoLoader complete={progressState === "done"} /> : null}
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="fixed left-3 top-3 z-40 rounded-lg border border-fpl-border bg-fpl-card p-2 text-fpl-green shadow-lg md:hidden"
-        aria-label="Open menu"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
-      <Sidebar mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
-      <main className="decision-grid min-h-screen px-4 pb-4 pt-16 md:ml-[76px] md:px-6 md:py-4 lg:ml-[244px] lg:px-9 lg:py-7">
-        <div className="mx-auto max-w-[1400px]">
-          <LiveMatchBar />
-          {seasonState ? (
-            <div
-              className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
-                seasonState.recommendations_ready === false
-                  ? "border-fpl-red/40 bg-fpl-red/10 text-fpl-red"
-                  : "border-fpl-green/30 bg-fpl-green/10 text-secondary"
-              }`}
-            >
-              <span className="font-semibold text-primary">
-                {seasonState.fpl_api_season} FPL
-              </span>
-              {" · "}
-              {seasonState.recommendations_ready === false
-                ? `Recommendations blocked: ${(seasonState.artifact_errors ?? []).join("; ")}`
-                : seasonState.season_state === "pre_season"
-                  ? "Pre-season data, official prices and fixtures loaded"
-                  : "Current-season artifacts ready"}
+      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <AppNavigation />
+      <main id="main-content" tabIndex={-1} className="decision-grid min-h-[calc(100vh-4.5rem)] px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
+        <div className="mx-auto max-w-[1440px]">
+          {seasonState && !seasonState.recommendations_ready ? <div className="mb-5"><DecisionStatusNotice seasonState={seasonState} compact /></div> : null}
+          {seasonStateError ? (
+            <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+              Live decision status is unavailable. Existing content remains visible, but confirm freshness before acting.
             </div>
           ) : null}
-          {children}
+          <AccountSessionHydrator>{children}</AccountSessionHydrator>
         </div>
       </main>
       <PlayerDrawer />

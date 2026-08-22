@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from fpl_intelligence.backtest_transfer_strategy import validate_squad
 from fpl_intelligence.squad_optimizer import (
@@ -10,6 +11,7 @@ from fpl_intelligence.squad_optimizer import (
 from fpl_intelligence.step4_models import load_historical_player_gameweeks
 
 
+@pytest.mark.requires_local_artifacts
 def test_optimizer_returns_legal_squads_across_multiple_real_gameweeks():
     players = load_historical_player_gameweeks()
     for gameweek in (1, 5, 10, 20, 30):

@@ -18,6 +18,7 @@ import {
   getPlayerHistory,
   getPlayers,
 } from "@/lib/api";
+import { persistWatchlist, readWatchlist } from "@/lib/accountStorage";
 import { normalized, points, positionCode } from "@/lib/format";
 import type { CaptainPick, FixtureTick, Player, PlayerHistoryPoint } from "@/lib/types";
 import { useDrawer } from "@/context/DrawerContext";
@@ -76,7 +77,7 @@ export function PlayerDrawer() {
           ? fixtureRows.find((row) => row.team_short === found.team || row.team === found.team) ?? null
           : null,
       );
-      const watchlist = JSON.parse(window.localStorage.getItem("watchlist") ?? "[]") as string[];
+      const watchlist = readWatchlist();
       setWatching(watchlist.includes(playerName));
     })
       .catch(() => {
@@ -98,7 +99,7 @@ export function PlayerDrawer() {
 
   const displayPlayer = (player ?? { name: playerName, team: "-", position: "-", price: 0 }) as Player;
   const teamCode = displayPlayer.team_code ?? 1;
-  const adjusted = prediction?.adjusted_pts ?? prediction?.predicted_pts ?? displayPlayer.captain_score;
+  const adjusted = prediction?.expected_points ?? displayPlayer.captain_rank_score;
   const availableHistory = history.length;
   const captainBadge =
     captainRank && captainRank <= 5
@@ -108,11 +109,14 @@ export function PlayerDrawer() {
         : null;
 
   function toggleWatchlist() {
-    const watchlist = JSON.parse(window.localStorage.getItem("watchlist") ?? "[]") as string[];
+    const watchlist = readWatchlist();
     const next = watching
       ? watchlist.filter((item) => item !== playerName)
-      : [...new Set([...watchlist, playerName])];
-    window.localStorage.setItem("watchlist", JSON.stringify(next));
+      : [...new Set([...watchlist, playerName])].filter((name): name is string => Boolean(name));
+    persistWatchlist(next.map((name) => ({
+      name,
+      element_id: name === playerName ? displayPlayer.element_id : undefined,
+    })));
     setWatching(!watching);
   }
 
@@ -163,7 +167,7 @@ export function PlayerDrawer() {
             </div>
 
             <div className="mt-6 grid grid-cols-4 gap-2">
-              <MiniStat label="Predicted" value={points(adjusted)} />
+              <MiniStat label="Expected points" value={points(adjusted)} />
               <MiniStat label="Start" value={<StartLikelihood value={displayPlayer.start_likelihood} />} />
               <MiniStat label="Form" value={points(displayPlayer.form)} />
               <MiniStat label="Points" value={points(displayPlayer.total_points, 0)} />

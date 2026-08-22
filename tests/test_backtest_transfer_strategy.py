@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from fpl_intelligence.backtest_transfer_strategy import (
     TwoGameweekLookaheadStrategy,
@@ -293,6 +294,7 @@ def test_score_gameweek_autosubs_a_non_playing_goalkeeper():
     assert score.points == 18
 
 
+@pytest.mark.requires_local_artifacts
 def test_initial_squad_excludes_players_below_preseason_minutes_floor():
     players = load_historical_player_gameweeks()
 
