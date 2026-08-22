@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .playwright-cli/
+frontend/output/playwright/report/
+frontend/output/playwright/test-results/
 *.pyc
 *.egg-info/
 *.zip
@@ -19,3 +21,4 @@ models/
 models/*.joblib
 
 .env
+.env*.local

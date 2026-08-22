@@ -24,20 +24,156 @@ official FPL API before starting the application:
 ```
 
 This preserves immutable bootstrap/fixture snapshots, rebuilds current player
-tables, refits live-serving models using completed seasons only, writes the
-rules and artifact manifests, and performs a real model-load readiness check.
+tables, writes the rules and artifact manifests, and performs a real model-load
+readiness check. Before the season, models use completed historical seasons.
+After the season starts, a direct full refresh also retains all officially
+finalized 2026/27 Gameweeks already present in the live training table.
+It also writes timestamped availability events and applies reviewed launch
+evidence for promoted/new players. Official injury status always caps any role
+prior, and every evidence file is hash-tracked by the serving manifest.
 
-For a normal daily refresh that reuses the reviewed serving-model bundle:
+The production opening-squad endpoint is:
+
+```text
+GET /api/predictions/initial-squad?horizon=8
+```
+
+Its response includes the active production policy/version, budget and bank,
+availability probability, starting likelihood, and source metadata for any
+launch evidence used in the selected squad.
+
+For the normal daily and post-Gameweek refresh:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-27.ps1
 ```
+
+The command always refreshes official bootstrap, fixtures, prices, availability,
+rules, and serving manifests. It retrains the fixed serving-model family only
+when FPL marks a new Gameweek both `finished` and `data_checked`. The new rows
+come from the latest immutable bootstrap snapshot captured before that
+Gameweek's deadline; provisional outcomes and post-deadline prices/ownership are
+rejected. If no Gameweek is newly finalized, the model bundle is unchanged.
+
+Before GW1, the command also captures an immutable opening recommendation under
+`data/processed/gw1_shadow/`. Inspect freshness, the latest decision hash, and
+the deadline checklist at `GET /api/operations/deadline-readiness`. A manual
+capture can be run with:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.capture_gw1_shadow
+```
+
+The daily refresh rebuilds the P10 robustness tournament and P11 deadline gate
+before it captures deadline evidence. This deliberately takes several minutes:
+a snapshot is never written against a stale robustness hash.
+
+To validate a newly finalized Gameweek without publishing any history, model,
+snapshot, outcome, or run-report file:
+
+```powershell
+.\.venv\Scripts\python.exe -m fpl_intelligence.post_gameweek_refresh --season 2026-27 --dry-run
+```
+
+Published current-season rows are stored separately in
+`data/processed/live_2026_27_player_gw.csv`. Official event-live payloads,
+cutoffs, and hashes are immutable. Model/history publication and frozen-outcome
+settlement are one rollback-protected operation. A failed readiness check
+restores the prior serving bundle.
+
+### Live decision evidence
+
+Before every deadline, freeze the production recommendation and its complete
+generated transfer/chip branch set. Before GW1, `--team-id` is optional; after
+GW1 it is required so the current squad, bank, free transfers, and chip state
+can be captured.
+
+```powershell
+.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence capture --team-id YOUR_TEAM_ID
+```
+
+The command records data/rules hashes, deadline-safe news, every legal root
+branch considered, the selected branch, squad/XI/bench/captain state, hits,
+chips, bank, and uncertainty under `data/processed/live_decision_evidence/`.
+It never executes a transfer or chip. Check coverage with:
+
+```powershell
+.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence status
+```
+
+After FPL marks a Gameweek both finished and data-checked, settle the frozen
+branches against official points:
+
+```powershell
+.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence settle --season 2026-27 --gameweek 1
+```
+
+Settlement is fail-closed while scoring remains provisional. It applies the
+frozen bench order, legal autosubs, captain/vice fallback, Bench Boost, Triple
+Captain, and transfer hits, then records selected-branch regret against the
+same candidate set that existed before the deadline. Operational status is
+also available at `GET /api/operations/shadow-evidence`.
+
+Run the P10 opening-squad calibration and robustness tournament after a
+material projection, scoring-rule, or player-pool change:
+
+```powershell
+.\.venv\Scripts\python.exe -m fpl_intelligence.p10_calibration
+```
+
+This calibrates bench-cover value from accepted historical decision rows and
+tests the live squad across 27 autosub, BPS, and team-role scenarios. The
+initial-squad API exposes each selected player's `locked`, `stable`, or
+`fragile` classification only when the report's bootstrap hash matches the
+current serving artifacts. To refresh only the historical autosub portion of
+an existing report, use `--calibration-only`.
+
+Run the P11 deadline report directly with:
+
+```powershell
+.\.venv\Scripts\python.exe -m fpl_intelligence.p11_deadline_finalization
+```
+
+The recommendation remains in `monitoring` until it is inside the final
+24-hour window and official final team news has been reviewed. The final manual
+refresh must cite at least one official source:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-27.ps1 `
+  -FinalNewsReviewed `
+  -FinalNewsSource "https://www.premierleague.com/..."
+```
+
+This acknowledgment is fail-closed: `-FinalNewsReviewed` without an official
+source URL is rejected.
+
+Run the P12 official penalty and set-piece role audit directly with:
+
+```powershell
+.\.venv\Scripts\python.exe -m fpl_intelligence.p12_set_piece_report
+```
+
+P12 preserves official penalty, direct-free-kick, and corner role fields and
+applies only the change from each player's final 2025/26 role. This prevents an
+established taker's historical penalty returns from being counted a second
+time. The initial-squad API and planner show the normalized current roles, and
+the full audit is written to `data/processed/p12_set_piece_report.json`.
 
 To register that refresh with Windows Task Scheduler, explicitly run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\register-daily-refresh.ps1
 ```
+
+After GW1, register your FPL team ID so the scheduled task can freeze planner
+evidence as well as refresh public data:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\register-daily-refresh.ps1 -TeamId YOUR_TEAM_ID
+```
+
+Without a team ID, finalized-data ingestion and serving refresh still run, but
+post-GW1 decision-evidence capture is explicitly skipped with a warning.
 
 The refresh stops before model training if the decision-relevant rules contract
 changes. Review the official change and use `--accept-rule-change` only after
