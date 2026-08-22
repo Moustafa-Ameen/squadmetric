@@ -7,14 +7,19 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+import pandas as pd
+
 from fpl_intelligence.artifact_contract import (
+    LIVE_CURRENT_HISTORY_PATH,
     PROCESSED_DIR,
     RAW_DIR,
     build_current_artifact_manifest,
+    file_sha256,
     load_current_artifact_manifest,
     save_current_artifact_manifest,
     validate_current_artifacts,
 )
+from fpl_intelligence.availability import bootstrap_availability_events
 from fpl_intelligence.fetch_fpl import (
     FPL_BOOTSTRAP_URL,
     load_players,
@@ -49,6 +54,7 @@ FIXTURES_PATH = RAW_DIR / "fixtures.json"
 PLAYERS_CURRENT_PATH = PROCESSED_DIR / "players_current.csv"
 PLAYERS_RANKED_PATH = PROCESSED_DIR / "players_ranked.csv"
 REFRESH_REPORT_PATH = PROCESSED_DIR / "current_season_refresh_report.json"
+AVAILABILITY_EVENTS_PATH = PROCESSED_DIR / "current_availability_events.json"
 
 
 def _fetch_json(url: str) -> Any:
@@ -144,12 +150,43 @@ def refresh_current_season(
     ranked = add_rule_based_scores(players)
     save_players(players, PLAYERS_CURRENT_PATH)
     save_ranked_players(ranked, PLAYERS_RANKED_PATH)
+    availability_events = bootstrap_availability_events(
+        bootstrap_payload["elements"],
+        observed_at=timestamp,
+        source=FPL_BOOTSTRAP_URL,
+    )
+    AVAILABILITY_EVENTS_PATH.write_text(
+        json.dumps(
+            {
+                "schema_version": "current-availability-events-v1",
+                "season": season,
+                "generated_at": timestamp,
+                "bootstrap_hash": payload_hash(bootstrap_payload),
+                "events": [event.to_record() for event in availability_events],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     if train_models:
+        finalized_current = (
+            pd.read_csv(LIVE_CURRENT_HISTORY_PATH)
+            if LIVE_CURRENT_HISTORY_PATH.exists()
+            else None
+        )
         model_metadata = train_live_models(
             history,
             target_season=season,
             generated_at=timestamp,
+            finalized_current_season=finalized_current,
+            finalized_current_season_file_hash=(
+                file_sha256(LIVE_CURRENT_HISTORY_PATH)
+                if LIVE_CURRENT_HISTORY_PATH.exists()
+                else None
+            ),
         )
         model_metadata_payload = {
             "training_seasons": model_metadata.training_seasons,
@@ -172,6 +209,7 @@ def refresh_current_season(
         players_ranked_path=PLAYERS_RANKED_PATH,
         rules=rules,
         rules_manifest_path=rules_manifest_path,
+        availability_events_path=AVAILABILITY_EVENTS_PATH,
         generated_at=timestamp,
     )
     manifest_path = save_current_artifact_manifest(manifest)
@@ -210,9 +248,12 @@ def refresh_current_season(
             "rules_manifest": str(rules_manifest_path),
             "artifact_manifest": str(manifest_path),
             "model_metadata": str(LIVE_MODEL_METADATA_PATH),
+            "launch_evidence": str(manifest.launch_evidence_path),
+            "availability_events": str(AVAILABILITY_EVENTS_PATH),
         },
         "errors": readiness.errors,
         "warnings": readiness.warnings,
+        "availability_event_count": len(availability_events),
     }
     REFRESH_REPORT_PATH.write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n",

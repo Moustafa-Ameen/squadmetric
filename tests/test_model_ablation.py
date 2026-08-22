@@ -240,9 +240,11 @@ def test_multi_season_baseline_reproduces_identity_safe_no_chip_totals():
 
     expected = {
         ("2023-24", "no-transfers"): (772.0, 669.0),
-        ("2023-24", "deterministic-single-transfer"): (2276.0, 2047.0),
+        # Transfer totals use FPL selling value: half of price-rise profit,
+        # rounded down to GBP 0.1m, with price losses realised in full.
+        ("2023-24", "deterministic-single-transfer"): (2201.0, 1992.0),
         ("2024-25", "no-transfers"): (2174.0, 1963.0),
-        ("2024-25", "deterministic-single-transfer"): (2345.0, 2147.0),
+        ("2024-25", "deterministic-single-transfer"): (2298.0, 2080.0),
     }
     for key, (hindsight, realistic) in expected.items():
         row = comparison.loc[key]

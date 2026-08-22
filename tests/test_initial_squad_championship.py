@@ -9,6 +9,7 @@ import pytest
 
 from fpl_intelligence.initial_squad_championship import (
     CHECKPOINT_FILES,
+    GW1_DECISION_PROFILES,
     P3_BASELINE_NAME,
     P3_CONFIGS,
     OpeningProjectionBundle,
@@ -173,11 +174,48 @@ def test_multi_horizon_optimizer_is_legal_and_deterministic():
     assert first.squad["price"].sum() >= config.minimum_spend
     assert set(first.squad["player_id"]) == set(second.squad["player_id"])
     assert first.horizon_lineups == second.horizon_lineups
+    assert first.projected_metrics["autosub_activation_probability"] == 0.17
     assert first.horizon_captains == second.horizon_captains
     assert first.projected_metrics == second.projected_metrics
     for gameweek, starting_ids in first.horizon_lineups.items():
         assert not validate_starting_xi(first.squad, starting_ids)
         assert first.horizon_captains[gameweek] in starting_ids
+
+
+def test_safe_gw1_profile_enforces_reliable_squad_depth():
+    bundle = _bundle()
+    safe = optimize_opening_squad(bundle, GW1_DECISION_PROFILES["safe"])
+    starts = bundle.projections[1].set_index("player_id")["start_probability"]
+
+    selected_starts = safe.squad["player_id"].map(starts)
+    assert int((selected_starts >= 0.55).sum()) >= 14
+    assert not validate_squad_shape(safe.squad)
+
+
+def test_opening_optimizer_hard_excludes_officially_unavailable_player():
+    bundle = _bundle()
+    candidates = bundle.candidates.copy()
+    candidates["availability_probability"] = 1.0
+    unavailable_id = int(candidates.iloc[-1]["player_id"])
+    candidates.loc[candidates["player_id"] == unavailable_id, "availability_probability"] = 0.0
+    projections = {gameweek: frame.copy() for gameweek, frame in bundle.projections.items()}
+    for frame in projections.values():
+        frame.loc[frame["player_id"] == unavailable_id, "projected_points"] = 100.0
+    unavailable_bundle = OpeningProjectionBundle(
+        season=bundle.season,
+        candidates=candidates,
+        projections=projections,
+        prior_season=bundle.prior_season,
+        data_cutoff=bundle.data_cutoff,
+        projection_hash=bundle.projection_hash,
+    )
+
+    result = optimize_opening_squad(
+        unavailable_bundle,
+        GW1_DECISION_PROFILES["maximum_points"],
+    )
+
+    assert unavailable_id not in set(result.squad["player_id"])
 
 
 def test_all_p3_horizons_produce_evaluable_legal_squads():
@@ -299,6 +337,12 @@ def test_live_bundle_preserves_unmatched_uncertainty_and_fixture_start_probabili
             "price": 7.0,
             "prior_source": "new_player_position_prior",
             "start_likelihood": 0.4,
+            "status": "d",
+            "chance_of_playing_next_round": 75,
+            "availability_probability": 0.75,
+            "launch_evidence_confidence": 0.6,
+            "launch_evidence_type": "official_preseason_role",
+            "launch_evidence_source": "https://example.test/evidence",
             "projections": [
                 {
                     "gameweek": gameweek,
@@ -318,6 +362,9 @@ def test_live_bundle_preserves_unmatched_uncertainty_and_fixture_start_probabili
     )
 
     assert bool(bundle.candidates.iloc[0]["unmatched_player"])
+    assert bundle.candidates.iloc[0]["status"] == "d"
+    assert bundle.candidates.iloc[0]["availability_probability"] == 0.75
+    assert bundle.candidates.iloc[0]["launch_evidence_confidence"] == 0.6
     assert bundle.projections[1].iloc[0]["start_probability"] == 0.8
     assert bundle.data_cutoff == "2026-07-28T00:00:00Z"
     assert len(bundle.projection_hash) == 64

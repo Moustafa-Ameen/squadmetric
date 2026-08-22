@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.readiness import live_decision_context
 from api.routers import (
     backtest,
     chips,
@@ -13,8 +14,8 @@ from api.routers import (
     planner,
     players,
     predictions,
+    review,
 )
-from fpl_intelligence.artifact_contract import validate_current_artifacts
 
 app = FastAPI(title="FPL Intelligence API")
 
@@ -38,6 +39,7 @@ app.include_router(fpl_live.router)
 app.include_router(backtest.router)
 app.include_router(chips.router)
 app.include_router(operations.router)
+app.include_router(review.router)
 
 
 @app.get("/api/health")
@@ -46,5 +48,6 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/readiness")
-def readiness() -> dict[str, Any]:
-    return validate_current_artifacts(check_models=True).to_dict()
+async def readiness() -> dict[str, Any]:
+    decision_readiness, _, _ = await live_decision_context(check_models=True)
+    return decision_readiness.to_dict()

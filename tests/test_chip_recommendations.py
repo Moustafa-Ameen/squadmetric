@@ -1,6 +1,6 @@
 from api import chip_recommendations
 
-from fpl_intelligence.backtest_transfer_strategy import TransferDecision
+from fpl_intelligence.backtest_transfer_strategy import TransferDecision, TransferPlan
 from fpl_intelligence.beam_search import BeamAction
 from fpl_intelligence.chip_simulation import ChipDefinition, ChipState
 from fpl_intelligence.season_rules import build_historical_season_rules
@@ -85,7 +85,7 @@ def test_live_recommendation_exposes_horizon_gain_and_metadata(monkeypatch):
             gameweek = kwargs["gameweek"]
             chip = bboost if gameweek == 2 else None
             return BeamAction(
-                transfer=_empty_transfer(),
+                transfer_plan=TransferPlan.from_decision(_empty_transfer()),
                 chip=chip,
                 chip_squad=None,
                 expected_points=70.0 if chip else 60.0,
@@ -124,6 +124,8 @@ def test_live_recommendation_exposes_horizon_gain_and_metadata(monkeypatch):
     assert result["recommendation"]["chip"] == "Bench Boost"
     assert result["recommendation"]["expected_immediate_gain"] == 10.0
     assert result["recommendation"]["expected_horizon_gain"] == 10.0
+    assert result["recommendation"]["transfers"] == []
+    assert result["recommendation"]["transfer_count"] == 0
     assert result["data_cutoff"] == "2025-08-29T17:30:00Z"
 
 
@@ -144,7 +146,7 @@ def test_live_recommendation_can_return_save_with_future_alternative(monkeypatch
 
         def decide(self, **kwargs):
             return BeamAction(
-                transfer=_empty_transfer(),
+                transfer_plan=TransferPlan.from_decision(_empty_transfer()),
                 chip=None,
                 chip_squad=None,
                 expected_points=50.0,

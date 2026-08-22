@@ -12,8 +12,9 @@ from fpl_intelligence.artifact_contract import (
     CURRENT_ARTIFACT_MANIFEST_PATH,
     validate_current_artifacts,
 )
+from fpl_intelligence.launch_intelligence import LaunchPlayerEvidence
 from fpl_intelligence.live_model_training import LIVE_MINUTES_BAND_MODEL_PATH
-from fpl_intelligence.rank_players import add_preseason_priors
+from fpl_intelligence.rank_players import add_preseason_priors, add_rule_based_scores
 from fpl_intelligence.season_rules import (
     build_season_rules,
     rules_contract_hash,
@@ -132,6 +133,84 @@ def test_preseason_priors_match_names_not_season_local_ids():
         == "new_player_position_prior"
     )
     assert output.loc["Different New Player", "form"] == 3.4
+
+
+def test_launch_evidence_is_canonical_and_official_availability_caps_minutes():
+    players = pd.DataFrame(
+        [
+            {
+                "element_id": 1,
+                "player_name": "Returning Player",
+                "team_name": "Established FC",
+                "season": "2026-27",
+                "position": "Midfielder",
+                "price": 6.0,
+                "selected_by_percent": 5.0,
+                "status": "a",
+                "chance_of_playing_next_round": None,
+                "minutes": 0,
+                "total_points": 0,
+                "points_per_game": 0.0,
+                "form": 0.0,
+                "value_score": 0.0,
+            },
+            {
+                "element_id": 2,
+                "player_name": "Evidence Defender",
+                "team_name": "Hull City",
+                "season": "2026-27",
+                "position": "Defender",
+                "price": 4.0,
+                "selected_by_percent": 1.0,
+                "status": "i",
+                "chance_of_playing_next_round": 0,
+                "minutes": 0,
+                "total_points": 0,
+                "points_per_game": 0.0,
+                "form": 0.0,
+                "value_score": 0.0,
+                "defensive_contribution_per_90": 0.0,
+            },
+        ]
+    )
+    history = pd.DataFrame(
+        [
+            {
+                "season": "2025-26",
+                "player_name": "Returning Player",
+                "position": "MID",
+                "gameweek": gameweek,
+                "minutes": 90,
+                "total_points": 5,
+            }
+            for gameweek in range(1, 39)
+        ]
+    )
+    evidence = [
+        LaunchPlayerEvidence(
+            season="2026-27",
+            player_name="Evidence Defender",
+            team_name="Hull City",
+            inferred_start_probability=0.9,
+            confidence=0.8,
+            source_url="https://example.test/evidence",
+            published_at=datetime(2026, 7, 1, tzinfo=UTC),
+            observed_at=datetime(2026, 7, 2, tzinfo=UTC),
+            evidence_type="official_test",
+            notes="Test evidence",
+            defensive_actions_per_90=11.0,
+        )
+    ]
+
+    priors = add_preseason_priors(players, history, launch_evidence=evidence)
+    ranked = add_rule_based_scores(priors).set_index("player_name")
+
+    assert not any(column.endswith(("_x", "_y")) for column in priors.columns)
+    assert ranked.loc["Returning Player", "preseason_minutes_prior"] == 1.0
+    assert ranked.loc["Returning Player", "minutes_security"] == 1.0
+    assert ranked.loc["Evidence Defender", "availability_probability"] == 0.0
+    assert ranked.loc["Evidence Defender", "minutes_security"] == 0.0
+    assert ranked.loc["Evidence Defender", "defensive_contribution_per_90"] == 11.0
 
 
 def test_rules_manifest_reuses_identical_payload_across_retrievals(tmp_path: Path):

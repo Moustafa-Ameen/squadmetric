@@ -24,6 +24,12 @@ from fpl_intelligence.live_model_training import (
     LIVE_MINUTES_BAND_MODEL_PATH,
     LIVE_RIDGE_MODEL_PATH,
 )
+from fpl_intelligence.scoring_regime_adjustment import bps_v2_adjustment
+from fpl_intelligence.set_piece_intelligence import (
+    SetPieceContext,
+    build_set_piece_context,
+    set_piece_transition_adjustment,
+)
 
 ALLOWED_HORIZONS = (3, 5, 8)
 MODEL_NAME = "Gradient Boosting Regressor"
@@ -81,6 +87,7 @@ def project_player(
         raise ValueError(f"horizon_length must be one of {ALLOWED_HORIZONS}")
 
     player_rows = list(players)
+    set_piece_context = build_set_piece_context(player_rows)
     player = _find_player(player_id_or_name, player_rows)
     return _project_row(
         player,
@@ -91,6 +98,7 @@ def project_player(
         models=models,
         history=history,
         fixture_scenario=fixture_scenario,
+        set_piece_context=set_piece_context,
     )
 
 
@@ -117,6 +125,7 @@ def project_players(
     team_by_id = {team.get("id"): team for team in teams}
     points_model, minutes_model = models or load_planner_models()
     baselines = _recent_baselines(history)
+    set_piece_context = build_set_piece_context(player_rows)
     projections = [{**player, "projections": []} for player in player_rows]
 
     # Batch each GW's fixture rows so the sklearn preprocessing pipeline runs
@@ -160,8 +169,29 @@ def project_players(
         ):
             index, _, fixture = pending_item
             predicted_value = max(0.0, float(predicted))
-            projected_value = max(0.0, float(projected))
-            start_value = max(0.0, min(1.0, float(start_likelihood)))
+            model_start = max(0.0, min(1.0, float(start_likelihood)))
+            start_value = _live_start_likelihood(
+                model_start,
+                player_rows[index],
+                baselines.get(_normalise(player_rows[index].get("name"))) or {},
+            )
+            projected_value = _rescale_projected_points(
+                predicted_value,
+                max(0.0, float(projected)),
+                model_start,
+                start_value,
+            )
+            regime = bps_v2_adjustment(player_rows[index], baselines.get(
+                _normalise(player_rows[index].get("name"))
+            ) or {})
+            projected_value = max(0.0, projected_value - regime.total_penalty * start_value)
+            set_piece = set_piece_transition_adjustment(
+                player_rows[index], set_piece_context
+            )
+            projected_value = max(
+                0.0,
+                projected_value + set_piece.total_adjustment * start_value,
+            )
             fixture_results[index].append(
                 {
                     "opponent": fixture["opponent"],
@@ -172,6 +202,8 @@ def project_players(
                     "predicted_points": round(predicted_value, 2),
                     "start_likelihood": round(start_value, 4),
                     "projected_points": round(projected_value, 2),
+                    "scoring_regime_adjustment": regime.to_dict(),
+                    "set_piece_adjustment": set_piece.to_dict(),
                     **_fixture_metadata(fixture),
                 }
             )
@@ -204,6 +236,7 @@ def _project_row(
     models=None,
     history: pd.DataFrame | None = None,
     fixture_scenario: FixtureScenario | None = None,
+    set_piece_context: SetPieceContext | None = None,
 ) -> list[dict[str, Any]]:
     points_model, minutes_model = models or load_planner_models()
     projection_fixtures = (
@@ -214,6 +247,7 @@ def _project_row(
     team_by_id = {team.get("id"): team for team in teams}
     baselines = _recent_baselines(history)
     baseline = baselines.get(_normalise(player.get("name"))) or {}
+    role_context = set_piece_context or build_set_piece_context([player])
 
     output = []
     for gameweek in range(start_gameweek, start_gameweek + horizon_length):
@@ -243,9 +277,23 @@ def _project_row(
                 points_model, minutes_model, feature_frame
             )
             predicted_points = max(0.0, float(predicted_points[0]))
-            projected_points = max(0.0, float(projected_points[0]))
-            start_likelihood = float(start_likelihood[0])
-            start_likelihood = max(0.0, min(1.0, start_likelihood))
+            model_start = max(0.0, min(1.0, float(start_likelihood[0])))
+            start_likelihood = _live_start_likelihood(model_start, player, baseline)
+            projected_points = _rescale_projected_points(
+                predicted_points,
+                max(0.0, float(projected_points[0])),
+                model_start,
+                start_likelihood,
+            )
+            regime = bps_v2_adjustment(player, baseline)
+            projected_points = max(
+                0.0, projected_points - regime.total_penalty * start_likelihood
+            )
+            set_piece = set_piece_transition_adjustment(player, role_context)
+            projected_points = max(
+                0.0,
+                projected_points + set_piece.total_adjustment * start_likelihood,
+            )
             fixture_projections.append(
                 {
                     "opponent": fixture["opponent"],
@@ -256,6 +304,8 @@ def _project_row(
                     "predicted_points": round(predicted_points, 2),
                     "start_likelihood": round(start_likelihood, 4),
                     "projected_points": round(projected_points, 2),
+                    "scoring_regime_adjustment": regime.to_dict(),
+                    "set_piece_adjustment": set_piece.to_dict(),
                     **_fixture_metadata(fixture),
                 }
             )
@@ -293,6 +343,53 @@ def _projected_values(points_model: Any, minutes_model: Any, features: pd.DataFr
         start_likelihoods = np.asarray(minutes_model.predict_proba(features))[:, 1]
         projected_points = predicted_points * start_likelihoods
     return predicted_points, projected_points, start_likelihoods
+
+
+def _live_start_likelihood(
+    model_start: float,
+    player: dict[str, Any],
+    baseline: dict[str, Any],
+) -> float:
+    """Blend the historical minutes model with current source-attributed role evidence."""
+
+    prior_raw = player.get("start_likelihood")
+    if prior_raw is None:
+        blended = model_start
+    else:
+        prior = max(0.0, min(1.0, _number(prior_raw)))
+        source = str(player.get("prior_source") or "")
+        if source.startswith("launch_evidence:"):
+            prior_weight = 0.85
+        elif source == "new_player_position_prior" or not baseline:
+            prior_weight = 0.75
+        else:
+            prior_weight = 0.35
+        blended = prior_weight * prior + (1.0 - prior_weight) * model_start
+
+    availability_raw = player.get("availability_probability")
+    availability = (
+        max(0.0, min(1.0, _number(availability_raw)))
+        if availability_raw is not None
+        else 1.0
+    )
+    return max(0.0, min(1.0, blended, availability))
+
+
+def _rescale_projected_points(
+    predicted_points: float,
+    model_projected_points: float,
+    model_start: float,
+    live_start: float,
+) -> float:
+    if live_start <= 0:
+        return 0.0
+    if model_start > 0.05:
+        adjusted = model_projected_points * live_start / model_start
+    else:
+        adjusted = predicted_points * live_start
+    # The role overlay may correct availability, but must not manufacture an
+    # extreme ceiling from a near-zero model denominator.
+    return max(0.0, min(adjusted, predicted_points * 1.15))
 
 
 def _feature_row(
@@ -398,7 +495,7 @@ def _gameweek_metadata(
     return {**row, **fixture_scenario.metadata()}
 
 
-def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, float]]:
+def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, Any]]:
     if history is None or history.empty:
         return {}
 
@@ -427,6 +524,7 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, float
             output[player_name] = {
                 "minutes_last_3": float(rows["minutes"].sum()),
                 "points_last_3": float(rows["total_points"].sum()),
+                "prior_team": str(rows.iloc[-1].get("team") or ""),
             }
 
     return output

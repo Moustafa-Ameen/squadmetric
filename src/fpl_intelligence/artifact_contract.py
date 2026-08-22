@@ -12,6 +12,11 @@ from typing import Any
 import joblib
 import pandas as pd
 
+from fpl_intelligence.availability import AvailabilityEvent
+from fpl_intelligence.launch_intelligence import (
+    DEFAULT_LAUNCH_EVIDENCE_PATH,
+    load_launch_evidence,
+)
 from fpl_intelligence.live_model_training import (
     LIVE_MINUTES_BAND_MODEL_PATH,
     LIVE_MODEL_METADATA_PATH,
@@ -29,7 +34,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 CURRENT_ARTIFACT_MANIFEST_PATH = PROCESSED_DIR / "current_artifact_manifest.json"
-ARTIFACT_SCHEMA_VERSION = "current-artifacts-v1"
+ARTIFACT_SCHEMA_VERSION = "current-artifacts-v2-launch-intelligence"
+LIVE_CURRENT_HISTORY_PATH = PROCESSED_DIR / "live_2026_27_player_gw.csv"
 
 
 @dataclass(frozen=True)
@@ -54,6 +60,12 @@ class CurrentArtifactManifest:
     rules_manifest_path: str
     model_metadata_path: str
     model_metadata_hash: str
+    launch_evidence_path: str
+    launch_evidence_hash: str
+    availability_events_path: str
+    availability_events_hash: str
+    live_history_path: str | None = None
+    live_history_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -101,6 +113,8 @@ def build_current_artifact_manifest(
     rules: SeasonRules,
     rules_manifest_path: Path,
     model_metadata_path: Path = LIVE_MODEL_METADATA_PATH,
+    launch_evidence_path: Path = DEFAULT_LAUNCH_EVIDENCE_PATH,
+    availability_events_path: Path = PROCESSED_DIR / "current_availability_events.json",
     generated_at: str | None = None,
 ) -> CurrentArtifactManifest:
     season = infer_season_from_bootstrap(bootstrap)
@@ -130,6 +144,20 @@ def build_current_artifact_manifest(
         rules_manifest_path=str(rules_manifest_path),
         model_metadata_path=str(model_metadata_path),
         model_metadata_hash=file_sha256(model_metadata_path),
+        launch_evidence_path=str(launch_evidence_path),
+        launch_evidence_hash=file_sha256(launch_evidence_path),
+        availability_events_path=str(availability_events_path),
+        availability_events_hash=file_sha256(availability_events_path),
+        live_history_path=(
+            str(LIVE_CURRENT_HISTORY_PATH)
+            if LIVE_CURRENT_HISTORY_PATH.exists()
+            else None
+        ),
+        live_history_hash=(
+            file_sha256(LIVE_CURRENT_HISTORY_PATH)
+            if LIVE_CURRENT_HISTORY_PATH.exists()
+            else None
+        ),
     )
 
 
@@ -185,12 +213,15 @@ def validate_current_artifacts(
         "players_ranked_path",
         "rules_manifest_path",
         "model_metadata_path",
+        "launch_evidence_path",
+        "availability_events_path",
     )
     paths: dict[str, Path] = {}
     for field in path_fields:
-        path = Path(str(manifest.get(field, "")))
+        raw_path = str(manifest.get(field, "")).strip()
+        path = Path(raw_path) if raw_path else Path("__missing_artifact_path__")
         paths[field] = path
-        if not path.exists():
+        if not raw_path or not path.is_file():
             errors.append(f"{field} is missing: {path}")
     if errors:
         return ArtifactReadiness(
@@ -211,6 +242,8 @@ def validate_current_artifacts(
         ("players_current_path", "players_current_hash"),
         ("players_ranked_path", "players_ranked_hash"),
         ("model_metadata_path", "model_metadata_hash"),
+        ("launch_evidence_path", "launch_evidence_hash"),
+        ("availability_events_path", "availability_events_hash"),
     ):
         if file_sha256(paths[path_field]) != manifest.get(hash_field):
             errors.append(f"{path_field} hash does not match manifest")
@@ -245,6 +278,55 @@ def validate_current_artifacts(
         errors.append("players_ranked element IDs do not match bootstrap")
     if len(current) != int(manifest.get("player_count", -1)):
         errors.append("players_current row count does not match manifest")
+    ambiguous_prior_columns = [
+        column for column in current.columns if column.endswith(("_x", "_y"))
+    ]
+    if ambiguous_prior_columns:
+        errors.append(
+            "players_current contains ambiguous merge columns: "
+            + ", ".join(sorted(ambiguous_prior_columns))
+        )
+    for required_prior in (
+        "preseason_minutes_prior",
+        "availability_probability",
+        "prior_source",
+    ):
+        if required_prior not in current:
+            errors.append(f"players_current is missing launch field {required_prior}")
+
+    try:
+        launch_evidence = load_launch_evidence(
+            paths["launch_evidence_path"], season=season, cutoff=manifest["data_cutoff"]
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        errors.append(f"launch evidence contract is invalid: {exc}")
+        launch_evidence = []
+    evidence_names = {item.player_name for item in launch_evidence}
+    current_names = set(current.get("player_name", pd.Series(dtype=str)).dropna().astype(str))
+    missing_evidence_players = sorted(evidence_names.difference(current_names))
+    if missing_evidence_players:
+        warnings.append(
+            "launch evidence players are not in the current bootstrap: "
+            + ", ".join(missing_evidence_players)
+        )
+
+    try:
+        availability_payload = json.loads(
+            paths["availability_events_path"].read_text(encoding="utf-8")
+        )
+        availability_events = [
+            AvailabilityEvent.from_mapping(value)
+            for value in availability_payload.get("events", [])
+        ]
+        unknown_event_ids = sorted(
+            {event.player_id for event in availability_events}.difference(bootstrap_ids)
+        )
+        if unknown_event_ids:
+            errors.append("availability events contain unknown player IDs")
+        if availability_payload.get("season") != season:
+            errors.append("availability-event season does not match manifest")
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        errors.append(f"availability-event contract is invalid: {exc}")
 
     teams = {
         str(team.get("name"))
@@ -286,8 +368,50 @@ def validate_current_artifacts(
     )
     if model_metadata.get("target_season") != season:
         errors.append("live-model target season does not match artifact season")
-    if season in set(model_metadata.get("training_seasons", [])):
-        errors.append("live-model metadata includes target-season outcomes in training")
+    target_in_training = season in set(model_metadata.get("training_seasons", []))
+    finalized_rows = int(model_metadata.get("finalized_current_season_rows") or 0)
+    finalized_gameweeks = [
+        int(value)
+        for value in model_metadata.get("finalized_current_season_gameweeks", [])
+    ]
+    if target_in_training:
+        if finalized_rows <= 0 or not finalized_gameweeks:
+            errors.append(
+                "live-model target-season training lacks finalized Gameweek evidence"
+            )
+        if finalized_gameweeks and finalized_gameweeks != list(
+            range(1, max(finalized_gameweeks) + 1)
+        ):
+            errors.append("live-model finalized Gameweeks are not contiguous from GW1")
+        live_history_path = str(manifest.get("live_history_path") or "").strip()
+        if not live_history_path:
+            errors.append("artifact manifest is missing finalized live-history path")
+        else:
+            live_path = Path(live_history_path)
+            if not live_path.is_file():
+                errors.append(f"finalized live history is missing: {live_path}")
+            elif file_sha256(live_path) != manifest.get("live_history_hash"):
+                errors.append("finalized live-history hash does not match manifest")
+            else:
+                live_history = pd.read_csv(live_path)
+                if len(live_history) != finalized_rows:
+                    errors.append(
+                        "finalized live-history row count does not match model metadata"
+                    )
+                required_flags = {"official_finished", "official_data_checked"}
+                if not required_flags.issubset(live_history.columns):
+                    errors.append("finalized live history is missing official status flags")
+                elif not all(
+                    _strict_true(live_history[flag]).all()
+                    for flag in required_flags
+                ):
+                    errors.append("finalized live history contains provisional rows")
+                if file_sha256(live_path) != model_metadata.get(
+                    "finalized_current_season_hash"
+                ):
+                    errors.append(
+                        "finalized live-history content hash does not match model metadata"
+                    )
     for key, artifact in model_metadata.get("artifacts", {}).items():
         artifact_path = paths["model_metadata_path"].parent / str(artifact.get("path"))
         if not artifact_path.exists():
@@ -316,3 +440,9 @@ def validate_current_artifacts(
         manifest=manifest,
         models_checked=check_models,
     )
+
+
+def _strict_true(values: pd.Series) -> pd.Series:
+    """Interpret only explicit boolean/1/true values as true."""
+
+    return values.astype("string").str.strip().str.lower().isin({"true", "1"})

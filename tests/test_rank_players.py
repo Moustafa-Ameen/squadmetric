@@ -45,5 +45,6 @@ def test_add_rule_based_scores_adds_expected_columns():
     }
     assert expected_columns.issubset(ranked.columns)
     assert ranked.loc[0, "minutes_security"] == 1.0
+    assert ranked.loc[0, "availability_probability"] == 1.0
     assert ranked.loc[1, "ownership_risk"] == 0.95
     assert ranked.loc[0, "captain_score"] > ranked.loc[1, "captain_score"]

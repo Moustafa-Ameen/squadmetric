@@ -25,6 +25,12 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from fpl_intelligence.preseason import build_identity_safe_preseason_pool
+from fpl_intelligence.price_economics import (
+    initialise_incoming_player,
+    initialise_squad_economics,
+    refresh_squad_prices,
+    squad_selling_value,
+)
 from fpl_intelligence.squad_optimizer import optimize_squad, optimize_starting_xi
 from fpl_intelligence.step4_models import (
     FEATURE_COLUMNS,
@@ -90,6 +96,54 @@ class TransferDecision:
     @property
     def made(self) -> bool:
         return self.outgoing_id is not None and self.incoming_id is not None
+
+
+@dataclass(frozen=True)
+class TransferPlan:
+    """A legal set of transfers confirmed at the same FPL deadline."""
+
+    moves: tuple[TransferDecision, ...] = ()
+    projected_gain: float = 0.0
+    net_projected_gain: float = 0.0
+    hit_cost: int = 0
+    expected_horizon_gain: float = 0.0
+    expected_horizon_net_gain: float = 0.0
+    bank_after: float | None = None
+
+    @property
+    def made(self) -> bool:
+        return bool(self.moves)
+
+    @property
+    def count(self) -> int:
+        return len(self.moves)
+
+    @property
+    def primary(self) -> TransferDecision:
+        return self.moves[0] if self.moves else empty_transfer_decision()
+
+    @classmethod
+    def from_decision(
+        cls,
+        decision: TransferDecision,
+        *,
+        bank_after: float | None = None,
+    ) -> TransferPlan:
+        if not decision.made:
+            return cls(bank_after=bank_after)
+        return cls(
+            moves=(decision,),
+            projected_gain=decision.projected_gain,
+            net_projected_gain=decision.net_projected_gain,
+            hit_cost=decision.hit_cost,
+            expected_horizon_gain=decision.projected_gain,
+            expected_horizon_net_gain=decision.net_projected_gain,
+            bank_after=bank_after,
+        )
+
+
+def empty_transfer_decision() -> TransferDecision:
+    return TransferDecision(None, None, None, None, 0.0, 0.0, 0, None, None)
 
 
 @dataclass(frozen=True)
@@ -556,12 +610,11 @@ def _apply_transfer(
     if not decision.made:
         return squad.copy()
     incoming = predictions[predictions["player_id"] == decision.incoming_id].iloc[0]
-    incoming = incoming.copy()
-    incoming["price"] = _decision_price(incoming)
+    incoming = initialise_incoming_player(incoming, _decision_price(incoming))
     updated = squad[squad["player_id"] != decision.outgoing_id].copy()
     updated = pd.concat([updated, pd.DataFrame([incoming])], ignore_index=True)
     updated["position_group"] = updated["position"].map(position_group)
-    violations = validate_squad(updated)
+    violations = validate_squad(updated, budget=float("inf"))
     if violations:
         raise ValueError(f"Transfer produced an invalid squad: {'; '.join(violations)}")
     return updated
@@ -665,9 +718,9 @@ def run_transfer_strategy_backtest(
     if not gameweeks or gameweeks[0] != 1:
         raise ValueError(f"Expected {TEST_SEASON} data starting at GW1")
 
-    initial_squad = build_initial_squad(players)
+    initial_squad = initialise_squad_economics(build_initial_squad(players))
     squad = initial_squad.copy()
-    bank = 0.0
+    bank = round(INITIAL_BUDGET - squad_selling_value(squad), 1)
     free_transfers = 1
     result_rows: list[dict[str, Any]] = []
     strategy_points = 0.0
@@ -693,7 +746,7 @@ def run_transfer_strategy_backtest(
     for gameweek in gameweeks:
         target = season_players[season_players["gameweek"] == gameweek]
         prices = _latest_prices(players, gameweek)
-        squad["price"] = squad["player_id"].map(prices).fillna(squad["price"])
+        squad = refresh_squad_prices(squad, prices)
         bank_before = bank
         free_transfers_before = free_transfers
 

@@ -65,6 +65,23 @@ COLUMN_EXPLANATIONS = {
         "Defensive actions per 90 minutes: clearances, blocks, interceptions, tackles, and "
         "recoveries combined under the current FPL Defensive Contributions rule."
     ),
+    "starts": "Previous-season starts supplied in the launch bootstrap.",
+    "bonus": "Previous-season FPL bonus points under that season's BPS regime.",
+    "bps": "Previous-season raw Bonus Points System total.",
+    "clearances_blocks_interceptions": "Previous-season CBI action total.",
+    "tackles": "Previous-season tackle total.",
+    "recoveries": "Previous-season recovery total.",
+    "player_code": "Stable Premier League player code used to reconcile set-piece roles.",
+    "penalties_order": "Official sortable penalty-taking order for the player's club.",
+    "penalties_text": "Official explanatory penalty-taking text, when supplied.",
+    "direct_freekicks_order": "Official sortable direct-free-kick order.",
+    "direct_freekicks_text": "Official explanatory direct-free-kick text, when supplied.",
+    "corners_and_indirect_freekicks_order": (
+        "Official sortable corners and indirect-free-kick order."
+    ),
+    "corners_and_indirect_freekicks_text": (
+        "Official explanatory corner/indirect-free-kick text, when supplied."
+    ),
 }
 
 
@@ -130,15 +147,35 @@ def load_players(bootstrap_data: dict[str, Any]) -> pd.DataFrame:
 
     players["price"] = players["now_cost"] / 10
     players["element_id"] = players["id"]
+    players["player_code"] = players["code"] if "code" in players else pd.NA
     players["player_name"] = players["first_name"] + " " + players["second_name"]
     players["points_per_game"] = pd.to_numeric(players["points_per_game"], errors="coerce")
     players["form"] = pd.to_numeric(players["form"], errors="coerce")
     players["selected_by_percent"] = pd.to_numeric(players["selected_by_percent"], errors="coerce")
-    for column in ["defensive_contribution", "defensive_contribution_per_90"]:
+    for column in [
+        "defensive_contribution",
+        "defensive_contribution_per_90",
+        "starts",
+        "bonus",
+        "bps",
+        "clearances_blocks_interceptions",
+        "tackles",
+        "recoveries",
+    ]:
         if column in players:
             players[column] = pd.to_numeric(players[column], errors="coerce").fillna(0.0)
         else:
             players[column] = 0.0
+    for column in [
+        "penalties_order",
+        "direct_freekicks_order",
+        "corners_and_indirect_freekicks_order",
+    ]:
+        players[column] = (
+            pd.to_numeric(players[column], errors="coerce")
+            if column in players
+            else pd.NA
+        )
     players["value_score"] = players["total_points"].div(
         players["price"].where(players["price"] > 0)
     ).fillna(0.0)

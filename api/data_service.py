@@ -43,7 +43,6 @@ PLAYERS_RANKED_NUMERIC_COLUMNS = [
 
 DATA_FILES = {
     "players": "players_ranked.csv",
-    "backtest_predictions": "step6_backtest_predictions.csv",
     "raw_accuracy": "step7_raw_accuracy.csv",
     "adjusted_accuracy": "step7_adjusted_accuracy.csv",
     "captaincy_backtest": "step7_captaincy_backtest.csv",
@@ -82,17 +81,12 @@ def to_records(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
     if dataframe.empty:
         return []
 
-    clean = dataframe.copy()
-    clean = clean.where(pd.notna(clean), None)
+    clean = dataframe.astype(object).where(pd.notna(dataframe), None)
     return clean.to_dict(orient="records")
 
 
 def players() -> pd.DataFrame:
     return load_dataset("players").copy()
-
-
-def backtest_predictions() -> pd.DataFrame:
-    return load_dataset("backtest_predictions").copy()
 
 
 def raw_accuracy() -> pd.DataFrame:

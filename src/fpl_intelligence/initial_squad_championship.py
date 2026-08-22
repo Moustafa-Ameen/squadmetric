@@ -12,7 +12,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -82,6 +82,8 @@ class OpeningSquadConfig:
     minimum_spend: float
     captain_weight: float = 1.0
     wildcard_scenario_gameweek: int | None = None
+    reliable_start_threshold: float = 0.0
+    minimum_reliable_players: int = 0
 
 
 P3_CONFIGS = {
@@ -115,13 +117,48 @@ P3_CONFIGS = {
         name="horizon_8_flexible",
         horizon=8,
         decay=0.94,
-        depth_weight=0.14,
+        depth_weight=0.17,
         value_weight=0.06,
         uncertainty_penalty=0.16,
         unmatched_penalty=0.10,
         promoted_team_penalty=0.05,
         transfer_pressure_penalty=0.08,
         minimum_spend=95.5,
+    ),
+}
+
+# P7 keeps the validated eight-Gameweek policy as the default, but exposes
+# deterministic risk alternatives from the same projections and legality model.
+GW1_DECISION_PROFILES = {
+    "maximum_points": replace(
+        P3_CONFIGS["horizon_8_flexible"],
+        name="gw1_maximum_points",
+        uncertainty_penalty=0.0,
+        depth_weight=0.04,
+        unmatched_penalty=0.04,
+        promoted_team_penalty=0.02,
+        transfer_pressure_penalty=0.03,
+        reliable_start_threshold=0.0,
+        minimum_reliable_players=0,
+    ),
+    "balanced": replace(
+        P3_CONFIGS["horizon_8_flexible"],
+        name="gw1_balanced",
+        reliable_start_threshold=0.35,
+        minimum_reliable_players=13,
+    ),
+    "safe": replace(
+        P3_CONFIGS["horizon_8_flexible"],
+        name="gw1_safe_depth",
+        uncertainty_penalty=0.35,
+        depth_weight=0.24,
+        value_weight=0.08,
+        unmatched_penalty=0.18,
+        promoted_team_penalty=0.08,
+        transfer_pressure_penalty=0.12,
+        minimum_spend=94.0,
+        reliable_start_threshold=0.55,
+        minimum_reliable_players=14,
     ),
 }
 
@@ -256,6 +293,25 @@ def build_live_opening_projection_bundle(
                 "promoted_team": bool(player.get("promoted_team", False)),
                 "identity_value_score": 0.0,
                 "prior_source": prior_source,
+                "status": player.get("status"),
+                "chance_of_playing_next_round": player.get(
+                    "chance_of_playing_next_round"
+                ),
+                "availability_probability": float(
+                    player.get("availability_probability")
+                    if player.get("availability_probability") is not None
+                    else 0.5
+                ),
+                "start_likelihood": float(
+                    player.get("start_likelihood")
+                    if player.get("start_likelihood") is not None
+                    else 0.4
+                ),
+                "launch_evidence_confidence": float(
+                    player.get("launch_evidence_confidence") or 0.0
+                ),
+                "launch_evidence_type": player.get("launch_evidence_type"),
+                "launch_evidence_source": player.get("launch_evidence_source"),
             }
         )
         by_gameweek = {
@@ -338,6 +394,7 @@ def optimize_opening_squad(
             for gameweek in gameweeks
         ]
     )
+    mean_start_probability = start_matrix.mean(axis=1)
     weights = np.array(
         [config.decay ** (gameweek - 1) for gameweek in gameweeks],
         dtype=float,
@@ -347,11 +404,13 @@ def optimize_opening_squad(
         projection_matrix.clip(min=0.0) * uncertainty
     )
     weighted_average = (risk_adjusted * weights).sum(axis=1) / weights.sum()
+    autosub_matrix = config.depth_weight * risk_adjusted * start_matrix
+    autosub_support = (autosub_matrix * weights).sum(axis=1)
     late_window = risk_adjusted[:, max(0, n_horizons - 3) :].mean(axis=1)
     transfer_pressure = np.maximum(0.0, risk_adjusted[:, 0] - late_window)
     price = pd.to_numeric(candidates["price"], errors="coerce").fillna(0.0).to_numpy()
     squad_support = (
-        config.depth_weight * weighted_average
+        autosub_support
         + config.value_weight * weighted_average / np.maximum(price, 3.5)
         - config.unmatched_penalty
         * candidates["unmatched_player"].astype(float).to_numpy()
@@ -369,7 +428,9 @@ def optimize_opening_squad(
     for horizon_index, weight in enumerate(weights):
         y_start = y_offset + horizon_index * n_players
         c_start = captain_offset + horizon_index * n_players
-        objective[y_start : y_start + n_players] = -weight * risk_adjusted[:, horizon_index]
+        objective[y_start : y_start + n_players] = -weight * (
+            risk_adjusted[:, horizon_index] - autosub_matrix[:, horizon_index]
+        )
         objective[c_start : c_start + n_players] = (
             -weight * config.captain_weight * risk_adjusted[:, horizon_index]
         )
@@ -409,6 +470,15 @@ def optimize_opening_squad(
         coefficients = np.zeros(variable_count)
         coefficients[:n_players] = teams.eq(team).astype(float)
         add_constraint(coefficients, -np.inf, MAX_PLAYERS_PER_TEAM)
+    if config.minimum_reliable_players:
+        reliable = mean_start_probability >= config.reliable_start_threshold
+        coefficients = np.zeros(variable_count)
+        coefficients[:n_players] = reliable.astype(float)
+        add_constraint(
+            coefficients,
+            config.minimum_reliable_players,
+            np.inf,
+        )
 
     for horizon_index in range(n_horizons):
         y_start = y_offset + horizon_index * n_players
@@ -450,10 +520,19 @@ def optimize_opening_squad(
         np.array(lower, dtype=float),
         np.array(upper, dtype=float),
     )
+    upper_bounds = np.ones(variable_count)
+    if "availability_probability" in candidates:
+        unavailable = (
+            pd.to_numeric(
+                candidates["availability_probability"], errors="coerce"
+            ).fillna(0.5)
+            <= 0.0
+        ).to_numpy()
+        upper_bounds[:n_players][unavailable] = 0.0
     result = milp(
         c=objective,
         integrality=np.ones(variable_count),
-        bounds=Bounds(np.zeros(variable_count), np.ones(variable_count)),
+        bounds=Bounds(np.zeros(variable_count), upper_bounds),
         constraints=constraints,
         options={"time_limit": 30.0},
     )
@@ -499,6 +578,18 @@ def optimize_opening_squad(
                 float(np.mean(transfer_pressure[selected_mask])),
                 4,
             ),
+            "mean_start_probability": round(
+                float(np.mean(mean_start_probability[selected_mask])),
+                4,
+            ),
+            "reliable_players": int(
+                (
+                    mean_start_probability[selected_mask]
+                    >= config.reliable_start_threshold
+                ).sum()
+            ),
+            "reliable_start_threshold": config.reliable_start_threshold,
+            "autosub_activation_probability": config.depth_weight,
             "projection_hash": bundle.projection_hash,
             "data_cutoff": bundle.data_cutoff,
         }

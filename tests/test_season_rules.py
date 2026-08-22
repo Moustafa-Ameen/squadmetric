@@ -230,6 +230,36 @@ def test_snapshot_preserves_raw_payload_and_is_immutable(tmp_path: Path):
         save_immutable_snapshot(changed_payload, metadata, root=tmp_path / "raw")
 
 
+def test_identical_snapshots_reuse_payload_storage_with_distinct_metadata(tmp_path: Path):
+    payload = bootstrap_fixture()
+    first_metadata = build_snapshot_metadata(
+        payload,
+        season="2026-27",
+        source_url="https://example.test/bootstrap",
+        retrieved_at="2026-07-22T12:00:00Z",
+    )
+    second_metadata = build_snapshot_metadata(
+        payload,
+        season="2026-27",
+        source_url="https://example.test/bootstrap",
+        retrieved_at="2026-07-22T13:00:00Z",
+    )
+
+    first_payload, first_meta = save_immutable_snapshot(
+        payload, first_metadata, root=tmp_path / "raw"
+    )
+    second_payload, second_meta = save_immutable_snapshot(
+        payload, second_metadata, root=tmp_path / "raw"
+    )
+
+    assert first_payload != second_payload
+    assert first_meta != second_meta
+    assert first_payload.stat().st_ino == second_payload.stat().st_ino
+    assert json.loads(second_meta.read_text(encoding="utf-8"))["cutoff_at"] != json.loads(
+        first_meta.read_text(encoding="utf-8")
+    )["cutoff_at"]
+
+
 def test_rules_manifest_is_content_addressed(tmp_path: Path):
     rules = build_season_rules(
         bootstrap_fixture(),

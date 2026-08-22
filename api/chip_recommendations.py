@@ -11,6 +11,10 @@ import pandas as pd
 from api.chip_tracking import CHIP_LABELS
 from fpl_intelligence.beam_search import BeamAction, DeterministicBeamPlanner
 from fpl_intelligence.chip_simulation import ChipState
+from fpl_intelligence.price_economics import (
+    initialise_squad_economics,
+    live_pick_price,
+)
 from fpl_intelligence.season_rules import SeasonRules
 
 LIVE_RULES_SOURCE = "https://fantasy.premierleague.com/api/bootstrap-static/"
@@ -87,6 +91,16 @@ def projection_frames(
                         if start_likelihoods
                         else 0.0
                     ),
+                    "status": player.get("status"),
+                    "chance_of_playing_next_round": player.get(
+                        "chance_of_playing_next_round"
+                    ),
+                    "news": player.get("news"),
+                    "penalties_order": player.get("penalties_order"),
+                    "direct_freekicks_order": player.get("direct_freekicks_order"),
+                    "corners_and_indirect_freekicks_order": player.get(
+                        "corners_and_indirect_freekicks_order"
+                    ),
                 }
             )
 
@@ -113,18 +127,38 @@ def squad_frame(
         if player_id is None or int(player_id) not in by_id:
             continue
         player = by_id[int(player_id)]
+        current_price = _number(player.get("price"))
+        purchase_price = live_pick_price(pick.get("purchase_price"))
+        selling_price = live_pick_price(pick.get("selling_price"))
         rows.append(
             {
                 "player_id": int(player_id),
                 "player_name": player.get("name") or player.get("web_name") or "Unknown",
                 "position": _position(player.get("position")),
                 "team": player.get("team_id"),
-                "price": _number(player.get("price")),
+                "price": selling_price if selling_price is not None else current_price,
+                "purchase_price": (
+                    purchase_price if purchase_price is not None else current_price
+                ),
+                "current_price": current_price,
+                "selling_price": selling_price,
                 "expected_points_adjusted": 0.0,
                 "probability_60_plus_minutes": _number(player.get("start_likelihood")),
+                "status": player.get("status"),
+                "chance_of_playing_next_round": player.get(
+                    "chance_of_playing_next_round"
+                ),
+                "news": player.get("news"),
+                "penalties_order": player.get("penalties_order"),
+                "direct_freekicks_order": player.get("direct_freekicks_order"),
+                "corners_and_indirect_freekicks_order": player.get(
+                    "corners_and_indirect_freekicks_order"
+                ),
             }
         )
-    return pd.DataFrame(rows)
+    if not rows:
+        return pd.DataFrame(rows)
+    return initialise_squad_economics(pd.DataFrame(rows))
 
 
 def recommend_live_chip(
@@ -288,14 +322,27 @@ def _recommendation_payload(
         },
         "confidence": _confidence(expected_horizon_gain, action.uncertainty_penalty),
         "ordinary_transfer_allowed": chip is None or chip.name not in {"wildcard", "freehit"},
-        "ordinary_transfer_applied": bool(action.transfer.made),
+        "ordinary_transfer_applied": action.transfer_plan.made,
         "transfer": {
             "outgoing_id": action.transfer.outgoing_id,
             "outgoing_name": action.transfer.outgoing_name,
             "incoming_id": action.transfer.incoming_id,
             "incoming_name": action.transfer.incoming_name,
-            "hit_cost": action.transfer.hit_cost,
+            "hit_cost": action.transfer_plan.hit_cost,
         },
+        "transfers": [
+            {
+                "outgoing_id": move.outgoing_id,
+                "outgoing_name": move.outgoing_name,
+                "incoming_id": move.incoming_id,
+                "incoming_name": move.incoming_name,
+                "projected_gain": _round(move.projected_gain),
+                "hit_cost": move.hit_cost,
+            }
+            for move in action.transfers
+        ],
+        "transfer_count": action.transfer_plan.count,
+        "total_hit_cost": action.transfer_plan.hit_cost,
         "reason": (
             action.reason
             if use_chip

@@ -1,15 +1,15 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api import fpl_client
 from api.chip_tracking import build_chip_status
 from api.live_projection_service import live_projection_rows
-from api.readiness import require_live_artifacts
+from api.readiness import live_decision_context, require_live_artifacts
 from api.routers.fixtures import fixture_source_state
 from api.routers.predictions import BEST_MODEL
-from fpl_intelligence.artifact_contract import validate_current_artifacts
+from fpl_intelligence.price_economics import live_pick_price
 from fpl_intelligence.season_rules import infer_season_from_bootstrap
 
 router = APIRouter(prefix="/api/fpl", tags=["fpl-live"])
@@ -92,12 +92,28 @@ async def current_gameweek() -> dict[str, int | None]:
 
 @router.get("/season-state")
 async def season_state() -> dict[str, Any]:
-    bootstrap = await fpl_client.get_bootstrap()
-    fixture_state = await fixture_source_state()
-    fpl_api_season = _season_label_from_bootstrap(bootstrap)
-    readiness = validate_current_artifacts(
-        expected_season=fpl_api_season,
-        check_models=False,
+    readiness, bootstrap, fixture_rows = await live_decision_context(
+        check_models=True
+    )
+    bootstrap = bootstrap or {}
+    fixture_state = (
+        await fixture_source_state(fixture_rows)
+        if fixture_rows is not None
+        else {
+            "source": "Fixture data unavailable",
+            "season": "unknown",
+            "difficulty_source": "unknown",
+            "freshness": "unavailable",
+            "next_kickoff": None,
+        }
+    )
+    fpl_api_season = (
+        _season_label_from_bootstrap(bootstrap) if bootstrap else readiness.season
+    )
+    season_status = (
+        _detect_season_state(bootstrap, fixture_state)
+        if bootstrap
+        else "unavailable"
     )
     return {
         "fpl_api_season": fpl_api_season,
@@ -106,18 +122,23 @@ async def season_state() -> dict[str, Any]:
         "difficulty_source": fixture_state["difficulty_source"],
         "current_gw": _current_gameweek_from_bootstrap(bootstrap),
         "next_gw": _next_gameweek_from_bootstrap(bootstrap),
-        "season_state": _detect_season_state(bootstrap, fixture_state),
+        "season_state": season_status,
         "recommendations_ready": readiness.ready,
+        "decision_status": readiness.status,
+        "recommendation_mode": "generic" if readiness.ready else "blocked",
+        "decision_blockers": readiness.blockers,
         "artifact_status": readiness.status,
-        "artifact_errors": readiness.errors,
+        "artifact_errors": [row["message"] for row in readiness.blockers],
         "artifact_manifest": readiness.manifest,
+        "live_data": readiness.live_data,
+        "artifact_data": readiness.artifact_data,
         "last_completed_gw": max(
             (int(event["id"]) for event in bootstrap.get("events", []) if event.get("finished")),
             default=None,
         ),
         "next_season_start": fixture_state.get("next_kickoff"),
         "data_freshness": {
-            "fpl_api": "live",
+            "fpl_api": "live" if bootstrap else "unavailable",
             "fixtures": fixture_state["freshness"],
         },
     }
@@ -144,7 +165,23 @@ async def squad(
     _readiness=_LIVE_ARTIFACTS_DEPENDENCY,
 ) -> list[dict[str, Any]]:
     bootstrap = await fpl_client.get_bootstrap()
-    picks = await fpl_client.get_team_picks(team_id, gw)
+    try:
+        picks = await fpl_client.get_team_picks(team_id, gw)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "squad_unavailable",
+                    "message": (
+                        "This team has no public squad for that gameweek yet. "
+                        "Before GW1, use the initial-squad planner instead."
+                    ),
+                    "team_id": team_id,
+                    "gameweek": gw,
+                },
+            ) from exc
+        raise
     projected, _ = await live_projection_rows(
         model_name=BEST_MODEL,
         start_gameweek=gw,
@@ -177,6 +214,10 @@ async def squad(
             ),
             {},
         )
+        raw_xp = sum(
+            float(fixture.get("predicted_points", 0.0))
+            for fixture in predicted.get("fixtures", [])
+        )
         team_row = teams_by_id.get(player.get("team"), {})
         position_row = positions_by_id.get(player.get("element_type"), {})
 
@@ -190,9 +231,14 @@ async def squad(
                 "team": team_row.get("short_name") or team_row.get("name"),
                 "team_code": team_row.get("code"),
                 "price": _money(player.get("now_cost")),
+                "purchase_price": live_pick_price(pick.get("purchase_price")),
+                "current_price": _money(player.get("now_cost")),
+                "selling_price": live_pick_price(pick.get("selling_price")),
                 "is_captain": pick.get("is_captain", False),
                 "is_vice_captain": pick.get("is_vice_captain", False),
-                "predicted_pts": predicted.get("projected_points"),
+                "raw_xp": round(raw_xp, 3),
+                "expected_points": predicted.get("projected_points"),
+                "start_adjusted_xp": predicted.get("projected_points"),
                 "start_likelihood": max(
                     (
                         fixture.get("start_likelihood", 0.0)

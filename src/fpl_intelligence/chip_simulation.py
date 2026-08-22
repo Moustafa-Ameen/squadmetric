@@ -13,6 +13,7 @@ from typing import Any
 
 import pandas as pd
 
+from fpl_intelligence.price_economics import initialise_squad_economics
 from fpl_intelligence.season_rules import SeasonRules
 from fpl_intelligence.squad_optimizer import optimize_squad, optimize_starting_xi
 
@@ -247,10 +248,12 @@ def build_chip_squad(
         working["price"] = pd.to_numeric(working["decision_price"], errors="coerce").fillna(
             pd.to_numeric(working["price"], errors="coerce")
         )
-    return optimize_squad(
-        working,
-        prediction_column=prediction_column,
-        budget=float(budget),
+    return initialise_squad_economics(
+        optimize_squad(
+            working,
+            prediction_column=prediction_column,
+            budget=float(budget),
+        )
     )
 
 

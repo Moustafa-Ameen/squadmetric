@@ -47,6 +47,7 @@ from fpl_intelligence.backtest_transfer_strategy import (
     INITIAL_BUDGET,
     MODEL_BUILDERS,
     TransferDecision,
+    TransferPlan,
     build_initial_squad,
     build_preseason_scores,
     choose_transfer,
@@ -55,7 +56,11 @@ from fpl_intelligence.backtest_transfer_strategy import (
     select_starting_xi,
     validate_squad,
 )
-from fpl_intelligence.beam_search import HIT_POLICIES, DeterministicBeamPlanner
+from fpl_intelligence.beam_search import (
+    HIT_POLICIES,
+    DeterministicBeamPlanner,
+    apply_transfer_plan,
+)
 from fpl_intelligence.chip_simulation import (
     CHIP_MODE_BASELINE,
     CHIP_MODE_BEAM,
@@ -87,6 +92,13 @@ from fpl_intelligence.player_component_forecast import build_player_fixture_comp
 from fpl_intelligence.preseason import (
     IDENTITY_SAFE_INITIAL_SQUAD_MODE,
     IDENTITY_SAFE_INITIAL_SQUAD_VERSION,
+)
+from fpl_intelligence.price_economics import (
+    initialise_incoming_player,
+    initialise_squad_economics,
+    refresh_squad_prices,
+    squad_market_value,
+    squad_selling_value,
 )
 from fpl_intelligence.projection_portfolio import ProjectionPortfolio
 from fpl_intelligence.season_rules import build_historical_season_rules
@@ -1376,6 +1388,7 @@ def run_season_benchmark(
     projection_mode: str = DEFAULT_PROJECTION_MODE,
     chip_mode: str = CHIP_MODE_DEFAULT,
     hit_policy: str = "current_gw",
+    max_same_gameweek_transfers: int = 1,
     projection_portfolio: ProjectionPortfolio | None = None,
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
@@ -1456,6 +1469,7 @@ def run_season_benchmark(
             raise ValueError(
                 "Initial-squad override is invalid: " + "; ".join(violations)
             )
+    initial_squad = initialise_squad_economics(initial_squad)
     squad = initial_squad.copy()
     initial_squad_hash = _squad_hash(initial_squad)
     initial_bank = round(INITIAL_BUDGET - float(squad["price"].sum()), 1)
@@ -1481,6 +1495,7 @@ def run_season_benchmark(
     beam_planner = DeterministicBeamPlanner(
         hit_policy=hit_policy,
         max_transfers=2 if hit_policy == "horizon_value" else 6,
+        max_same_gameweek_transfers=max_same_gameweek_transfers,
     )
     model_context_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
     fixture_scenario_cache: dict[tuple[int, int], Any] = {}
@@ -1651,12 +1666,15 @@ def run_season_benchmark(
                 historical_teams=historical_teams,
             )
         fixture_scenario = fixture_scenario_cache[scenario_key]
-        squad["price"] = squad["player_id"].map(prices).fillna(squad["price"])
+        squad = refresh_squad_prices(squad, prices)
         bank_before = bank
         free_transfers_before = free_transfers
         pre_chip_squad = squad.copy()
+        squad_market_value_before = squad_market_value(pre_chip_squad)
+        squad_selling_value_before = squad_selling_value(pre_chip_squad)
         squad_before_hash = _squad_hash(pre_chip_squad)
         transfer_candidate = _empty_decision()
+        transfer_plan = TransferPlan(bank_after=bank)
         transfer_expected_horizon_gain = 0.0
         transfer_expected_horizon_net_gain = 0.0
         post_transfer_squad = pre_chip_squad.copy()
@@ -1690,6 +1708,10 @@ def run_season_benchmark(
                     1,
                 )
                 post_transfer_free_transfers = max(0, free_transfers - 1)
+                transfer_plan = TransferPlan.from_decision(
+                    transfer_candidate,
+                    bank_after=post_transfer_bank,
+                )
 
         chip_decision = ChipDecision(gameweek=gameweek)
         chip_definition = None
@@ -1729,23 +1751,23 @@ def run_season_benchmark(
                 rules=rules,
                 fixture_scenario=fixture_scenario,
             )
-            transfer_candidate = beam_action.transfer
+            transfer_plan = beam_action.transfer_plan
+            transfer_candidate = transfer_plan.primary
             chip_definition = beam_action.chip
             chip_squad = beam_action.chip_squad
             transfer_expected_horizon_gain = beam_action.transfer_expected_horizon_gain
             transfer_expected_horizon_net_gain = beam_action.transfer_expected_horizon_net_gain
-            if transfer_candidate.made:
-                _assert_transfer_budget(pre_chip_squad, transfer_candidate, bank)
-                post_transfer_squad = _apply_benchmark_transfer(
-                    pre_chip_squad, predictions, transfer_candidate
+            if transfer_plan.made:
+                post_transfer_squad = apply_transfer_plan(
+                    pre_chip_squad,
+                    predictions,
+                    transfer_plan,
                 )
-                post_transfer_bank = round(
-                    bank
-                    + float(transfer_candidate.outgoing_price)
-                    - float(transfer_candidate.incoming_price),
-                    1,
+                post_transfer_bank = round(float(transfer_plan.bank_after), 1)
+                post_transfer_free_transfers = max(
+                    0,
+                    free_transfers - transfer_plan.count,
                 )
-                post_transfer_free_transfers = max(0, free_transfers - 1)
             if chip_definition is not None:
                 chip_decision = ChipDecision(
                     gameweek=gameweek,
@@ -1809,15 +1831,19 @@ def run_season_benchmark(
             squad, post_chip_squad = apply_squad_transition(
                 pre_chip_squad, chip_squad, chip_definition
             )
+            if chip_definition is not None and chip_definition.name == "wildcard":
+                available_budget = bank_before + squad_selling_value(pre_chip_squad)
+                bank = round(available_budget - squad_selling_value(squad), 1)
+            transfer_plan = TransferPlan(bank_after=bank)
             decision = _empty_decision()
         else:
             squad = post_transfer_squad
             bank = post_transfer_bank
             free_transfers = post_transfer_free_transfers
             decision = transfer_candidate
-            if decision.made:
-                transfers_made += 1
-                total_hit_cost += decision.hit_cost
+            if transfer_plan.made:
+                transfers_made += transfer_plan.count
+                total_hit_cost += transfer_plan.hit_cost
 
         active_squad = squad.copy()
         projections = lineup_predictions.set_index("player_id")[
@@ -1906,15 +1932,17 @@ def run_season_benchmark(
         )
         chip_points += chip_realized_gain
         gross_points += chip_score_points
-        total_points += chip_score_points - decision.hit_cost
+        total_points += chip_score_points - transfer_plan.hit_cost
         realistic_gross_points += realistic_chip_points
-        realistic_total_points += realistic_chip_points - decision.hit_cost
+        realistic_total_points += realistic_chip_points - transfer_plan.hit_cost
         if chip_definition is not None and chip_definition.free_hit_reversion:
             squad = post_chip_squad
             bank = bank_before
             free_transfers = free_transfers_before
         bank_after = bank
         free_transfers_after = min(transfer_cap, free_transfers + 1)
+        squad_market_value_after = squad_market_value(squad)
+        squad_selling_value_after = squad_selling_value(squad)
         post_gameweek_squad_hash = _squad_hash(squad)
         active_squad_hash = _squad_hash(active_squad)
         counterfactuals = json.dumps(
@@ -1932,13 +1960,13 @@ def run_season_benchmark(
                 "model": target["model"].iloc[0],
                 "gross_points": chip_score_points,
                 "raw_starter_points": score.raw_starter_points,
-                "hit_cost": decision.hit_cost,
-                "hit_selected": decision.hit_cost > 0,
+                "hit_cost": transfer_plan.hit_cost,
+                "hit_selected": transfer_plan.hit_cost > 0,
                 "hit_break_even_cost": 4,
-                "net_points": chip_score_points - decision.hit_cost,
+                "net_points": chip_score_points - transfer_plan.hit_cost,
                 "cumulative_points": total_points,
                 "realistic_gross_points": realistic_chip_points,
-                "realistic_net_points": realistic_chip_points - decision.hit_cost,
+                "realistic_net_points": realistic_chip_points - transfer_plan.hit_cost,
                 "realistic_cumulative_points": realistic_total_points,
                 "captain_id": score.captain_id,
                 "realistic_captain_id": realistic_score.captain_id,
@@ -1976,18 +2004,31 @@ def run_season_benchmark(
                 "starting_ids": "+".join(str(value) for value in score.starting_ids),
                 "autosub_ids": "+".join(str(value) for value in score.autosub_ids),
                 "formation": score.formation,
-                "transfers_made": int(decision.made),
+                "transfers_made": transfer_plan.count,
+                "transfer_count": transfer_plan.count,
+                "transfer_decisions": json.dumps(
+                    [asdict(move) for move in transfer_plan.moves],
+                    sort_keys=True,
+                ),
                 "outgoing_id": decision.outgoing_id,
                 "incoming_id": decision.incoming_id,
                 "outgoing": decision.outgoing_name,
                 "incoming": decision.incoming_name,
                 "projected_gain": round(decision.projected_gain, 3),
                 "net_projected_gain": round(decision.net_projected_gain, 3),
+                "plan_projected_gain": round(transfer_plan.projected_gain, 3),
+                "plan_net_projected_gain": round(transfer_plan.net_projected_gain, 3),
                 "transfer_expected_horizon_gain": round(transfer_expected_horizon_gain, 4),
                 "transfer_expected_horizon_net_gain": round(transfer_expected_horizon_net_gain, 4),
                 "bank_before": round(bank_before, 1),
+                "squad_market_value_before": squad_market_value_before,
+                "squad_selling_value_before": squad_selling_value_before,
+                "team_value_before": round(squad_selling_value_before + bank_before, 1),
                 "free_transfers_before": free_transfers_before,
                 "bank_after": round(bank_after, 1),
+                "squad_market_value_after": squad_market_value_after,
+                "squad_selling_value_after": squad_selling_value_after,
+                "team_value_after": round(squad_selling_value_after + bank_after, 1),
                 "free_transfers_after": free_transfers_after,
                 "training_row_count": int(target["training_row_count"].iloc[0]),
                 "minutes_model_mode": target["minutes_model_mode"].iloc[0],
@@ -2007,12 +2048,13 @@ def run_season_benchmark(
                 "lineup_model_name": lineup_model_name,
                 "chip_mode": chip_mode,
                 "hit_policy": hit_policy,
+                "max_same_gameweek_transfers": max_same_gameweek_transfers,
                 "chip_key": chip_decision.chip_key,
                 "chip_selected": chip_definition is not None,
                 "chip_used": chip_decision.chip_name if chip_definition is not None else "none",
                 "chip_slot": chip_decision.chip_number,
                 "ordinary_transfer_allowed": ordinary_transfer_allowed,
-                "ordinary_transfer_applied": decision.made,
+                "ordinary_transfer_applied": transfer_plan.made,
                 "squad_before_hash": squad_before_hash,
                 "squad_after_hash": active_squad_hash,
                 "post_gameweek_squad_hash": post_gameweek_squad_hash,
@@ -2037,7 +2079,7 @@ def run_season_benchmark(
             print(
                 f"- GW{gameweek:02d}: {score.points:.1f} gross, captain {score.captain_id}, "
                 f"realistic {realistic_score.points:.1f} captain {realistic_score.captain_id}, "
-                f"hit -{decision.hit_cost}, bank GBP {bank:.1f}m"
+                f"hit -{transfer_plan.hit_cost}, bank GBP {bank:.1f}m"
             )
 
     result = SeasonBenchmarkResult(
@@ -2382,8 +2424,7 @@ def _apply_benchmark_transfer(
     """
 
     incoming = predictions[predictions["player_id"] == decision.incoming_id].iloc[0]
-    incoming = incoming.copy()
-    incoming["price"] = _decision_price(incoming)
+    incoming = initialise_incoming_player(incoming, _decision_price(incoming))
     updated = squad[squad["player_id"] != decision.outgoing_id].copy()
     updated = pd.concat([updated, pd.DataFrame([incoming])], ignore_index=True)
     violations = validate_squad(updated, budget=float("inf"))

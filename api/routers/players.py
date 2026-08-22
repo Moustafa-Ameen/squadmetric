@@ -5,10 +5,12 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api import data_service, fpl_client
+from api.live_projection_service import live_projection_rows
 from api.player_signals import add_safety_tiers
 from api.readiness import require_current_artifacts
 from api.routers.fixtures import fixture_source_state, ticker
 from api.routers.fpl_live import _detect_season_state
+from fpl_intelligence.production_portfolio import get_production_portfolio
 
 router = APIRouter(
     prefix="/api/players",
@@ -29,8 +31,8 @@ PLAYER_COLUMN_MAP = {
     "form": "form",
     "minutes_security": "start_likelihood",
     "value_score": "value",
-    "captain_score": "captain_score",
-    "transfer_score": "transfer_score",
+    "captain_score": "captain_rank_score",
+    "transfer_score": "transfer_rank_score",
     "selected_by_percent": "selected_by_percent",
     "defensive_contribution": "defensive_contribution",
     "defensive_contribution_per_90": "defensive_contribution_per_90",
@@ -210,7 +212,7 @@ def _normalize(value: Any) -> str:
 
 def _captain_reasoning(row: pd.Series, rank: int) -> str:
     if rank == 1:
-        return "Highest predicted score"
+        return "Highest historical captain ranking score"
     if row.get("minutes_security", 0) > 0.9 and row.get("form", 0) > 7:
         return "Nailed starter, red-hot form"
     if row.get("minutes_security", 0) > 0.9:
@@ -223,7 +225,7 @@ def _captain_reasoning(row: pd.Series, rank: int) -> str:
 @router.get("")
 def get_players(
     position: str | None = Query(default=None),
-    sort_by: str = Query(default="captain_score"),
+    sort_by: str = Query(default="captain_rank_score"),
     limit: int = Query(default=100, ge=1, le=1000),
 ) -> list[dict[str, Any]]:
     dataframe, _ = _load_players()
@@ -308,7 +310,36 @@ async def compare_players(
     bootstrap = await fpl_client.get_bootstrap()
     fixture_state = await fixture_source_state()
     season_state = _detect_season_state(bootstrap, fixture_state)
-    live_metrics_available = season_state == "in_season"
+    live_metrics_available = season_state in {"in_season", "pre_season"}
+    live_projection_by_id: dict[int, dict[str, float]] = {}
+    if live_metrics_available:
+        projected, metadata = await live_projection_rows(
+            model_name=get_production_portfolio().projections.captain_model,
+            horizon=3,
+        )
+        gameweek = int(metadata["start_gameweek"])
+        for player in projected:
+            player_id = int(player["element_id"])
+            gameweek_row = next(
+                (
+                    row
+                    for row in player.get("projections", [])
+                    if int(row.get("gameweek", -1)) == gameweek
+                ),
+                {},
+            )
+            live_projection_by_id[player_id] = {
+                "raw_xp": round(
+                    sum(
+                        float(fixture.get("predicted_points", 0.0))
+                        for fixture in gameweek_row.get("fixtures", [])
+                    ),
+                    3,
+                ),
+                "expected_points": round(
+                    float(gameweek_row.get("projected_points", 0.0)), 3
+                ),
+            }
 
     try:
         ticker_rows = await ticker(range=5)
@@ -369,13 +400,19 @@ async def compare_players(
                 "price": _comparison_number(row.get("price")),
                 "points_per_game": _comparison_number(row.get("ppg")),
                 "form": _comparison_number(row.get("form")) if live_metrics_available else None,
-                "captain_score": (
-                    _comparison_number(row.get("captain_score"))
+                "raw_xp": live_projection_by_id.get(int(row["element_id"]), {}).get(
+                    "raw_xp"
+                ),
+                "expected_points": live_projection_by_id.get(
+                    int(row["element_id"]), {}
+                ).get("expected_points"),
+                "captain_rank_score": (
+                    _comparison_number(row.get("captain_rank_score"))
                     if live_metrics_available
                     else None
                 ),
-                "transfer_score": (
-                    _comparison_number(row.get("transfer_score"))
+                "transfer_rank_score": (
+                    _comparison_number(row.get("transfer_rank_score"))
                     if live_metrics_available
                     else None
                 ),

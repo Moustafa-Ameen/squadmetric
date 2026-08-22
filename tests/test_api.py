@@ -1,14 +1,22 @@
 import asyncio
+import json
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 from api.main import app
-from api.readiness import require_current_artifacts, require_live_artifacts
+from api.readiness import (
+    LiveDecisionReadiness,
+    require_current_artifacts,
+    require_live_artifacts,
+)
 from api.routers import chips as chips_router
 from api.routers import fpl_live
+from api.routers import operations as operations_router
 from api.routers import planner as planner_router
 from api.routers import players as players_router
 from api.routers import predictions as predictions_router
 from api.routers.fixtures import TEAM_SHORT_NAMES, TEAM_STRENGTH, _ticker_from_named_fixtures
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 app.dependency_overrides[require_live_artifacts] = lambda: None
@@ -41,6 +49,87 @@ def test_portfolio_status_exposes_active_and_rollback_configs(monkeypatch):
     assert payload["rollback"]["version"] == "m8.6.1-ridge-control-v1"
     assert payload["shadow_mode"] is False
     assert payload["automatic_execution"] is False
+
+
+def test_deadline_readiness_requires_current_shadow_and_reviewed_news(
+    monkeypatch, tmp_path
+):
+    now = datetime.now(UTC)
+    bootstrap_path = tmp_path / "bootstrap.json"
+    bootstrap_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "id": 1,
+                        "deadline_time": (now + timedelta(days=10)).isoformat(),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    p11_path = tmp_path / "p11.json"
+    p11_path.write_text(
+        json.dumps(
+            {
+                "bootstrap_hash": "current",
+                "gate": {
+                    "status": "monitoring",
+                    "data_ready": True,
+                    "lock_ready": False,
+                    "final_news_reviewed": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    p12_path = tmp_path / "p12.json"
+    p12_path.write_text(
+        json.dumps(
+            {
+                "bootstrap_hash": "current",
+                "model_version": "p12-set-piece-transition-v1",
+                "source_url": "https://example.com/official-set-pieces",
+                "category_coverage": {"penalties": 20},
+                "primary_penalty_takers": [{"player_id": 1}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        operations_router,
+        "load_current_artifact_manifest",
+        lambda: {
+            "season": "2026-27",
+            "data_cutoff": now.isoformat(),
+            "bootstrap_hash": "current",
+        },
+    )
+    monkeypatch.setattr(operations_router, "BOOTSTRAP_PATH", bootstrap_path)
+    monkeypatch.setattr(operations_router, "P11_OUTPUT", p11_path)
+    monkeypatch.setattr(operations_router, "P12_OUTPUT", p12_path)
+    monkeypatch.setattr(
+        operations_router,
+        "latest_shadow_snapshot",
+        lambda: {
+            "captured_at": now.isoformat(),
+            "decision_hash": "old-decision",
+            "expected_gw1_points": 60.0,
+            "bootstrap_hash": "old",
+        },
+    )
+
+    payload = operations_router.gw1_deadline_readiness()
+    checklist = {row["key"]: row["passed"] for row in payload["checklist"]}
+
+    assert payload["p11"]["data_ready"]
+    assert not payload["latest_shadow"]["current"]
+    assert checklist["robustness_current"]
+    assert checklist["set_piece_roles_current"]
+    assert payload["p12"]["primary_penalty_takers"] == 1
+    assert not checklist["shadow_captured"]
+    assert not checklist["final_team_news"]
 
 
 def test_players_returns_plain_english_fields():
@@ -149,17 +238,51 @@ def test_player_comparison_returns_selected_players_and_fixture_average(monkeypa
             },
         ]
 
+    async def fake_live_projection_rows(**kwargs):
+        return (
+            [
+                {
+                    "element_id": 1,
+                    "projections": [
+                        {
+                            "gameweek": 1,
+                            "projected_points": 5.7,
+                            "fixtures": [{"predicted_points": 6.4}],
+                        }
+                    ],
+                },
+                {
+                    "element_id": 2,
+                    "projections": [
+                        {
+                            "gameweek": 1,
+                            "projected_points": 5.1,
+                            "fixtures": [{"predicted_points": 5.8}],
+                        }
+                    ],
+                },
+            ],
+            {"start_gameweek": 1},
+        )
+
     monkeypatch.setattr(players_router, "_load_players", lambda: (ranked_players.copy(), []))
     monkeypatch.setattr(players_router.fpl_client, "get_bootstrap", fake_bootstrap)
     monkeypatch.setattr(players_router, "fixture_source_state", fake_fixture_source_state)
     monkeypatch.setattr(players_router, "ticker", fake_ticker)
+    monkeypatch.setattr(
+        players_router,
+        "live_projection_rows",
+        fake_live_projection_rows,
+    )
 
     response = asyncio.run(_get("/api/players/compare?ids=1,2"))
 
     assert response.status_code == 200
     payload = response.json()
     assert [player["element_id"] for player in payload["players"]] == [1, 2]
-    assert payload["players"][0]["captain_score"] == 6.4
+    assert payload["players"][0]["captain_rank_score"] == 6.4
+    assert payload["players"][0]["raw_xp"] == 6.4
+    assert payload["players"][0]["expected_points"] == 5.7
     assert payload["players"][0]["defensive_contribution_per_90"] == 1.4
     assert payload["players"][0]["average_fixture_difficulty"] == 3.0
     assert payload["players"][1]["average_fixture_difficulty"] == 3.5
@@ -235,8 +358,10 @@ def test_player_comparison_nulls_live_metrics_during_season_transition(monkeypat
     for player in payload["players"]:
         assert player["points_per_game"] is not None
         assert player["form"] is None
-        assert player["captain_score"] is None
-        assert player["transfer_score"] is None
+        assert player["captain_rank_score"] is None
+        assert player["transfer_rank_score"] is None
+        assert player["raw_xp"] is None
+        assert player["expected_points"] is None
         assert player["minutes_security"] is None
         assert player["live_metrics_available"] is False
         assert "season starts" in player["live_metrics_unavailable_reason"]
@@ -463,9 +588,19 @@ def test_captaincy_predictions_use_current_season_projection(monkeypatch):
     assert payload[0]["season"] == "2026-27"
     assert payload[0]["element_id"] == 101
     assert payload[0]["model"] == "Ridge Regression"
+    assert payload[0]["raw_xp"] == 9.0
+    assert payload[0]["expected_points"] == 8.4
+    assert payload[0]["start_adjusted_xp"] == 8.4
+    assert payload[0]["captain_expected_points"] == 16.8
+    assert payload[0]["captaincy_score"] == 8.4
+    assert payload[0]["projection_contract_version"] == "w2-v1"
+    assert "predicted_pts" not in payload[0]
+    assert "adjusted_pts" not in payload[0]
 
 
-def test_initial_squad_uses_current_projections_and_is_fpl_legal(monkeypatch):
+def test_initial_squad_uses_current_projections_and_is_fpl_legal(
+    monkeypatch, tmp_path
+):
     positions = ["GKP"] * 2 + ["DEF"] * 5 + ["MID"] * 5 + ["FWD"] * 3
     projected = []
     for index, position in enumerate(positions, start=1):
@@ -477,6 +612,10 @@ def test_initial_squad_uses_current_projections_and_is_fpl_legal(monkeypatch):
                 "team": f"T{(index - 1) // 3 + 1}",
                 "position": position,
                 "price": 6.6,
+                "status": "a",
+                "availability_probability": 1.0,
+                "start_likelihood": 0.8,
+                "prior_source": "official_2025-26_stats",
                 "projections": [
                     {
                         "gameweek": gameweek,
@@ -485,14 +624,30 @@ def test_initial_squad_uses_current_projections_and_is_fpl_legal(monkeypatch):
                         "double": False,
                         "fixtures": [],
                     }
-                    for gameweek in (1, 2, 3)
+                    for gameweek in range(1, 9)
                 ],
             }
         )
+    projected[0]["projections"][0]["fixtures"] = [
+        {
+            "set_piece_adjustment": {
+                "model_version": "p12-set-piece-transition-v1",
+                "source_url": "https://example.com/official-set-pieces",
+                "available": True,
+                "reason": "official_current_role_minus_official_2025_26_role",
+                "total_adjustment": 0.2,
+                "roles": {
+                    "penalties": {"current_rank": 1},
+                    "direct_free_kicks": {"current_rank": None},
+                    "corners_indirect_free_kicks": {"current_rank": 2},
+                },
+            }
+        }
+    ]
 
     async def fake_live_projection_rows(**kwargs):
         assert kwargs["start_gameweek"] == 1
-        assert kwargs["horizon"] == 3
+        assert kwargs["horizon"] == 8
         return projected, {
             "season": "2026-27",
             "bootstrap_hash": "bootstrap-hash",
@@ -507,8 +662,60 @@ def test_initial_squad_uses_current_projections_and_is_fpl_legal(monkeypatch):
         "live_projection_rows",
         fake_live_projection_rows,
     )
+    report_path = tmp_path / "p10-report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "metadata": {"bootstrap_hash": "bootstrap-hash"},
+                "robustness": {
+                    "scenario_count": 27,
+                    "distinct_squads": 7,
+                    "robust_squad_rate": 0.2963,
+                    "player_stability": [
+                        {
+                            "player_id": 1,
+                            "classification": "locked",
+                            "selection_rate": 1.0,
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(predictions_router, "P10_OUTPUT", report_path)
+    p11_path = tmp_path / "p11-report.json"
+    p11_path.write_text(
+        json.dumps(
+            {
+                "bootstrap_hash": "bootstrap-hash",
+                "gate": {
+                    "status": "monitoring",
+                    "data_ready": True,
+                    "lock_ready": False,
+                    "hours_to_deadline": 100.0,
+                    "final_news_reviewed": False,
+                    "timing_blockers": ["outside_final_24h_window"],
+                },
+                "recommendation": {
+                    "verdict": "retain_central_squad_pending_final_news"
+                },
+                "squad_variants": [
+                    {"is_central": True, "scenario_rate": 0.6},
+                    {
+                        "is_central": False,
+                        "scenario_rate": 0.4,
+                        "players_out": [{"player_name": "Player 1"}],
+                        "players_in": [{"player_name": "Challenger"}],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(predictions_router, "P11_OUTPUT", p11_path)
 
-    response = asyncio.run(_get("/api/predictions/initial-squad?horizon=3"))
+    response = asyncio.run(_get("/api/predictions/initial-squad?horizon=8"))
 
     assert response.status_code == 200
     payload = response.json()
@@ -520,12 +727,50 @@ def test_initial_squad_uses_current_projections_and_is_fpl_legal(monkeypatch):
     assert len(squad) == 15
     assert len(starters) == 11
     assert payload["cost"] == 99.0
-    assert payload["initial_squad_policy"] == "horizon_3_attack"
-    assert payload["policy_status"] == "experimental"
+    assert payload["bank"] == 1.0
+    assert payload["initial_squad_policy"] == "horizon_8_flexible_cold_start_safe"
+    assert payload["initial_squad_policy_version"] == (
+        "p3-opening-milp-v2-cold-start-safe"
+    )
+    assert payload["policy_status"] == "production_default"
+    assert payload["decision_engine_version"] == (
+        "p10-gw1-calibrated-robustness-v1"
+    )
+    assert payload["robustness"]["scenario_count"] == 27
+    assert payload["robustness"]["autosub_activation_probability"] == 0.17
+    assert payload["deadline_finalization"]["status"] == "monitoring"
+    assert payload["deadline_finalization"]["primary_challenger"] == {
+        "scenario_rate": 0.4,
+        "players_out": ["Player 1"],
+        "players_in": ["Challenger"],
+    }
+    assert next(player for player in squad if player["element_id"] == 1)[
+        "robustness_class"
+    ] == "locked"
     assert position_counts.to_dict() == {"DEF": 5, "MID": 5, "FWD": 3, "GKP": 2}
     assert int(team_counts.max()) == 3
     assert payload["captain_id"] in {player["element_id"] for player in starters}
     assert payload["vice_captain_id"] in {player["element_id"] for player in starters}
+    assert all(player["status"] == "a" for player in squad)
+    assert all(player["availability_probability"] == 1.0 for player in squad)
+    assert payload["risk_profile"] == "balanced"
+    assert {row["profile"] for row in payload["decision_alternatives"]} == {
+        "maximum_points",
+        "balanced",
+        "safe",
+    }
+    assert sum(row["selected"] for row in payload["decision_alternatives"]) == 1
+    assert payload["decision_audit"]["availability_clear"]
+    assert payload["decision_audit"]["low_reliability_starters"] == []
+    assert payload["decision_audit"]["low_reliability_bench"] == []
+    assert payload["decision_audit"]["captain_start_probability"] == 0.8
+    assert payload["decision_audit"]["requires_deadline_refresh"]
+    assert next(player for player in squad if player["element_id"] == 1)[
+        "set_piece"
+    ]["penalties_rank"] == 1
+    assert payload["set_piece_summary"]["model_version"] == (
+        "p12-set-piece-transition-v1"
+    )
 
 
 def test_fixture_ticker_rows_include_source_metadata():
@@ -569,15 +814,47 @@ def test_season_state_returns_central_source_metadata(monkeypatch):
             ]
         }
 
-    async def fake_fixture_source_state():
+    async def fake_fixture_source_state(_fixture_rows):
         return {
             "source": "Official PL fixture release",
             "season": "2026-27",
             "difficulty_source": "App-estimated difficulty",
             "freshness": "static official release",
+            "next_kickoff": None,
         }
 
-    monkeypatch.setattr(fpl_live.fpl_client, "get_bootstrap", fake_bootstrap)
+    async def fake_live_decision_context(*, check_models):
+        bootstrap = await fake_bootstrap()
+        return (
+            LiveDecisionReadiness(
+                status="ready",
+                season="2025-26",
+                blockers=[],
+                warnings=[],
+                manifest={"season": "2025-26"},
+                live_data={
+                    "checked_at": "2025-08-01T00:00:00Z",
+                    "bootstrap_hash": "live",
+                    "fixtures_hash": "fixtures",
+                    "player_count": 0,
+                    "team_count": 0,
+                },
+                artifact_data={
+                    "data_cutoff": "2025-08-01T00:00:00Z",
+                    "age_hours": 1,
+                    "bootstrap_hash": "live",
+                    "fixtures_hash": "fixtures",
+                    "player_count": 0,
+                    "team_count": 0,
+                    "rules_version": "test",
+                },
+                models_checked=check_models,
+            ),
+            bootstrap,
+            [],
+        )
+
+    monkeypatch.setattr(fpl_live, "live_decision_context", fake_live_decision_context)
     monkeypatch.setattr(fpl_live, "fixture_source_state", fake_fixture_source_state)
 
     response = asyncio.run(_get("/api/fpl/season-state"))
@@ -630,6 +907,30 @@ def test_finished_season_has_no_next_gameweek():
 
     assert fpl_live._current_gameweek_from_bootstrap(bootstrap) == 38
     assert fpl_live._next_gameweek_from_bootstrap(bootstrap) is None
+
+
+def test_squad_endpoint_distinguishes_unavailable_public_picks(monkeypatch):
+    async def fake_bootstrap():
+        return {
+            "events": [{"id": 1}],
+            "elements": [],
+            "teams": [],
+            "element_types": [],
+        }
+
+    async def missing_picks(_team_id, _gw):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "fpl_resource_not_found", "message": "not found"},
+        )
+
+    monkeypatch.setattr(fpl_live.fpl_client, "get_bootstrap", fake_bootstrap)
+    monkeypatch.setattr(fpl_live.fpl_client, "get_team_picks", missing_picks)
+
+    response = asyncio.run(_get("/api/fpl/team/123/squad?gw=1"))
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "squad_unavailable"
 
 
 def test_planner_requires_connected_team():

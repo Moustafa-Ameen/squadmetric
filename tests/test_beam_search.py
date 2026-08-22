@@ -5,7 +5,9 @@ from fpl_intelligence.beam_search import (
     _aggregate_horizon_predictions,
     _future_opportunity_cost,
     _prune_candidates,
+    apply_transfer_plan,
     generate_transfer_options,
+    generate_transfer_plans,
 )
 from fpl_intelligence.chip_simulation import (
     ChipState,
@@ -34,6 +36,159 @@ def _squad() -> pd.DataFrame:
             )
             player_id += 1
     return pd.DataFrame(rows)
+
+
+def test_multi_transfer_plan_can_fund_a_grouped_premium_restructure():
+    squad = _squad()
+    squad.loc[squad["player_id"] == 13, "price"] = 10.0
+    squad.loc[squad["player_id"] == 13, "expected_points_adjusted"] = 6.0
+    squad.loc[squad["player_id"] == 8, "expected_points_adjusted"] = 1.0
+    cheap_forward = squad.loc[squad["player_id"] == 13].copy()
+    cheap_forward["player_id"] = 100
+    cheap_forward["player_name"] = "Cheap forward"
+    cheap_forward["team"] = "New forward club"
+    cheap_forward["price"] = 5.0
+    cheap_forward["expected_points_adjusted"] = 5.0
+    premium_midfielder = squad.loc[squad["player_id"] == 8].copy()
+    premium_midfielder["player_id"] = 101
+    premium_midfielder["player_name"] = "Premium midfielder"
+    premium_midfielder["team"] = "New midfield club"
+    premium_midfielder["price"] = 10.0
+    premium_midfielder["expected_points_adjusted"] = 12.0
+    predictions = pd.concat(
+        [squad, cheap_forward, premium_midfielder],
+        ignore_index=True,
+    )
+
+    plans = generate_transfer_plans(
+        squad,
+        predictions,
+        bank=0.0,
+        free_transfers=1,
+        max_plans=8,
+        max_plan_size=2,
+    )
+    best = max(plans, key=lambda plan: plan.net_projected_gain)
+    updated = apply_transfer_plan(squad, predictions, best)
+
+    assert best.count == 2
+    assert best.hit_cost == 4
+    assert best.projected_gain > best.hit_cost
+    assert {100, 101}.issubset(set(updated["player_id"]))
+    assert best.bank_after == 0.0
+
+
+def test_multi_transfer_hit_cost_uses_all_available_free_transfers():
+    squad = _squad()
+    upgrades = []
+    for player_id in (3, 8, 13):
+        upgrade = squad.loc[squad["player_id"] == player_id].copy()
+        upgrade["player_id"] = 100 + player_id
+        upgrade["player_name"] = f"Upgrade {player_id}"
+        upgrade["team"] = f"Upgrade club {player_id}"
+        upgrade["expected_points_adjusted"] = 10.0
+        upgrades.append(upgrade)
+    predictions = pd.concat([squad, *upgrades], ignore_index=True)
+
+    plans = generate_transfer_plans(
+        squad,
+        predictions,
+        bank=0.0,
+        free_transfers=2,
+        max_plans=12,
+        max_plan_size=3,
+    )
+    three_move = max(
+        (plan for plan in plans if plan.count == 3), key=lambda plan: plan.projected_gain
+    )
+
+    assert three_move.hit_cost == 4
+    assert [move.hit_cost for move in three_move.moves] == [0, 0, 4]
+
+
+def test_multi_transfer_generation_is_deterministic():
+    squad = _squad()
+    upgrades = squad.iloc[[2, 7]].copy()
+    upgrades["player_id"] = [100, 101]
+    upgrades["player_name"] = ["Defender upgrade", "Midfielder upgrade"]
+    upgrades["team"] = ["Club A", "Club B"]
+    upgrades["expected_points_adjusted"] = [8.0, 9.0]
+    predictions = pd.concat([squad, upgrades], ignore_index=True)
+
+    first = generate_transfer_plans(
+        squad,
+        predictions,
+        bank=0.0,
+        free_transfers=1,
+        max_plan_size=2,
+    )
+    second = generate_transfer_plans(
+        squad,
+        predictions,
+        bank=0.0,
+        free_transfers=1,
+        max_plan_size=2,
+    )
+
+    first_signatures = [
+        tuple((move.outgoing_id, move.incoming_id) for move in plan.moves) for plan in first
+    ]
+    second_signatures = [
+        tuple((move.outgoing_id, move.incoming_id) for move in plan.moves) for plan in second
+    ]
+    assert first_signatures == second_signatures
+
+
+def test_multi_transfer_action_space_reaches_five_moves():
+    squad = _squad()
+    upgrades = []
+    for player_id in (1, 3, 4, 8, 13):
+        upgrade = squad.loc[squad["player_id"] == player_id].copy()
+        upgrade["player_id"] = 200 + player_id
+        upgrade["player_name"] = f"Five-move upgrade {player_id}"
+        upgrade["team"] = f"Five-move club {player_id}"
+        upgrade["expected_points_adjusted"] = 15.0
+        upgrades.append(upgrade)
+    predictions = pd.concat([squad, *upgrades], ignore_index=True)
+
+    plans = generate_transfer_plans(
+        squad,
+        predictions,
+        bank=0.0,
+        free_transfers=5,
+        max_plans=20,
+        max_plan_size=5,
+    )
+    five_move_plans = [plan for plan in plans if plan.count == 5]
+
+    assert five_move_plans
+    assert max(plan.projected_gain for plan in five_move_plans) > 0
+    assert all(plan.hit_cost == 0 for plan in five_move_plans)
+
+
+def test_marginal_extra_transfer_is_rejected_against_single_move_control():
+    squad = _squad()
+    upgrades = []
+    for player_id, projected_points in ((3, 4.0), (8, 2.1)):
+        upgrade = squad.loc[squad["player_id"] == player_id].copy()
+        upgrade["player_id"] = 300 + player_id
+        upgrade["player_name"] = f"Marginal upgrade {player_id}"
+        upgrade["team"] = f"Marginal club {player_id}"
+        upgrade["expected_points_adjusted"] = projected_points
+        upgrades.append(upgrade)
+    predictions = pd.concat([squad, *upgrades], ignore_index=True)
+
+    plans = generate_transfer_plans(
+        squad,
+        predictions,
+        bank=0.0,
+        free_transfers=2,
+        max_plans=10,
+        max_plan_size=2,
+    )
+
+    assert any(plan.count == 1 for plan in plans)
+    assert not any(plan.count == 2 for plan in plans)
 
 
 def test_transfer_branch_generation_is_legal_and_includes_control():
@@ -512,6 +667,44 @@ def test_beam_exposes_one_counterfactual_per_legal_chip():
     assert "freehit:1" in keys
     assert "bboost:1" in keys
     assert "3xc:1" in keys
+
+
+def test_beam_exposes_every_distinct_root_action_without_changing_counterfactuals():
+    squad = _squad()
+    upgrade = squad.iloc[[8]].copy()
+    upgrade["player_id"] = 100
+    upgrade["player_name"] = "Upgrade"
+    upgrade["team"] = "New Team"
+    upgrade["expected_points_adjusted"] = 20.0
+    predictions = pd.concat([squad, upgrade], ignore_index=True)
+    rules = build_historical_season_rules("2025-26")
+    planner = DeterministicBeamPlanner(beam_width=2, horizon=1, max_transfers=4)
+
+    planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=25.0,
+        free_transfers=1,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=tuple(chip.key for chip in chip_definitions(rules)),
+        ),
+        predictions=predictions,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert len(planner.last_root_actions) > len(planner.last_counterfactuals)
+    signatures = {
+        (
+            action.chip.key if action.chip else "none",
+            tuple((move.outgoing_id, move.incoming_id) for move in action.transfers),
+        )
+        for action in planner.last_root_actions
+    }
+    assert len(signatures) == len(planner.last_root_actions)
+    assert any(action.transfer.incoming_id == 100 for action in planner.last_root_actions)
 
 
 def test_beam_keeps_transfer_and_chip_projection_paths_separate():

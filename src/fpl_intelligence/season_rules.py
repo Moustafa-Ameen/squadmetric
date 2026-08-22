@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -34,6 +35,19 @@ HISTORICAL_RULE_SOURCE_URLS = {
     "2023-24": "https://www.premierleague.com/en/news/4026959",
     "2024-25": "https://www.premierleague.com/en/news/4058895",
     "2025-26": "https://www.premierleague.com/en/news/4362027",
+}
+
+# Popularity counters move continuously but cannot change player eligibility,
+# price, availability, scoring rules, or fixture decisions. They remain in raw
+# snapshots; only the decision-contract hash excludes them.
+VOLATILE_BOOTSTRAP_FIELDS = {
+    "selected_by_percent",
+    "selected_rank",
+    "selected_rank_type",
+    "transfers_in",
+    "transfers_in_event",
+    "transfers_out",
+    "transfers_out_event",
 }
 
 
@@ -89,6 +103,26 @@ def canonical_json(value: Any) -> str:
 
 def payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def decision_bootstrap_hash(bootstrap: Mapping[str, Any]) -> str:
+    """Hash official bootstrap fields that can change an FPL decision."""
+
+    contract = {
+        key: value
+        for key, value in bootstrap.items()
+        if key not in {"elements", "total_players"}
+    }
+    contract["elements"] = [
+        {
+            key: value
+            for key, value in player.items()
+            if key not in VOLATILE_BOOTSTRAP_FIELDS
+        }
+        for player in bootstrap.get("elements", [])
+        if isinstance(player, Mapping)
+    ]
+    return payload_hash(contract)
 
 
 def rules_contract_hash(rules: SeasonRules) -> str:
@@ -405,7 +439,22 @@ def save_immutable_snapshot(
     if metadata_path.exists() and metadata_path.read_text(encoding="utf-8") != metadata_text:
         raise FileExistsError(f"Immutable metadata conflict: {metadata_path}")
     if not snapshot_path.exists():
-        snapshot_path.write_text(raw_text, encoding="utf-8")
+        reusable = next(
+            (
+                candidate
+                for candidate in sorted(directory.glob(f"{safe_name}-*-{digest[:16]}.json"))
+                if candidate != snapshot_path
+                and candidate.read_text(encoding="utf-8") == raw_text
+            ),
+            None,
+        )
+        if reusable is None:
+            snapshot_path.write_text(raw_text, encoding="utf-8")
+        else:
+            try:
+                os.link(reusable, snapshot_path)
+            except OSError:
+                snapshot_path.write_text(raw_text, encoding="utf-8")
     if not metadata_path.exists():
         metadata_path.write_text(metadata_text, encoding="utf-8")
     return snapshot_path, metadata_path

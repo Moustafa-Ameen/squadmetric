@@ -1,0 +1,50 @@
+{
+  "schema_version": "launch-player-evidence-v1",
+  "season": "2026-27",
+  "observations": [
+    {
+      "season": "2026-27",
+      "player_name": "Bobby Thomas",
+      "team_name": "Coventry City",
+      "inferred_start_probability": 0.82,
+      "confidence": 0.72,
+      "defensive_actions_per_90": 8.6,
+      "goals": 3,
+      "assists": 4,
+      "evidence_type": "official_scout_promoted_player_analysis",
+      "source_url": "https://www.premierleague.com/en/news/4680821/the-scouts-analysis-of-15-key-player-prices-in-202627-fantasy",
+      "published_at": "2026-07-23T09:00:00Z",
+      "observed_at": "2026-08-06T22:10:00Z",
+      "notes": "Start probability is a model inference. The official article reports three goals, four assists and 8.6 defensive actions per match in the 2025/26 Championship."
+    },
+    {
+      "season": "2026-27",
+      "player_name": "Charlie Hughes",
+      "team_name": "Hull City",
+      "inferred_start_probability": 0.84,
+      "confidence": 0.75,
+      "defensive_actions_per_90": 11.8,
+      "goals": 1,
+      "assists": 1,
+      "evidence_type": "official_scout_promoted_player_analysis",
+      "source_url": "https://www.premierleague.com/en/news/4680821/the-scouts-analysis-of-15-key-player-prices-in-202627-fantasy",
+      "published_at": "2026-07-23T09:00:00Z",
+      "observed_at": "2026-08-06T22:10:00Z",
+      "notes": "Start probability is a model inference. The official article identifies Hughes as a leading promoted defensive-contribution option and reports 11.8 defensive actions per match."
+    },
+    {
+      "season": "2026-27",
+      "player_name": "Oli McBurnie",
+      "team_name": "Hull City",
+      "inferred_start_probability": 0.8,
+      "confidence": 0.7,
+      "goals": 18,
+      "assists": null,
+      "evidence_type": "official_promotion_campaign_analysis",
+      "source_url": "https://www.premierleague.com/en/news/4664386/all-you-need-to-know-as-hull-city-are-promoted-to-premier-league",
+      "published_at": "2026-06-02T09:00:00Z",
+      "observed_at": "2026-08-06T22:10:00Z",
+      "notes": "Start probability is a model inference. The official article reports 17 regular-season goals plus the play-off final winner."
+    }
+  ]
+}

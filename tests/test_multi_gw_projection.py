@@ -138,3 +138,37 @@ def test_projection_can_carry_fixture_scenario_identity_and_status():
     assert projections[0]["fixture_data_hash"] == scenario.fixture_data_hash
     assert projections[0]["fixture_confirmed_count"] == 1
     assert projections[0]["fixtures"][0]["status"] == "confirmed"
+
+
+def test_live_role_evidence_and_availability_adjust_projected_points():
+    projections = project_player(
+        10,
+        1,
+        3,
+        players=[
+            {
+                "element_id": 10,
+                "name": "Promoted Defender",
+                "team_id": 1,
+                "position": "DEF",
+                "price": 4.0,
+                "start_likelihood": 0.6,
+                "availability_probability": 0.25,
+                "prior_source": "launch_evidence:official_scout_analysis",
+            }
+        ],
+        fixtures=[
+            {
+                "event": 1,
+                "team_h": 1,
+                "team_a": 2,
+                "team_a_short": "EAS",
+                "opponent_strength": 900,
+            }
+        ],
+        teams=[{"id": 2, "name": "Easy FC", "short_name": "EAS"}],
+        models=(StrengthSensitivePointsModel(), AlwaysStartsModel()),
+    )
+
+    assert projections[0]["fixtures"][0]["start_likelihood"] == 0.25
+    assert projections[0]["projected_points"] == 2.75

@@ -96,6 +96,7 @@ def run_historical_simulation(
     verbose: bool = False,
     generated_at: str | None = None,
     players: pd.DataFrame | None = None,
+    max_same_gameweek_transfers: int = 1,
 ) -> dict[str, Any]:
     """Run isolated season simulations and persist their complete artifacts."""
 
@@ -119,6 +120,7 @@ def run_historical_simulation(
         "seasons": list(selected_seasons),
         "portfolio_version": portfolio.version,
         "projection_portfolio": portfolio.projections.as_dict(),
+        "max_same_gameweek_transfers": max_same_gameweek_transfers,
     }
     simulation_key = _stable_hash(
         {
@@ -153,6 +155,7 @@ def run_historical_simulation(
             projection_mode=preset.projection_mode,
             chip_mode=preset.chip_mode,
             hit_policy=preset.hit_policy,
+            max_same_gameweek_transfers=max_same_gameweek_transfers,
             projection_portfolio=portfolio.projections,
             initial_squad_override=initial_squad,
             initial_squad_mode=initial_mode,
@@ -482,6 +485,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="New directory for isolated simulation artifacts.",
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--max-same-gameweek-transfers",
+        type=int,
+        choices=range(1, 6),
+        default=1,
+        help="Maximum coordinated transfers considered at the current deadline.",
+    )
     return parser.parse_args(argv)
 
 
@@ -492,6 +502,7 @@ def main() -> None:
         preset_name=args.preset,
         output_dir=args.output_dir,
         verbose=args.verbose,
+        max_same_gameweek_transfers=args.max_same_gameweek_transfers,
     )
 
 
