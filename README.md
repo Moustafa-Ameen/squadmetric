@@ -1,142 +1,266 @@
-# FPL Intelligence
+<p align="center">
+  <img src="docs/assets/squadmetric-banner.svg" width="100%" alt="SquadMetric — Smarter FPL Decisions" />
+</p>
 
-Recommendation-first Fantasy Premier League analytics for the live 2026/27
-season. The application never executes transfers or chips automatically.
+<h1 align="center">SquadMetric</h1>
 
-## Setup
+<p align="center">
+  <strong>Recommendation-first Fantasy Premier League intelligence for the live 2026/27 season.</strong>
+</p>
+
+<p align="center">
+  One primary recommendation, safer and aggressive alternatives, and the evidence needed to make the final call.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Moustafa-Ameen/fpl-intelligence/actions/workflows/quality.yml"><img alt="Quality checks" src="https://github.com/Moustafa-Ameen/fpl-intelligence/actions/workflows/quality.yml/badge.svg" /></a>
+  <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" />
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-live-009688?logo=fastapi&logoColor=white" />
+  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-304%20passing-22c55e" />
+  <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-32%20passing-8b5cf6" />
+</p>
+
+<p align="center">
+  <a href="#why-squadmetric">Why SquadMetric</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#historical-simulation">Simulation</a> ·
+  <a href="#quality-and-safety">Quality</a>
+</p>
+
+> [!IMPORTANT]
+> SquadMetric is **top-1%-oriented**, not a top-1% guarantee. It recommends transfers, captaincy, bench order, and chips, but it never logs into FPL or executes an action automatically.
+
+## Why SquadMetric
+
+Most FPL tools begin with tables. SquadMetric begins with the decision.
+
+| The question | What SquadMetric returns |
+|---|---|
+| Who should I captain? | A primary captain, vice-captain, start probability, expected points, and alternatives |
+| Should I transfer now? | Full-squad impact, hit cost, bank/free-transfer state, and the value of waiting |
+| When should I use a chip? | Rule-legal chip branches, immediate gain, horizon gain, and future opportunity cost |
+| Who starts and who is benched? | A legal XI, formation, ordered autosub bench, and Bench Boost-aware valuation |
+| Can I trust the recommendation? | Rules/data hashes, point-in-time cutoffs, uncertainty, persisted evidence, and historical tests |
+
+The default objective is simple:
+
+```text
+maximize realistic expected FPL points
+- transfer hits
+- downside and uncertainty
+- future opportunity cost
++ squad flexibility
+```
+
+Rank-relative play remains an explicit, optional review mode. It never silently replaces points maximization.
+
+## Features
+
+### Decision engine
+
+- Multi-Gameweek player projections with appearance and availability adjustment.
+- Deterministic 15-player squad, XI, bench-order, captain, and vice-captain selection.
+- Transfer planning with free-transfer banking, sale price, bank, and optional `-4` hits.
+- Chip-aware state for Wildcard, Free Hit, Bench Boost, and Triple Captain.
+- Blank and Double Gameweek fixture scenarios without hard-coded chip targets.
+- Safe, balanced, and maximum-points alternatives.
+- Penalty, direct-free-kick, and corner-role transition intelligence.
+
+### Live 2026/27 intelligence
+
+- Official FPL player IDs, teams, positions, prices, ownership, status, and availability.
+- Instant onboarding for newly added players without blocking the website.
+- Live fixture changes and postponements applied when a page refreshes.
+- Rule-versioned eight-chip inventory with the GW19 half-season reset.
+- Separate 2026/27 BPS and defensive-contribution regimes.
+- Next-deadline targeting even while the current Gameweek is in progress.
+- Projection caching that reacts to actionable changes but ignores live score/BPS noise.
+
+### Product experience
+
+- Professional recommendation-first dashboard.
+- Visual pitch for the current squad and recommended XI.
+- Weekly transfer, captaincy, bench, chip, player, and fixture pages.
+- Email/password and Google authentication through Supabase.
+- Owner-isolated profiles, FPL team links, preferences, drafts, and decision history.
+- Responsive desktop/mobile interface with graceful live-data fallbacks.
+
+### Evidence and operations
+
+- Immutable official-data snapshots and SHA-256 hashes.
+- Rules, model, fixture, and data-cutoff contracts.
+- Point-in-time-safe historical simulation across multiple rule eras.
+- Persisted pre-deadline decisions and post-Gameweek settlement.
+- No-chip controls, counterfactual branches, and acceptance gates.
+- Automated Python, TypeScript, lint, build, accessibility, desktop, and mobile checks.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Official FPL API] --> B[Rules & data contracts]
+    B --> C[Immutable snapshots]
+    C --> D[Availability & role intelligence]
+    D --> E[Multi-GW projections]
+    E --> F[Squad / transfer / chip planner]
+    F --> G[Primary recommendation]
+    F --> H[Safe alternative]
+    F --> I[Aggressive alternative]
+    G --> J[Dashboard & decision evidence]
+    H --> J
+    I --> J
+    J --> K[Post-GW settlement]
+    K --> E
+```
+
+The system improves during the season through a guarded feedback loop:
+
+1. Official prices, status, roles, and fixtures are read live.
+2. Finalized Gameweeks are ingested only after FPL marks them finished and data-checked.
+3. New training rows preserve the original pre-deadline market snapshot.
+4. Models and decision policies are re-evaluated against fixed controls.
+5. A candidate is promoted only when decision metrics pass—not because MAE looks better.
+
+## Architecture
+
+```mermaid
+graph TD
+    UI[Next.js 16 frontend] --> API[FastAPI service]
+    UI --> AUTH[Supabase Auth + Postgres RLS]
+    API --> LIVE[Official FPL API]
+    API --> ART[Validated serving artifacts]
+    ART --> MODELS[scikit-learn models]
+    ART --> RULES[Season rules manifests]
+    ART --> DATA[Historical + live datasets]
+    API --> OPT[Deterministic planners]
+    OPT --> AUDIT[Decision evidence & simulations]
+```
+
+| Layer | Technology | Responsibility |
+|---|---|---|
+| Web | Next.js 16, React 19, TypeScript, Tailwind CSS | Accounts, dashboard, team, planner, players, fixtures, proof |
+| API | FastAPI, Pydantic, httpx | Live FPL access, readiness, projections, recommendations |
+| Intelligence | pandas, NumPy, scikit-learn, SciPy | Features, projections, calibration, deterministic optimization |
+| Identity/data | Supabase Auth, PostgreSQL, RLS | Secure user accounts and owner-only saved data |
+| Validation | pytest, Ruff, ESLint, Playwright, axe | Correctness, leakage protection, accessibility, responsive flows |
+
+## Quick start
+
+### Prerequisites
+
+- Windows PowerShell (the maintained production/development path).
+- Python 3.13.
+- Node.js 24 and npm.
+- A Supabase project for real account authentication.
+
+### 1. Install
 
 ```powershell
+git clone https://github.com/Moustafa-Ameen/fpl-intelligence.git
+cd fpl-intelligence
+
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+
 cd frontend
 npm.cmd install
 cd ..
 ```
 
-## Current-season refresh
+### 2. Configure
 
-The API fails closed when bootstrap, player, rules, fixture, and model artifacts
-do not agree on the active season. Refresh the complete serving bundle from the
-official FPL API before starting the application:
+The API defaults work locally. Copy values from `.env.example` if you need to override hosts, ports, season, or readiness limits.
+
+For authentication, apply the migration and configure Supabase as described in [supabase/README.md](supabase/README.md). Then create `frontend/.env.local`:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY=YOUR_SERVER_ONLY_SECRET_KEY
+```
+
+> [!CAUTION]
+> Never prefix the Supabase secret key with `NEXT_PUBLIC_`, expose it in the browser, or commit it. User-owned tables are protected by Row Level Security.
+
+### 3. Build the current serving bundle
 
 ```powershell
 .\.venv\Scripts\python.exe -m fpl_intelligence.refresh_current_season --season 2026-27
 ```
 
-This preserves immutable bootstrap/fixture snapshots, rebuilds current player
-tables, writes the rules and artifact manifests, and performs a real model-load
-readiness check. Before the season, models use completed historical seasons.
-After the season starts, a direct full refresh also retains all officially
-finalized 2026/27 Gameweeks already present in the live training table.
-It also writes timestamped availability events and applies reviewed launch
-evidence for promoted/new players. Official injury status always caps any role
-prior, and every evidence file is hash-tracked by the serving manifest.
+This fetches official bootstrap/fixtures, writes immutable snapshots, rebuilds players, validates the rules contract, loads the model artifacts, and publishes one reconciled serving manifest.
 
-The production opening-squad endpoint is:
+### 4. Run
 
-```text
-GET /api/predictions/initial-squad?horizon=8
+Terminal 1 — API:
+
+```powershell
+.\.venv\Scripts\uvicorn.exe api.main:app --reload
 ```
 
-Its response includes the active production policy/version, budget and bank,
-availability probability, starting likelihood, and source metadata for any
-launch evidence used in the selected squad.
+Terminal 2 — website:
 
-For the normal daily and post-Gameweek refresh:
+```powershell
+cd frontend
+npm.cmd run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+Useful health checks:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | Process liveness |
+| `GET /api/readiness` | Artifact and model contract |
+| `GET /api/fpl/season-state` | Live season and recommendation readiness |
+| `GET /api/predictions/overview` | Compact dashboard decision payload |
+| `GET /api/predictions/initial-squad?horizon=8` | Opening-squad recommendation |
+| `GET /api/operations/deadline-readiness` | Final deadline checklist |
+
+## Daily and post-Gameweek operation
+
+Use the normal refresh command:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-27.ps1
 ```
 
-The command always refreshes official bootstrap, fixtures, prices, availability,
-rules, and serving manifests. It retrains the fixed serving-model family only
-when FPL marks a new Gameweek both `finished` and `data_checked`. The new rows
-come from the latest immutable bootstrap snapshot captured before that
-Gameweek's deadline; provisional outcomes and post-deadline prices/ownership are
-rejected. If no Gameweek is newly finalized, the model bundle is unchanged.
+It refreshes official data every run and retrains only after a newly finalized, data-checked Gameweek is available. Provisional results and post-deadline market values are rejected.
 
-Before GW1, the command also captures an immutable opening recommendation under
-`data/processed/gw1_shadow/`. Inspect freshness, the latest decision hash, and
-the deadline checklist at `GET /api/operations/deadline-readiness`. A manual
-capture can be run with:
+Register the same workflow with Windows Task Scheduler:
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.capture_gw1_shadow
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\register-daily-refresh.ps1 -TeamId YOUR_TEAM_ID
 ```
 
-The daily refresh rebuilds the P10 robustness tournament and P11 deadline gate
-before it captures deadline evidence. This deliberately takes several minutes:
-a snapshot is never written against a stale robustness hash.
+<details>
+<summary><strong>Pre-deadline evidence capture</strong></summary>
 
-To validate a newly finalized Gameweek without publishing any history, model,
-snapshot, outcome, or run-report file:
-
-```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.post_gameweek_refresh --season 2026-27 --dry-run
-```
-
-Published current-season rows are stored separately in
-`data/processed/live_2026_27_player_gw.csv`. Official event-live payloads,
-cutoffs, and hashes are immutable. Model/history publication and frozen-outcome
-settlement are one rollback-protected operation. A failed readiness check
-restores the prior serving bundle.
-
-### Live decision evidence
-
-Before every deadline, freeze the production recommendation and its complete
-generated transfer/chip branch set. Before GW1, `--team-id` is optional; after
-GW1 it is required so the current squad, bank, free transfers, and chip state
-can be captured.
+Freeze the production recommendation and every generated transfer/chip branch before a deadline:
 
 ```powershell
 .\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence capture --team-id YOUR_TEAM_ID
-```
-
-The command records data/rules hashes, deadline-safe news, every legal root
-branch considered, the selected branch, squad/XI/bench/captain state, hits,
-chips, bank, and uncertainty under `data/processed/live_decision_evidence/`.
-It never executes a transfer or chip. Check coverage with:
-
-```powershell
 .\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence status
 ```
 
-After FPL marks a Gameweek both finished and data-checked, settle the frozen
-branches against official points:
+After FPL finalizes scoring, settle the frozen decisions:
 
 ```powershell
 .\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence settle --season 2026-27 --gameweek 1
 ```
 
-Settlement is fail-closed while scoring remains provisional. It applies the
-frozen bench order, legal autosubs, captain/vice fallback, Bench Boost, Triple
-Captain, and transfer hits, then records selected-branch regret against the
-same candidate set that existed before the deadline. Operational status is
-also available at `GET /api/operations/shadow-evidence`.
+Settlement applies legal autosubs, bench order, captain/vice fallback, Bench Boost, Triple Captain, and transfer hits. It never uses a branch created after the deadline.
 
-Run the P10 opening-squad calibration and robustness tournament after a
-material projection, scoring-rule, or player-pool change:
+</details>
 
-```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.p10_calibration
-```
+<details>
+<summary><strong>Final-news lock</strong></summary>
 
-This calibrates bench-cover value from accepted historical decision rows and
-tests the live squad across 27 autosub, BPS, and team-role scenarios. The
-initial-squad API exposes each selected player's `locked`, `stable`, or
-`fragile` classification only when the report's bootstrap hash matches the
-current serving artifacts. To refresh only the historical autosub portion of
-an existing report, use `--calibration-only`.
-
-Run the P11 deadline report directly with:
-
-```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.p11_deadline_finalization
-```
-
-The recommendation remains in `monitoring` until it is inside the final
-24-hour window and official final team news has been reviewed. The final manual
-refresh must cite at least one official source:
+Inside the final 24-hour window, record the reviewed official source:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-27.ps1 `
@@ -144,169 +268,163 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-2
   -FinalNewsSource "https://www.premierleague.com/..."
 ```
 
-This acknowledgment is fail-closed: `-FinalNewsReviewed` without an official
-source URL is rejected.
+The acknowledgment is fail-closed: `-FinalNewsReviewed` without an official source URL is rejected.
 
-Run the P12 official penalty and set-piece role audit directly with:
+</details>
+
+<details>
+<summary><strong>Calibration, robustness, and set pieces</strong></summary>
 
 ```powershell
+# Autosub calibration and 27-scenario opening-squad robustness tournament
+.\.venv\Scripts\python.exe -m fpl_intelligence.p10_calibration
+
+# Deadline finalization report
+.\.venv\Scripts\python.exe -m fpl_intelligence.p11_deadline_finalization
+
+# Official penalties, direct free kicks, and corners audit
 .\.venv\Scripts\python.exe -m fpl_intelligence.p12_set_piece_report
 ```
 
-P12 preserves official penalty, direct-free-kick, and corner role fields and
-applies only the change from each player's final 2025/26 role. This prevents an
-established taker's historical penalty returns from being counted a second
-time. The initial-squad API and planner show the normalized current roles, and
-the full audit is written to `data/processed/p12_set_piece_report.json`.
+Set-piece intelligence applies only the change from the final 2025/26 role, preventing established penalty returns from being counted twice.
 
-To register that refresh with Windows Task Scheduler, explicitly run:
+</details>
+
+## Historical simulation
+
+Run the production portfolio—including realistic captaincy, transfers, hits, chips, and season-specific rules—across completed seasons:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\register-daily-refresh.ps1
+.\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons `
+  --preset production `
+  --seasons 2023-24 2024-25 2025-26
 ```
 
-After GW1, register your FPL team ID so the scheduled task can freeze planner
-evidence as well as refresh public data:
+Each run writes isolated manifests, season summaries, and Gameweek decisions under `data/processed/simulations/`. The permanent benchmark ledger is never modified by this command.
+
+> [!NOTE]
+> Full chip-aware replays are intentionally expensive. A season can take roughly 15–20 minutes on the current development machine.
+
+Diagnostic presets:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\register-daily-refresh.ps1 -TeamId YOUR_TEAM_ID
-```
-
-Without a team ID, finalized-data ingestion and serving refresh still run, but
-post-GW1 decision-evidence capture is explicitly skipped with a warning.
-
-The refresh stops before model training if the decision-relevant rules contract
-changes. Review the official change and use `--accept-rule-change` only after
-the code and tests have been updated.
-
-## Simulate previous seasons
-
-Run the complete production portfolio—including realistic captaincy, transfers,
-hits, historical chips, and season-specific rules—across every completed
-season:
-
-```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons --preset production --seasons 2023-24 2024-25 2025-26
-```
-
-This is an expensive simulation. On the current development machine, a complete
-chip-aware season takes roughly 15–20 minutes, so all three seasons can take
-close to an hour. It prints each realistic season score and writes an isolated
-manifest, season summary, and Gameweek decision file under
-`data/processed/simulations/`. It never modifies the permanent benchmark-history
-ledger. To run only the latest completed season, append
-`--seasons 2025-26`.
-
-Useful diagnostic presets:
-
-```powershell
-# Ridge-only rollback portfolio, with chips
+# Ridge rollback portfolio with chips
 .\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons --preset control
 
-# Current transfer/captain models, without chips
+# Current transfer/captain models without chips
 .\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons --preset no-chip
 
 # Static-squad diagnostic
 .\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons --preset diagnostic-no-transfers
 ```
 
-Run the checkpointed consumer-specific model tournament (P4):
+Audit a completed simulation:
 
 ```powershell
-# Fast, non-promotional screen
-.\.venv\Scripts\python.exe -m fpl_intelligence.consumer_model_tournament --stage screening --seasons 2024-25
-
-# Complete chip-aware finalist replay; use --resume after interruption
-.\.venv\Scripts\python.exe -m fpl_intelligence.consumer_model_tournament `
-  --stage full `
-  --seasons 2023-24 2024-25 2025-26 `
-  --candidates transfer_gradient chip_ridge lineup_gradient hit_horizon_value `
-  --output-dir data/processed/consumer_tournaments/p4-full-finalists `
-  --champion-artifacts `
-    data/processed/simulations/chip-save-value-repair-2023-24 `
-    data/processed/simulations/chip-save-value-repair-2024-2026 `
-  --resume
+.\.venv\Scripts\python.exe -m fpl_intelligence.points_loss_audit `
+  --simulation-dir data/processed/simulations/RUN_DIRECTORY
 ```
 
-P4 writes isolated checkpoints and acceptance artifacts. It does not modify the
-production model portfolio automatically.
-
-Audit any completed simulation for exact score reconciliation, explicitly
-labelled decision-regret diagnostics, chip counterfactuals, and source-backed
-historical top-1% bounds:
-
-```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.points_loss_audit --simulation-dir data/processed/simulations/<run-directory>
-```
-
-Audit the accepted post-recovery production scorecard across 2023/24, 2024/25,
-and 2025/26:
+Run the accepted three-season recovery scorecard:
 
 ```powershell
 .\.venv\Scripts\python.exe -m fpl_intelligence.points_loss_audit --recovery-scorecard
 ```
 
-This writes a canonical 114-Gameweek audit under
-`data/processed/points_loss_audits/post-recovery-production-v1`, including
-decision-opportunity and selected-chip-health artifacts.
-
-The audit writes separate P2 artifacts into the simulation directory. Hindsight
-regret buckets overlap and are diagnostic upper bounds; they are never added to
-the simulated score. Older simulations that did not persist the active squad,
-ordered bench, or transfer player IDs remain auditable for score and captaincy,
-while unsupported loss buckets are reported as `unavailable`.
-
-## Initial-squad championship
-
-Run the point-in-time-safe P3 opening-squad tournament:
+### Opening-squad championship
 
 ```powershell
 .\.venv\Scripts\python.exe -m fpl_intelligence.initial_squad_championship
 ```
 
-The command checkpoints every completed season-policy path and safely resumes
-the same output directory after interruption. It is expensive because each
-distinct opening squad receives a complete chip-aware 38-Gameweek continuation.
+The checkpointed tournament tests each opening squad through a complete chip-aware 38-Gameweek continuation. The accepted `horizon_8_flexible_cold_start_safe` policy recorded a +210 aggregate realistic-point improvement over its identity-safe control across the three supported validation seasons, with no seasonal regression. See [phase-performance-recovery-initial-squad.md](phase-performance-recovery-initial-squad.md) for the evidence and limitations.
 
-The corrected championship promoted
-`horizon_8_flexible_cold_start_safe`. Against the identity-safe control it
-scores 0, +198, and +12 realistic points across the three supported seasons,
-for +210 aggregate points with no seasonal regression. The production
-simulation preset and live initial-squad endpoint now use this policy; the
-control preset remains the explicit rollback. Full evidence is recorded in
-`phase-performance-recovery-initial-squad.md`.
+## Rules and data integrity
 
-## Backend
+Every supported season has an explicit contract for:
 
-```powershell
-.\.venv\Scripts\uvicorn.exe api.main:app --reload
-```
+- budget, squad size, formations, club limits, transfers, and price handling;
+- scoring, BPS, and defensive-contribution regimes;
+- chip inventory, legal windows, resets, and restrictions;
+- source URL, retrieval/cutoff timestamps, schema version, and payload hash.
 
-- Liveness: `GET /api/health`
-- Artifact/model readiness: `GET /api/readiness`
-- Live season status: `GET /api/fpl/season-state`
+Non-negotiable safeguards:
 
-Copy `.env.example` values into your local environment when hosts or ports
-differ.
+- No future information can enter a historical deadline decision.
+- Missing defensive-contribution data stays missing; it is never zero-filled.
+- Scoring/BPS/DC regimes are never blended across rule changes.
+- Free Hit reverts squad, bank, and transfer state; Wildcard changes are permanent.
+- Bench points count only through autosubs or Bench Boost.
+- Assistant Manager exists only in the historical 2024/25 rules regime.
+- Model promotion requires realistic decision improvement, not MAE alone.
+- A detected rules-contract change blocks affected recommendations until reviewed.
 
-## Frontend
+## Quality and safety
 
-```powershell
-cd frontend
-npm.cmd install
-npm.cmd run dev
-```
-
-Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local` for non-default API
-deployments.
-
-## Quality gates
+Run the complete local quality gates:
 
 ```powershell
+# Backend
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe -m ruff check api tests src
+.\.venv\Scripts\python.exe -m ruff check .
+
+# Frontend
 cd frontend
-npm.cmd run test:search
 npm.cmd run lint
+npx.cmd tsc --noEmit
+npm.cmd run test:unit
+npm.cmd run test:e2e
 npm.cmd run build
 ```
+
+Current verified baseline:
+
+| Gate | Result |
+|---|---:|
+| Python tests | 304 passing |
+| Frontend unit tests | 32 passing |
+| Desktop/mobile browser tests | 32 passing |
+| Ruff, ESLint, TypeScript | Clean |
+| Next.js production build | Passing |
+
+GitHub Actions runs the repository quality workflow on pushed changes.
+
+## Repository map
+
+```text
+fpl-intelligence/
+├── api/                      FastAPI application and live FPL routes
+├── frontend/                 Next.js SquadMetric website
+├── src/fpl_intelligence/     Models, rules, simulations, planners, audits
+├── data/                     Raw snapshots, processed contracts, evidence
+├── models/                   Versioned serving-model metadata/artifacts
+├── scripts/                  Refresh, scheduling, and operational commands
+├── supabase/                 Account schema, RLS policies, setup guide
+├── tests/                    Backend correctness and regression suite
+└── docs/assets/              README and product visuals
+```
+
+## Product principles
+
+1. **Recommendation first.** Analysis supports the decision instead of burying it.
+2. **Points first.** Rank mode is optional and clearly labelled.
+3. **Rules are data.** Every scoring era is versioned and testable.
+4. **No hidden hindsight.** Historical decisions see only deadline-safe information.
+5. **No automatic FPL actions.** The manager remains in control.
+6. **Evidence over hype.** Failed experiments stay failed; aggregates never hide a bad season.
+
+## Contributing
+
+1. Create a focused branch.
+2. Add or update tests for every behavioral change.
+3. Run the relevant quality gates.
+4. Keep experimental models isolated until they pass multi-season acceptance.
+5. Never commit credentials, local `.env` files, generated browser output, or private FPL account data.
+
+## Disclaimer
+
+SquadMetric is an independent fantasy-football analytics project. It is not affiliated with, endorsed by, or sponsored by the Premier League or Fantasy Premier League. FPL rules, data, names, and marks belong to their respective owners. Recommendations are probabilistic and cannot guarantee a score, rank, or top-1% finish.
+
+<p align="center">
+  <strong>Build the plan. Understand the trade-off. Make the call.</strong>
+</p>
