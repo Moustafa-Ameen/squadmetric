@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Moustafa-Ameen/fpl-intelligence/actions/workflows/quality.yml"><img alt="Quality checks" src="https://github.com/Moustafa-Ameen/fpl-intelligence/actions/workflows/quality.yml/badge.svg" /></a>
+  <a href="https://github.com/Moustafa-Ameen/squadmetric/actions/workflows/quality.yml"><img alt="Quality checks" src="https://github.com/Moustafa-Ameen/squadmetric/actions/workflows/quality.yml/badge.svg" /></a>
   <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" />
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-live-009688?logo=fastapi&logoColor=white" />
@@ -159,8 +159,8 @@ graph TD
 ### 1. Install
 
 ```powershell
-git clone https://github.com/Moustafa-Ameen/fpl-intelligence.git
-cd fpl-intelligence
+git clone https://github.com/Moustafa-Ameen/squadmetric.git
+cd squadmetric
 
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
@@ -392,7 +392,7 @@ GitHub Actions runs the repository quality workflow on pushed changes.
 ## Repository map
 
 ```text
-fpl-intelligence/
+squadmetric/
 ├── api/                      FastAPI application and live FPL routes
 ├── frontend/                 Next.js SquadMetric website
 ├── src/fpl_intelligence/     Models, rules, simulations, planners, audits
