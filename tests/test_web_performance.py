@@ -58,7 +58,158 @@ def test_live_projection_cache_reuses_identical_data_hashes(monkeypatch):
 
     assert project_calls == 1
     assert second[0]["name"] == "Cached Player"
-    assert first_metadata == second_metadata
+    assert first_metadata["projection_bootstrap_hash"] == second_metadata[
+        "projection_bootstrap_hash"
+    ]
+    assert first_metadata["projection_fixtures_hash"] == second_metadata[
+        "projection_fixtures_hash"
+    ]
+    assert second_metadata["live_data_checked_at"] >= first_metadata[
+        "live_data_checked_at"
+    ]
+
+
+def test_projection_cache_ignores_live_score_noise_but_keeps_metadata_fresh(
+    monkeypatch,
+):
+    bootstrap = {
+        "events": [
+            {"id": 1, "is_current": True, "deadline_time": "2026-08-21T18:00:00Z"},
+            {"id": 2, "is_next": True, "deadline_time": "2026-08-28T18:00:00Z"},
+        ],
+        "elements": [
+            {
+                "id": 1,
+                "team": 1,
+                "element_type": 3,
+                "now_cost": 75,
+                "selected_by_percent": "10.1",
+                "event_points": 2,
+                "bps": 7,
+            }
+        ],
+        "teams": [{"id": 1, "name": "Home", "short_name": "HOM"}],
+        "element_types": [{"id": 3, "singular_name_short": "MID"}],
+    }
+    fixtures = [
+        {
+            "id": 1,
+            "event": 1,
+            "team_h": 1,
+            "team_a": 2,
+            "team_h_score": 1,
+            "team_a_score": 0,
+        },
+        {"id": 2, "event": 2, "team_h": 1, "team_a": 2},
+    ]
+    project_calls = 0
+
+    async def fake_bootstrap():
+        return bootstrap
+
+    async def fake_fixtures():
+        return fixtures
+
+    def fake_project_players(*args, **kwargs):
+        nonlocal project_calls
+        project_calls += 1
+        return [{"element_id": 1, "projections": []}]
+
+    monkeypatch.setattr(projection_service.fpl_client, "get_bootstrap", fake_bootstrap)
+    monkeypatch.setattr(projection_service.fpl_client, "get_fixtures", fake_fixtures)
+    monkeypatch.setattr(projection_service, "current_player_rows", lambda payload: [])
+    monkeypatch.setattr(projection_service, "load_planner_models", lambda model: {})
+    monkeypatch.setattr(projection_service, "project_players", fake_project_players)
+    monkeypatch.setattr(
+        projection_service.data_service,
+        "historical_player_gw",
+        lambda: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        projection_service,
+        "load_current_artifact_manifest",
+        lambda: {"rules_version": "rules-v1"},
+    )
+    projection_service.clear_projection_cache()
+
+    _, first_metadata = asyncio.run(
+        projection_service.live_projection_rows(model_name="Ridge Regression")
+    )
+    bootstrap["elements"][0]["event_points"] = 9
+    bootstrap["elements"][0]["bps"] = 42
+    fixtures[0]["team_h_score"] = 4
+    _, second_metadata = asyncio.run(
+        projection_service.live_projection_rows(model_name="Ridge Regression")
+    )
+
+    assert project_calls == 1
+    assert first_metadata["start_gameweek"] == 2
+    assert first_metadata["bootstrap_hash"] != second_metadata["bootstrap_hash"]
+    assert first_metadata["fixtures_hash"] != second_metadata["fixtures_hash"]
+    assert (
+        first_metadata["projection_bootstrap_hash"]
+        == second_metadata["projection_bootstrap_hash"]
+    )
+    assert (
+        first_metadata["projection_fixtures_hash"]
+        == second_metadata["projection_fixtures_hash"]
+    )
+
+
+def test_projection_cache_invalidates_on_actionable_live_changes(monkeypatch):
+    bootstrap = {
+        "events": [{"id": 2, "is_next": True}],
+        "elements": [
+            {
+                "id": 1,
+                "team": 1,
+                "element_type": 3,
+                "now_cost": 75,
+                "status": "a",
+                "selected_by_percent": "10.0",
+            }
+        ],
+        "teams": [{"id": 1}],
+        "element_types": [{"id": 3, "singular_name_short": "MID"}],
+    }
+    fixtures = [{"id": 2, "event": 2, "team_h": 1, "team_a": 2}]
+    project_calls = 0
+
+    async def fake_bootstrap():
+        return bootstrap
+
+    async def fake_fixtures():
+        return fixtures
+
+    def fake_project_players(*args, **kwargs):
+        nonlocal project_calls
+        project_calls += 1
+        return []
+
+    monkeypatch.setattr(projection_service.fpl_client, "get_bootstrap", fake_bootstrap)
+    monkeypatch.setattr(projection_service.fpl_client, "get_fixtures", fake_fixtures)
+    monkeypatch.setattr(projection_service, "current_player_rows", lambda payload: [])
+    monkeypatch.setattr(projection_service, "load_planner_models", lambda model: {})
+    monkeypatch.setattr(projection_service, "project_players", fake_project_players)
+    monkeypatch.setattr(
+        projection_service.data_service,
+        "historical_player_gw",
+        lambda: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        projection_service,
+        "load_current_artifact_manifest",
+        lambda: {"rules_version": "rules-v1"},
+    )
+    projection_service.clear_projection_cache()
+
+    asyncio.run(projection_service.live_projection_rows(model_name="Ridge Regression"))
+    bootstrap["elements"][0]["status"] = "d"
+    asyncio.run(projection_service.live_projection_rows(model_name="Ridge Regression"))
+    fixtures[0]["event"] = 3
+    asyncio.run(projection_service.live_projection_rows(model_name="Ridge Regression"))
+
+    assert project_calls == 3
 
 
 def test_fixture_client_uses_short_warm_cache(monkeypatch):

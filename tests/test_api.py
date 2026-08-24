@@ -14,6 +14,7 @@ from api.routers import chips as chips_router
 from api.routers import fpl_live
 from api.routers import operations as operations_router
 from api.routers import planner as planner_router
+from api.routers import player_catalog as player_catalog_router
 from api.routers import players as players_router
 from api.routers import predictions as predictions_router
 from api.routers.fixtures import TEAM_SHORT_NAMES, TEAM_STRENGTH, _ticker_from_named_fixtures
@@ -35,6 +36,53 @@ def test_health_returns_ok():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_official_player_catalog_remains_available_without_model_artifacts(monkeypatch):
+    async def fake_bootstrap():
+        return {
+            "teams": [{"id": 1, "name": "Arsenal", "short_name": "ARS", "code": 3}],
+            "element_types": [{"id": 3, "singular_name_short": "MID"}],
+            "elements": [{
+                "id": 101,
+                "first_name": "Example",
+                "second_name": "Player",
+                "web_name": "Example",
+                "team": 1,
+                "element_type": 3,
+                "now_cost": 75,
+                "total_points": 10,
+                "points_per_game": "5.0",
+                "form": "6.2",
+                "selected_by_percent": "12.4",
+                "status": "a",
+                "chance_of_playing_next_round": None,
+            }],
+        }
+
+    monkeypatch.setattr(player_catalog_router.fpl_client, "get_bootstrap", fake_bootstrap)
+    response = asyncio.run(_get("/api/player-catalog"))
+
+    assert response.status_code == 200
+    assert response.json() == [{
+        "element_id": 101,
+        "name": "Example Player",
+        "web_name": "Example",
+        "team": "Arsenal",
+        "team_code": 3,
+        "position": "MID",
+        "price": 7.5,
+        "total_points": 10,
+        "ppg": 5.0,
+        "form": 6.2,
+        "start_likelihood": 1.0,
+        "value": 0.667,
+        "captain_rank_score": 0.0,
+        "transfer_rank_score": 0.0,
+        "selected_by_percent": 12.4,
+        "metrics_available": False,
+        "catalog_source": "official_fpl_bootstrap",
+    }]
 
 
 def test_portfolio_status_exposes_active_and_rollback_configs(monkeypatch):

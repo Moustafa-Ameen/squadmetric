@@ -25,9 +25,11 @@ from fpl_intelligence.artifact_contract import (
     validate_current_artifacts,
 )
 from fpl_intelligence.season_rules import (
+    build_season_rules,
     decision_bootstrap_hash,
     infer_season_from_bootstrap,
     payload_hash,
+    rules_contract_hash,
 )
 
 DEFAULT_MAX_ARTIFACT_AGE_HOURS = 24.0
@@ -164,6 +166,15 @@ def evaluate_live_decision_readiness(
     live_bootstrap_hash = payload_hash(bootstrap)
     live_bootstrap_contract_hash = decision_bootstrap_hash(bootstrap)
     live_fixtures_hash = payload_hash(fixtures)
+    live_rules_contract_hash = rules_contract_hash(
+        build_season_rules(
+            bootstrap,
+            season=season,
+            source_url="https://fantasy.premierleague.com/api/bootstrap-static/",
+            retrieved_at=checked_at,
+            cutoff_at=checked_at,
+        )
+    )
     live_player_ids = _player_ids(bootstrap)
     artifact_player_ids = _artifact_player_ids(manifest)
     artifact_fixtures_hash = _artifact_json_payload_hash(
@@ -178,6 +189,19 @@ def evaluate_live_decision_readiness(
                 "message": "The official FPL payload does not identify an active season.",
             }
         )
+    if (
+        manifest.get("rules_contract_hash")
+        and live_rules_contract_hash != manifest.get("rules_contract_hash")
+    ):
+        blockers.append(
+            {
+                "code": "rules_contract_drift",
+                "message": (
+                    "Official scoring, squad, transfer, chip, DC, or BPS rules changed. "
+                    "The rules contract must be reviewed before recommendations resume."
+                ),
+            }
+        )
     artifact_bootstrap = _artifact_json_payload(manifest.get("bootstrap_path"))
     artifact_bootstrap_contract_hash = (
         decision_bootstrap_hash(artifact_bootstrap) if artifact_bootstrap else None
@@ -187,14 +211,9 @@ def evaluate_live_decision_readiness(
         and artifact_bootstrap_contract_hash
         and live_bootstrap_contract_hash != artifact_bootstrap_contract_hash
     ):
-        blockers.append(
-            {
-                "code": "bootstrap_drift",
-                "message": (
-                    "Official player, price, status, or rules data changed after "
-                    "the last refresh."
-                ),
-            }
+        warnings.append(
+            "Latest official player prices, availability and role data are being "
+            "applied directly to this request."
         )
     elif manifest and live_bootstrap_hash != manifest.get("bootstrap_hash"):
         warnings.append(
@@ -202,33 +221,21 @@ def evaluate_live_decision_readiness(
             "the decision-relevant bootstrap contract is unchanged."
         )
     if manifest and artifact_fixtures_hash != live_fixtures_hash:
-        blockers.append(
-            {
-                "code": "fixtures_drift",
-                "message": "Official fixtures changed after the last refresh.",
-            }
+        warnings.append(
+            "Latest official fixtures are being applied directly to this request."
         )
     if manifest and len(live_player_ids) != int(manifest.get("player_count", -1)):
-        blockers.append(
-            {
-                "code": "player_count_drift",
-                "message": (
-                    f"Official FPL has {len(live_player_ids)} players but the processed "
-                    f"artifacts contain {manifest.get('player_count', 'an unknown number')}."
-                ),
-            }
+        warnings.append(
+            f"Official FPL now has {len(live_player_ids)} players; new player records "
+            "are being onboarded directly from the live player pool."
         )
     if artifact_player_ids is not None and live_player_ids != artifact_player_ids:
-        missing = len(live_player_ids.difference(artifact_player_ids))
+        added = len(live_player_ids.difference(artifact_player_ids))
         removed = len(artifact_player_ids.difference(live_player_ids))
-        blockers.append(
-            {
-                "code": "player_id_drift",
-                "message": (
-                    "The official player IDs differ from the processed player pool "
-                    f"({missing} new, {removed} removed)."
-                ),
-            }
+        warnings.append(
+            "The official player pool changed "
+            f"({added} new, {removed} removed); stable live IDs and conservative "
+            "new-player priors are being used for this request."
         )
     live_team_count = len(
         {team.get("id") for team in bootstrap.get("teams", []) if team.get("id") is not None}
@@ -251,14 +258,9 @@ def evaluate_live_decision_readiness(
             }
         )
     elif artifact_age_hours > max_artifact_age_hours():
-        blockers.append(
-            {
-                "code": "stale_artifacts",
-                "message": (
-                    f"Recommendation artifacts are {artifact_age_hours:.1f} hours old; "
-                    f"the maximum is {max_artifact_age_hours():g} hours."
-                ),
-            }
+        warnings.append(
+            f"The validated model snapshot is {artifact_age_hours:.1f} hours old. "
+            "Official prices, availability, roles and fixtures are still applied live."
         )
 
     blockers = _deduplicate_blockers(blockers)
@@ -273,6 +275,8 @@ def evaluate_live_decision_readiness(
             "bootstrap_hash": live_bootstrap_hash,
             "bootstrap_contract_hash": live_bootstrap_contract_hash,
             "fixtures_hash": live_fixtures_hash,
+            "rules_contract_hash": live_rules_contract_hash,
+            "live_inputs_applied": True,
             "player_count": len(live_player_ids),
             "team_count": live_team_count,
         },

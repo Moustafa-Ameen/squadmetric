@@ -1,3 +1,4 @@
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
@@ -9,8 +10,23 @@ TIMEOUT_SECONDS = 10.0
 UNAVAILABLE_MESSAGE = "FPL data is temporarily unavailable. Try again shortly."
 BOOTSTRAP_CACHE_SECONDS = 300.0
 FIXTURES_CACHE_SECONDS = 60.0
-_BOOTSTRAP_CACHE: tuple[float, dict[str, Any]] | None = None
-_FIXTURES_CACHE: tuple[float, list[dict[str, Any]]] | None = None
+ARTIFACT_MANIFEST_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "data"
+    / "processed"
+    / "current_artifact_manifest.json"
+)
+_BOOTSTRAP_CACHE: tuple[float, int | None, dict[str, Any]] | None = None
+_FIXTURES_CACHE: tuple[float, int | None, list[dict[str, Any]]] | None = None
+
+
+def _artifact_manifest_mtime_ns() -> int | None:
+    """Return the serving-manifest version used to invalidate live API caches."""
+
+    try:
+        return ARTIFACT_MANIFEST_PATH.stat().st_mtime_ns
+    except OSError:
+        return None
 
 
 async def _get(path: str) -> Any:
@@ -48,13 +64,15 @@ async def _get(path: str) -> Any:
 
 async def get_bootstrap() -> dict[str, Any]:
     global _BOOTSTRAP_CACHE
+    manifest_mtime = _artifact_manifest_mtime_ns()
     if (
         _BOOTSTRAP_CACHE is not None
         and monotonic() - _BOOTSTRAP_CACHE[0] < BOOTSTRAP_CACHE_SECONDS
+        and _BOOTSTRAP_CACHE[1] == manifest_mtime
     ):
-        return _BOOTSTRAP_CACHE[1]
+        return _BOOTSTRAP_CACHE[2]
     payload = await _get("bootstrap-static/")
-    _BOOTSTRAP_CACHE = (monotonic(), payload)
+    _BOOTSTRAP_CACHE = (monotonic(), manifest_mtime, payload)
     return payload
 
 
@@ -65,13 +83,15 @@ def clear_bootstrap_cache() -> None:
 
 async def get_fixtures() -> list[dict[str, Any]]:
     global _FIXTURES_CACHE
+    manifest_mtime = _artifact_manifest_mtime_ns()
     if (
         _FIXTURES_CACHE is not None
         and monotonic() - _FIXTURES_CACHE[0] < FIXTURES_CACHE_SECONDS
+        and _FIXTURES_CACHE[1] == manifest_mtime
     ):
-        return _FIXTURES_CACHE[1]
+        return _FIXTURES_CACHE[2]
     payload = await _get("fixtures/")
-    _FIXTURES_CACHE = (monotonic(), payload)
+    _FIXTURES_CACHE = (monotonic(), manifest_mtime, payload)
     return payload
 
 

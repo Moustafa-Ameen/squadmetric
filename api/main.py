@@ -12,6 +12,7 @@ from api.routers import (
     fpl_live,
     operations,
     planner,
+    player_catalog,
     players,
     predictions,
     review,
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(players.router)
+app.include_router(player_catalog.router)
 app.include_router(fixtures.router)
 app.include_router(predictions.router)
 app.include_router(planner.router)

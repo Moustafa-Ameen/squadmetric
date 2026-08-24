@@ -8,7 +8,11 @@ from api import readiness as readiness_module
 from fastapi import HTTPException, Response
 
 from fpl_intelligence.artifact_contract import ArtifactReadiness
-from fpl_intelligence.season_rules import payload_hash
+from fpl_intelligence.season_rules import (
+    build_season_rules,
+    payload_hash,
+    rules_contract_hash,
+)
 
 
 def _bootstrap(player_ids=(1, 2)):
@@ -38,6 +42,15 @@ def _stored_readiness(monkeypatch, tmp_path, bootstrap, fixtures, *, cutoff):
         "player_count": len(bootstrap["elements"]),
         "team_count": 20,
         "rules_version": "2026-27-test",
+        "rules_contract_hash": rules_contract_hash(
+            build_season_rules(
+                bootstrap,
+                season="2026-27",
+                source_url="test",
+                retrieved_at=cutoff,
+                cutoff_at=cutoff,
+            )
+        ),
     }
     monkeypatch.setattr(
         readiness_module,
@@ -105,7 +118,7 @@ def test_live_decision_readiness_allows_only_volatile_ownership_drift(
     assert any("ownership" in warning.lower() for warning in result.warnings)
 
 
-def test_live_decision_readiness_blocks_price_drift(monkeypatch, tmp_path):
+def test_live_decision_readiness_applies_price_drift_without_a_rebuild(monkeypatch, tmp_path):
     now = datetime(2026, 8, 17, 12, tzinfo=UTC)
     stored_bootstrap = _bootstrap()
     stored_bootstrap["elements"][0]["now_cost"] = 50
@@ -124,10 +137,12 @@ def test_live_decision_readiness_blocks_price_drift(monkeypatch, tmp_path):
         live_bootstrap, fixtures, check_models=True, now=now
     )
 
-    assert "bootstrap_drift" in {row["code"] for row in result.blockers}
+    assert result.ready
+    assert result.blockers == []
+    assert any("prices" in warning.lower() for warning in result.warnings)
 
 
-def test_live_decision_readiness_blocks_new_player_and_bootstrap_drift(
+def test_live_decision_readiness_onboards_new_player_without_blocking(
     monkeypatch, tmp_path
 ):
     now = datetime(2026, 8, 17, 12, tzinfo=UTC)
@@ -145,13 +160,14 @@ def test_live_decision_readiness_blocks_new_player_and_bootstrap_drift(
     result = readiness_module.evaluate_live_decision_readiness(
         live_bootstrap, fixtures, check_models=True, now=now
     )
-    codes = {row["code"] for row in result.blockers}
+    assert result.ready
+    assert result.blockers == []
+    assert any("new player" in warning.lower() for warning in result.warnings)
 
-    assert not result.ready
-    assert {"bootstrap_drift", "player_count_drift", "player_id_drift"} <= codes
 
-
-def test_live_decision_readiness_blocks_fixture_drift(monkeypatch, tmp_path):
+def test_live_decision_readiness_applies_fixture_drift_without_a_rebuild(
+    monkeypatch, tmp_path
+):
     now = datetime(2026, 8, 17, 12, tzinfo=UTC)
     bootstrap = _bootstrap()
     stored_fixtures = [{"id": 1, "event": 1}]
@@ -168,10 +184,36 @@ def test_live_decision_readiness_blocks_fixture_drift(monkeypatch, tmp_path):
         bootstrap, live_fixtures, check_models=False, now=now
     )
 
-    assert "fixtures_drift" in {row["code"] for row in result.blockers}
+    assert result.ready
+    assert result.blockers == []
+    assert any("fixtures" in warning.lower() for warning in result.warnings)
 
 
-def test_live_decision_readiness_blocks_stale_cutoff(monkeypatch, tmp_path):
+def test_live_decision_readiness_still_blocks_rules_drift(monkeypatch, tmp_path):
+    now = datetime(2026, 8, 17, 12, tzinfo=UTC)
+    stored_bootstrap = _bootstrap()
+    stored_bootstrap["game_settings"] = {"squad_total_spend": 1000}
+    live_bootstrap = json.loads(json.dumps(stored_bootstrap))
+    live_bootstrap["game_settings"]["squad_total_spend"] = 1100
+    fixtures = [{"id": 1, "event": 1}]
+    _stored_readiness(
+        monkeypatch,
+        tmp_path,
+        stored_bootstrap,
+        fixtures,
+        cutoff=(now - timedelta(hours=1)).isoformat(),
+    )
+
+    result = readiness_module.evaluate_live_decision_readiness(
+        live_bootstrap, fixtures, check_models=True, now=now
+    )
+
+    assert "rules_contract_drift" in {row["code"] for row in result.blockers}
+
+
+def test_live_decision_readiness_uses_live_inputs_with_old_model_snapshot(
+    monkeypatch, tmp_path
+):
     now = datetime(2026, 8, 17, 12, tzinfo=UTC)
     bootstrap = _bootstrap()
     fixtures = [{"id": 1, "event": 1}]
@@ -187,7 +229,9 @@ def test_live_decision_readiness_blocks_stale_cutoff(monkeypatch, tmp_path):
         bootstrap, fixtures, check_models=False, now=now
     )
 
-    assert "stale_artifacts" in {row["code"] for row in result.blockers}
+    assert result.ready
+    assert result.blockers == []
+    assert any("model snapshot" in warning.lower() for warning in result.warnings)
     assert result.artifact_data["age_hours"] == 25
 
 
