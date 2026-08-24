@@ -24,6 +24,8 @@ export interface Player {
   prior_source?: string;
   robustness_class?: "locked" | "stable" | "fragile" | null;
   scenario_selection_rate?: number | null;
+  metrics_available?: boolean;
+  catalog_source?: string;
 }
 
 export interface CaptainPick {

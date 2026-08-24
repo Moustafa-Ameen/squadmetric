@@ -17,6 +17,7 @@ test("recommendations require both the ready status and ready flag", () => {
   assert.equal(recommendationsAreReady({ ...readyState, recommendations_ready: false }), false);
   assert.equal(recommendationsAreReady({ ...readyState, decision_status: "blocked" }), false);
   assert.equal(decisionStatusLabel({ ...readyState, decision_status: "unavailable" }), "Live FPL data unavailable");
+  assert.equal(decisionStatusLabel({ ...readyState, decision_status: "blocked", recommendations_ready: false }), "Recommendations updating");
 });
 
 test("a saved Team ID is not treated as personalization without a loaded squad", () => {

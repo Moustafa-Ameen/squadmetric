@@ -93,6 +93,10 @@ export async function getPlayers(params?: {
   return fetchJson(`/api/players${suffix}`);
 }
 
+export async function getPlayerCatalog(limit = 1000): Promise<Player[]> {
+  return fetchJson(`/api/player-catalog?limit=${limit}`, { cache: "no-store" });
+}
+
 export async function comparePlayers(elementIds: number[]): Promise<PlayerComparisonResponse> {
   const ids = elementIds.slice(0, 3).join(",");
   return fetchJson(`/api/players/compare?ids=${encodeURIComponent(ids)}`, { cache: "no-store" });

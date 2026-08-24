@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { OverviewResponse, SeasonState } from "@/lib/types";
-import { DecisionStatusNotice } from "./DecisionStatusNotice";
 
 export function DashboardClient({ overview, seasonState, seasonStateUnavailable }: { overview: OverviewResponse; seasonState: SeasonState | null; seasonStateUnavailable: boolean }) {
   const [teamId, setTeamId] = useState("");
@@ -42,7 +41,6 @@ export function DashboardClient({ overview, seasonState, seasonStateUnavailable 
     return (
       <div className="space-y-5">
         <PageIntro gameweek={gameweek} />
-        <DecisionStatusNotice seasonState={seasonState} />
         <TeamConnection teamId={teamId} />
       </div>
     );

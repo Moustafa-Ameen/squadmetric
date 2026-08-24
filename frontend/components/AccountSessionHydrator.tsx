@@ -16,16 +16,23 @@ export function AccountSessionHydrator({ children }: { children: ReactNode }) {
     let active = true;
 
     async function hydrate() {
+      let redirecting = false;
       try {
         const result = await hydrateAccountStorage();
         if (result.requiresConsent && pathname !== "/consent") {
+          redirecting = true;
           router.replace("/consent");
+          return;
+        }
+        if (result.authenticated && result.requiresOnboarding && pathname !== "/onboarding") {
+          redirecting = true;
+          router.replace("/onboarding");
           return;
         }
       } catch {
         // Keep locally stored work available when account sync is temporarily unavailable.
       } finally {
-        if (active) setReady(true);
+        if (active && !redirecting) setReady(true);
       }
     }
 

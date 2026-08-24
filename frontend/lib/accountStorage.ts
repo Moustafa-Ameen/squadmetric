@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseSavedDrafts, type SavedDraft } from "./draftWorkspace";
 import type { DecisionCenterResponse } from "./types";
 import { createSupabaseBrowserClient } from "./supabase/client";
+import { applyAuthoritativeTeamId, deriveAccountAccess } from "./accountAccess";
 
 export const ACCOUNT_STORAGE_KEYS = {
   drafts: "fpl_intelligence_drafts_v1",
@@ -28,18 +29,29 @@ type PreferencePatch = {
 
 type DecisionResponse = "accepted" | "rejected";
 
-export async function hydrateAccountStorage(): Promise<{ authenticated: boolean; requiresConsent: boolean }> {
+export type AccountHydrationResult = {
+  authenticated: boolean;
+  requiresConsent: boolean;
+  requiresOnboarding: boolean;
+  teamId: number | null;
+};
+
+export async function hydrateAccountStorage(): Promise<AccountHydrationResult> {
   const supabase = createSupabaseBrowserClient();
-  if (!supabase || typeof window === "undefined") return { authenticated: false, requiresConsent: false };
+  if (!supabase || typeof window === "undefined") {
+    return { authenticated: false, requiresConsent: false, requiresOnboarding: false, teamId: null };
+  }
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) return { authenticated: false, requiresConsent: false };
+  if (userError || !userData.user) {
+    return { authenticated: false, requiresConsent: false, requiresOnboarding: false, teamId: null };
+  }
   const userId = userData.user.id;
-  const markerKey = `squadmetric_account_hydrated_v2:${userId}`;
+  const markerKey = `squadmetric_account_hydrated_v3:${userId}`;
   const firstHydration = window.localStorage.getItem(markerKey) !== "true";
 
   const [profileResult, teamResult, preferencesResult, draftsResult, favoritesResult] = await Promise.all([
-    supabase.from("profiles").select("terms_accepted_at, terms_version, privacy_version").eq("user_id", userId).maybeSingle(),
+    supabase.from("profiles").select("onboarding_completed, terms_accepted_at, terms_version, privacy_version").eq("user_id", userId).maybeSingle(),
     supabase.from("fpl_team_links").select("team_id").eq("user_id", userId).maybeSingle(),
     supabase.from("user_preferences").select("risk_style, alternative_style, deadline_reminders, email_notifications, show_fixture_bar, show_bench_players, compact_table_rows, objective_mode").eq("user_id", userId).maybeSingle(),
     supabase.from("saved_drafts").select("id, payload, updated_at").eq("user_id", userId),
@@ -64,25 +76,23 @@ export async function hydrateAccountStorage(): Promise<{ authenticated: boolean;
       syncDrafts(supabase, userId, mergedDrafts),
       syncFavoriteNames(supabase, userId, mergedWatchlist, favoritesResult.data ?? []),
       syncLocalPreferences(supabase, userId, localPreferences),
-      syncLocalTeam(supabase, userId, teamResult.data?.team_id ?? null),
     ]);
   } else {
     writeSavedDraftsLocal(remoteDrafts);
     writeWatchlistLocal(remoteWatchlist);
   }
 
-  if (teamResult.data?.team_id) {
-    window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.teamId, String(teamResult.data.team_id));
-  } else if (!firstHydration) {
-    window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.teamId);
-  }
+  // Team ownership is account-authoritative. Never attach a stale Team ID from a
+  // previous anonymous browser session (or another account) to a new user.
+  applyAuthoritativeTeamId(window.localStorage, teamResult.data?.team_id);
   if (preferencesResult.data) hydratePreferences(preferencesResult.data);
   if (firstHydration) applyPreferencePatchLocally(localPreferences);
   window.localStorage.setItem(markerKey, "true");
 
+  const access = deriveAccountAccess(profileResult.data, teamResult.data?.team_id);
   return {
     authenticated: true,
-    requiresConsent: !profileResult.data?.terms_accepted_at,
+    ...access,
   };
 }
 
@@ -261,14 +271,6 @@ function readLocalPreferencePatch(): PreferencePatch {
   const objective = window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.objectiveMode);
   if (objective === "points" || objective === "rank") patch.objectiveMode = objective;
   return patch;
-}
-
-async function syncLocalTeam(supabase: SupabaseClient, userId: string, remoteTeamId: number | null) {
-  if (remoteTeamId) return;
-  const localTeamId = Number(window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.teamId));
-  if (!Number.isInteger(localTeamId) || localTeamId <= 0) return;
-  const { error } = await supabase.from("fpl_team_links").upsert({ user_id: userId, team_id: localTeamId, source_input: String(localTeamId) });
-  if (error) throw error;
 }
 
 function hydratePreferences(row: Record<string, unknown>) {

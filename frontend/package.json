@@ -16,8 +16,8 @@
     "test:decision-center": "node --experimental-strip-types --test lib/decisionCenter.test.mjs",
     "test:deadline": "node --experimental-strip-types --test lib/deadlineIntelligence.test.mjs",
     "test:review": "node --experimental-strip-types --test lib/reviewMode.test.mjs",
-    "test:auth": "node --experimental-strip-types --test lib/auth.test.mjs lib/fplTeam.test.mjs",
-    "test:unit": "node --experimental-strip-types --test lib/search.test.mjs lib/decisionState.test.mjs lib/draftWorkspace.test.mjs lib/decisionCenter.test.mjs lib/deadlineIntelligence.test.mjs lib/reviewMode.test.mjs lib/auth.test.mjs lib/fplTeam.test.mjs lib/launchContract.test.mjs",
+    "test:auth": "node --experimental-strip-types --test lib/auth.test.mjs lib/fplTeam.test.mjs lib/accountAccess.test.mjs",
+    "test:unit": "node --experimental-strip-types --test lib/search.test.mjs lib/decisionState.test.mjs lib/draftWorkspace.test.mjs lib/decisionCenter.test.mjs lib/deadlineIntelligence.test.mjs lib/reviewMode.test.mjs lib/auth.test.mjs lib/fplTeam.test.mjs lib/accountAccess.test.mjs lib/launchContract.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium"
   },

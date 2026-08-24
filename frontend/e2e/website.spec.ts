@@ -103,6 +103,80 @@ test("guided onboarding accepts an official FPL URL and stores verified setup", 
   expect(JSON.parse(stored.preferences ?? "{}").riskStyle).toBe("aggressive");
 });
 
+test("my team is readable and presents the lineup on a visual pitch", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.goto("/squad");
+  await expect(page.getByRole("heading", { name: "My Team" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your current lineup" })).toBeVisible();
+  await expect(page.getByText("Starting XI projection")).toBeVisible();
+  await expect(page.getByText("Substitutes")).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("players page loads, searches clubs, switches view, and exposes player results", async ({ page }) => {
+  await page.goto("/stats");
+  await expect(page.getByRole("heading", { name: "Players" })).toBeVisible();
+  await expect(page.getByText("Erling Haaland", { exact: true })).toBeVisible();
+  await page.getByPlaceholder("Search player or club…").fill("Arsenal");
+  await expect(page.getByText("Bukayo Saka", { exact: true })).toBeVisible();
+  await expect(page.getByText("Erling Haaland", { exact: true })).not.toBeVisible();
+  await page.getByRole("button", { name: "Cards" }).click();
+  await expect(page.getByText("Bukayo Saka", { exact: true })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("players page keeps the official catalog usable while model data refreshes", async ({ page }) => {
+  await page.route("**/api/fpl/season-state", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...seasonState, recommendations_ready: false, decision_status: "blocked", decision_blockers: [{ code: "bootstrap_drift", message: "Official player data changed." }] }) }));
+  await page.goto("/stats");
+  await expect(page.getByRole("heading", { name: "Players" })).toBeVisible();
+  await expect(page.getByText("Official players, clubs, positions and prices are still available below.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Erling Haaland", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cards" }).click();
+  await expect(page.getByText("Refresh needed", { exact: true }).first()).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("routine live FPL changes refresh captaincy without an updating banner", async ({ page }) => {
+  await page.route("**/api/fpl/season-state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...seasonState,
+      recommendations_ready: true,
+      decision_status: "ready",
+      decision_warnings: [
+        "Official FPL now has 604 players; new player records are being onboarded directly.",
+        "Latest official fixtures are being applied directly to this request.",
+      ],
+    }),
+  }));
+
+  await page.goto("/captain");
+
+  await expect(page.getByRole("heading", { name: "Who should I captain this week?" })).toBeVisible();
+  await expect(page.getByText("Erling Haaland", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Recommendations updating")).not.toBeVisible();
+  await expect(page.getByText("Captaincy recommendations are not decision-ready")).not.toBeVisible();
+});
+
+test("gameweek plan leads with a clear action and a visual recommended XI", async ({ page }) => {
+  await page.goto("/planner");
+  await expect(page.getByRole("heading", { name: "2026-27 Initial Squad" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recommended opening lineup" })).toBeVisible();
+  await expect(page.getByText("Captain, vice-captain and bench order are shown on the pitch.")).toBeVisible();
+  await expect(page.getByText("Explore alternatives and build a custom plan")).not.toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("performance evidence is readable and states its limits", async ({ page }) => {
+  await page.goto("/proof");
+  await expect(page.getByRole("heading", { name: "Performance evidence" })).toBeVisible();
+  await expect(page.getByText("The model is tested on matches it was not trained to predict.")).toBeVisible();
+  await expect(page.getByText("What it does not prove")).toBeVisible();
+  await expect(page.getByText("A guaranteed top-1% finish or a fixed season score.")).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
 test("decision dashboard prioritizes recommendations and progressively discloses evidence", async ({ page }) => {
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "Your decision dashboard" })).toBeVisible();
@@ -110,6 +184,18 @@ test("decision dashboard prioritizes recommendations and progressively discloses
   await expect(page.getByText("This gameweek’s decisions")).toBeVisible();
   await expect(page.getByText("Why SquadMetric prefers this plan")).toBeVisible();
   await expect(page.getByRole("navigation", { name: /navigation/i }).first()).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("decision dashboard stays useful while recommendations refresh", async ({ page }) => {
+  await page.route("**/api/fpl/season-state", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...seasonState, recommendations_ready: false, decision_status: "blocked", decision_blockers: [{ code: "bootstrap_drift", message: "Official player data changed." }] }) }));
+  await page.route("**/api/predictions/overview", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: { code: "recommendations_blocked" } }) }));
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "Your decision dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Official FPL data changed. We’re checking the next plan." })).toBeVisible();
+  await expect(page.getByText("Dashboard unavailable")).not.toBeVisible();
+  await expect(page.locator('a[href="/stats"]').filter({ hasText: "Browse current official players and prices." })).toBeVisible();
+  await expect(page.locator('a[href="/deadline"]').filter({ hasText: "Follow final checks and team-news timing." })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 });
 
@@ -165,6 +251,33 @@ async function mockApi(route: Route) {
   if (url.pathname === "/api/fpl/current-gw") return json({ current_gw: 1 });
   if (url.pathname === "/api/fpl/season-state") return json(seasonState);
   if (url.pathname === "/api/fpl/team/5605168") return json({ team_name: "Test XI", overall_rank: 1000, total_points: 0, bank_value: 0, current_gw_points: 0, squad_value: 100, free_transfers_available: 1 });
+  if (url.pathname === "/api/fpl/team/5605168/squad") return json(players.map((player, index) => ({ ...player, expected_points: player.gw1_points, raw_xp: player.gw1_points, start_adjusted_xp: player.gw1_points, form: 4, current_price: player.price, is_captain: index === 12, is_vice_captain: index === 8 })));
+  if (url.pathname === "/api/players") return json([
+    { element_id: 101, name: "Erling Haaland", web_name: "Haaland", team: "Man City", team_code: 43, position: "FWD", price: 14, total_points: 0, ppg: 7.2, form: 6.8, start_likelihood: 0.97, value: 0.51, captain_rank_score: 8.4, transfer_rank_score: 7.8, selected_by_percent: 58 },
+    { element_id: 102, name: "Bukayo Saka", web_name: "Saka", team: "Arsenal", team_code: 3, position: "MID", price: 10, total_points: 0, ppg: 6.5, form: 6.1, start_likelihood: 0.95, value: 0.65, captain_rank_score: 7.5, transfer_rank_score: 7.3, selected_by_percent: 42 },
+  ]);
+  if (url.pathname === "/api/player-catalog") return json([
+    { element_id: 101, name: "Erling Haaland", web_name: "Haaland", team: "Man City", team_code: 43, position: "FWD", price: 14, total_points: 0, ppg: 7.2, form: 6.8, start_likelihood: 0.97, value: 0.51, captain_rank_score: 0, transfer_rank_score: 0, selected_by_percent: 58, metrics_available: false },
+    { element_id: 102, name: "Bukayo Saka", web_name: "Saka", team: "Arsenal", team_code: 3, position: "MID", price: 10, total_points: 0, ppg: 6.5, form: 6.1, start_likelihood: 0.95, value: 0.65, captain_rank_score: 0, transfer_rank_score: 0, selected_by_percent: 42, metrics_available: false },
+  ]);
+  if (url.pathname === "/api/backtest/accuracy") return json([
+    { model: "FPL Intelligence (best)", raw_MAE: 2.1, raw_RMSE: 3.2, raw_beats_naive_MAE: "yes", raw_beats_naive_RMSE: "yes", adjusted_MAE: 1.8, adjusted_RMSE: 2.9, adjusted_beats_naive_MAE: "yes", adjusted_beats_naive_RMSE: "yes" },
+    { model: "Naive form", raw_MAE: 2.5, raw_RMSE: 3.6, raw_beats_naive_MAE: "no", raw_beats_naive_RMSE: "no", adjusted_MAE: 2.3, adjusted_RMSE: 3.3, adjusted_beats_naive_MAE: "no", adjusted_beats_naive_RMSE: "no" },
+  ]);
+  if (url.pathname === "/api/backtest/captaincy") return json([
+    { strategy: "FPL Intelligence (best)", total_captain_points: 510, avg_per_gameweek: 13.4 },
+    { strategy: "Most popular player", total_captain_points: 472, avg_per_gameweek: 12.4 },
+  ]);
+  if (url.pathname === "/api/backtest/top10") return json([
+    { model: "FPL Intelligence (best)", precision_at_10: 0.16, recall_at_10: 0.16 },
+    { model: "Naive form", precision_at_10: 0.1, recall_at_10: 0.1 },
+  ]);
+  if (url.pathname === "/api/predictions/initial-squad") return json({
+    season: "2026-27", bootstrap_hash: "test", rules_version: "2026-27-test", data_cutoff: "2026-08-18T08:00:00Z", model: "production-test", portfolio_version: "portfolio-test", decision_engine_version: "decision-test", horizon: Number(url.searchParams.get("horizon") ?? 8), risk_profile: url.searchParams.get("risk_profile") ?? "balanced", budget: 100, cost: 90, bank: 10, formation: "3-5-2", captain_id: 13, vice_captain_id: 9, expected_gw1_points: 62.4, decision_alternatives: [{ profile: "maximum_points", selected: false, status: "ready", cost: 91, bank: 9, expected_gw1_points: 63, expected_horizon_points: 400, mean_squad_start_probability: 0.9, outfield_bench_start_probability: 0.8, low_reliability_players: [], captain_id: 13, vice_captain_id: 9, changes_from_balanced: 2 }, { profile: "balanced", selected: true, status: "ready", cost: 90, bank: 10, expected_gw1_points: 62.4, expected_horizon_points: 398, mean_squad_start_probability: 0.92, outfield_bench_start_probability: 0.9, low_reliability_players: [], captain_id: 13, vice_captain_id: 9, changes_from_balanced: 0 }, { profile: "safe", selected: false, status: "ready", cost: 89, bank: 11, expected_gw1_points: 61, expected_horizon_points: 395, mean_squad_start_probability: 0.95, outfield_bench_start_probability: 0.95, low_reliability_players: [], captain_id: 13, vice_captain_id: 9, changes_from_balanced: 3 }], decision_audit: { availability_clear: true, low_reliability_starters: [], low_reliability_bench: [], captain_start_probability: 0.97, vice_captain_start_probability: 0.95, vice_captain_fallback_points: 6, first_outfield_cover_id: 4, first_outfield_cover_points: 3, first_outfield_cover_start_probability: 0.9, requires_deadline_refresh: false, reason: "Ready" }, set_piece_summary: { model_version: "test", source_url: null, selected_primary_penalty_takers: [] }, deadline_finalization: null, robustness: null, squad: players.map((player, index) => ({ ...player, player_name: player.name, is_starter: ![1, 4, 10, 14].includes(index), bench_order: [1, 4, 10, 14].includes(index) ? [1, 4, 10, 14].indexOf(index) : null })), assumption: "Uses current official prices, fixtures and availability." });
+  if (url.pathname === "/api/predictions/captaincy") return json([
+    { element_id: 1, name: "Erling Haaland", web_name: "Haaland", team: "Man City", team_code: 43, position: "FWD", start_likelihood: 0.96, raw_xp: 7.6, expected_points: 7.3, start_adjusted_xp: 7.3, captain_expected_points: 14.6, captaincy_score: 7.3, reasoning: "Best blend of expected points and minutes security.", projection_contract_version: "test-v1" },
+    { element_id: 2, name: "Bukayo Saka", web_name: "Saka", team: "Arsenal", team_code: 3, position: "MID", start_likelihood: 0.94, raw_xp: 6.8, expected_points: 6.4, start_adjusted_xp: 6.4, captain_expected_points: 12.8, captaincy_score: 6.4, projection_contract_version: "test-v1" },
+  ]);
   if (url.pathname === "/api/predictions/overview") return json({
     player_count: 620,
     captains: [

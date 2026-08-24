@@ -1,6 +1,7 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, CalendarClock, RefreshCw, ShieldCheck, Users, UserRoundSearch } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { getOverview, getSeasonState } from "@/lib/api";
 import type { OverviewResponse, SeasonState } from "@/lib/types";
@@ -36,17 +37,81 @@ export function DashboardLoader() {
 
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
 
-  if (loading && !overview) return <DashboardSkeleton />;
-  if (overviewError || !overview) {
-    return (
-      <section className="mx-auto max-w-2xl rounded-3xl border border-rose-200 bg-white p-7 shadow-sm" role="alert">
-        <div className="text-xs font-bold uppercase tracking-[0.14em] text-rose-700">Dashboard unavailable</div>
-        <h1 className="mt-3 text-2xl font-black tracking-[-0.035em] text-slate-950">We could not load your decision data.</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">The recommendation service may be refreshing. Your saved account information is unaffected.</p>
-        <button type="button" onClick={() => void load()} className="sm-primary-button mt-6 px-5 py-3"><RefreshCw className="h-4 w-4" />Retry dashboard</button>
-      </section>
-    );
+  useEffect(() => {
+    if (!overviewError && seasonState?.recommendations_ready !== false) return;
+    const timer = window.setInterval(() => void load(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [load, overviewError, seasonState?.recommendations_ready]);
+
+  if (loading && !overview && !seasonState && !overviewError) return <DashboardSkeleton />;
+  if (overviewError || !overview || seasonState?.recommendations_ready === false) {
+    return <DashboardRefreshState seasonState={seasonState} loading={loading} onRefresh={load} />;
   }
 
   return <DashboardClient overview={overview} seasonState={seasonState} seasonStateUnavailable={seasonError} />;
+}
+
+function DashboardRefreshState({
+  seasonState,
+  loading,
+  onRefresh,
+}: {
+  seasonState: SeasonState | null;
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const gameweek = seasonState?.next_gw ?? seasonState?.current_gw ?? 1;
+  const age = seasonState?.artifact_data.age_hours;
+
+  return (
+    <div className="space-y-6">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Gameweek {gameweek}</div>
+          <h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Your decision dashboard</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Your team and planning tools stay available while fresh recommendations are checked.</p>
+        </div>
+        <button type="button" onClick={() => void onRefresh()} disabled={loading} className="sm-secondary-button self-start px-4 py-2.5 sm:self-auto">
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Checking…" : "Check again"}
+        </button>
+      </section>
+
+      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 p-6 text-white shadow-[0_22px_60px_rgba(15,23,42,0.18)] sm:p-8" role="status">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-amber-300"><RefreshCw className="h-4 w-4 animate-spin" />Preparing fresh recommendations</div>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.035em] sm:text-3xl">Official FPL data changed. We’re checking the next plan.</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">SquadMetric temporarily withholds transfer, captain and chip calls instead of showing advice built from mismatched data. This page checks again automatically every minute.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 lg:min-w-64">
+            <div className="flex items-center gap-2 text-sm font-bold text-emerald-300"><ShieldCheck className="h-5 w-5" />Your account is safe</div>
+            <div className="mt-2 text-xs leading-5 text-slate-300">Saved team, preferences and drafts are unaffected.</div>
+            {typeof age === "number" ? <div className="mt-3 text-xs font-semibold text-slate-400">Last validated snapshot: {age.toFixed(1)}h ago</div> : null}
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Available now</div>
+        <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Keep planning while recommendations update</h2>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <RefreshLink href="/squad" title="My Team" detail="Review your current XI and bench." icon={<Users className="h-5 w-5" />} />
+          <RefreshLink href="/stats" title="Players" detail="Browse current official players and prices." icon={<UserRoundSearch className="h-5 w-5" />} />
+          <RefreshLink href="/fixtures" title="Fixtures" detail="Check upcoming opponents and schedules." icon={<CalendarClock className="h-5 w-5" />} />
+          <RefreshLink href="/deadline" title="Deadline center" detail="Follow final checks and team-news timing." icon={<ShieldCheck className="h-5 w-5" />} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function RefreshLink({ href, title, detail, icon }: { href: string; title: string; detail: string; icon: React.ReactNode }) {
+  return (
+    <Link href={href} className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-lg">
+      <div className="flex items-center justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">{icon}</span><ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-violet-600" /></div>
+      <div className="mt-5 font-bold text-slate-950">{title}</div>
+      <div className="mt-1 text-sm leading-5 text-slate-500">{detail}</div>
+    </Link>
+  );
 }

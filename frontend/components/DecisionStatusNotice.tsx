@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, DatabaseZap, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, DatabaseZap, RefreshCw } from "lucide-react";
 import { decisionStatusLabel, recommendationsAreReady, squadAccessMessage } from "@/lib/decisionState";
 import type { SquadAccessState } from "@/lib/decisionState";
 import type { SeasonState } from "@/lib/types";
@@ -12,22 +12,28 @@ export function DecisionStatusNotice({
 }) {
   const ready = recommendationsAreReady(seasonState);
   const unavailable = seasonState.decision_status === "unavailable";
-  const Icon = ready ? CheckCircle2 : unavailable ? DatabaseZap : ShieldAlert;
+  const Icon = ready ? CheckCircle2 : unavailable ? DatabaseZap : RefreshCw;
   const age = seasonState.artifact_data.age_hours;
+  const tone = ready
+    ? "border-emerald-200 bg-emerald-50"
+    : unavailable
+      ? "border-rose-200 bg-rose-50"
+      : "border-amber-200 bg-amber-50";
+  const iconTone = ready
+    ? "text-emerald-700"
+    : unavailable
+      ? "text-rose-700"
+      : "text-amber-700";
 
   return (
     <section
       data-testid="decision-status"
       data-decision-status={seasonState.decision_status}
-      className={`rounded-lg border p-4 ${
-        ready
-          ? "border-fpl-green/30 bg-fpl-green/10"
-          : "border-fpl-red/40 bg-fpl-red/10"
-      }`}
-      role={ready ? "status" : "alert"}
+      className={`rounded-2xl border p-4 ${tone}`}
+      role={unavailable ? "alert" : "status"}
     >
       <div className="flex items-start gap-3">
-        <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${ready ? "text-fpl-green" : "text-fpl-red"}`} />
+        <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${iconTone} ${!ready && !unavailable ? "animate-spin" : ""}`} />
         <div className="min-w-0">
           <div className="font-semibold text-primary">{decisionStatusLabel(seasonState)}</div>
           {ready ? (
@@ -37,7 +43,7 @@ export function DecisionStatusNotice({
           ) : (
             <>
               <p className="mt-1 text-sm text-secondary">
-                Decision recommendations are hidden until the data refresh and validation complete.
+                Official FPL data changed, so SquadMetric is validating the next recommendation snapshot.
                 {typeof age === "number" ? ` Current artifacts are ${age.toFixed(1)} hours old.` : ""}
               </p>
               {!compact && seasonState.decision_blockers.length ? (
@@ -52,8 +58,8 @@ export function DecisionStatusNotice({
               ) : null}
             </>
           )}
-          <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted">
-            Checked {formatTimestamp(seasonState.live_data.checked_at)} · rules {seasonState.artifact_data.rules_version ?? "unavailable"}
+          <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Last checked {formatTimestamp(seasonState.live_data.checked_at)}
           </div>
         </div>
       </div>

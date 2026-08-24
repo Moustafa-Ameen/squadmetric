@@ -16,7 +16,7 @@ export function decisionStatusLabel(state?: SeasonState | null): string {
   if (!state) return "Decision status unavailable";
   if (recommendationsAreReady(state)) return "Recommendations current";
   if (state.decision_status === "unavailable") return "Live FPL data unavailable";
-  return "Recommendations blocked";
+  return "Recommendations updating";
 }
 
 export function squadAccessState(

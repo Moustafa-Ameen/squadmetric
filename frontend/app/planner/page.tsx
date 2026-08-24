@@ -4,9 +4,9 @@ import Link from "next/link";
 import { ArrowRight, CircleAlert, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
-import { DecisionStatusNotice } from "@/components/DecisionStatusNotice";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
+import { SquadPitch, type VisualSquadPlayer } from "@/components/SquadPitch";
 import { getInitialSquad, getPlanner, getSeasonState } from "@/lib/api";
 import { points, positionCode } from "@/lib/format";
 import type {
@@ -109,7 +109,6 @@ export default function PlannerPage() {
     return (
       <div className="space-y-5">
         <SectionHeader title="Transfer Planner" subtitle="Planning is paused until current data passes validation" />
-        <DecisionStatusNotice seasonState={seasonState} />
       </div>
     );
   }
@@ -213,26 +212,10 @@ export default function PlannerPage() {
             </div>
           ) : null}
         </Panel>
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <Panel>
-            <h2 className="text-[16px] font-semibold text-primary">Starting XI</h2>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {initialSquad.squad.filter((player) => player.is_starter).map((player) => (
-                <InitialPlayer key={player.element_id} player={player} />
-              ))}
-            </div>
-          </Panel>
-          <Panel>
-            <h2 className="text-[16px] font-semibold text-primary">Bench order</h2>
-            <div className="mt-4 space-y-2">
-              {initialSquad.squad.filter((player) => !player.is_starter).map((player) => (
-                <InitialPlayer key={player.element_id} player={player} />
-              ))}
-            </div>
-            <Link href="/settings" className="mt-5 inline-flex fpl-button px-4 py-2 text-sm">
-              Connect my FPL team
-            </Link>
-          </Panel>
+        <SquadPitch players={initialPitchPlayers(initialSquad)} title="Recommended opening lineup" />
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4 text-sm text-violet-950">
+          <span>Already have an FPL team? Connect it to receive transfer recommendations for your actual squad.</span>
+          <Link href="/onboarding" className="sm-primary-button px-4 py-2.5">Connect my team <ArrowRight className="h-4 w-4" /></Link>
         </div>
         <p className="text-[11px] text-muted">
           {initialSquad.model} · {initialSquad.portfolio_version} · cutoff {initialSquad.data_cutoff}
@@ -276,6 +259,7 @@ export default function PlannerPage() {
     }),
     { baseline: 0, net: 0, hit: 0 },
   );
+  const recommendedPitch = plannerPitchPlayers(data);
 
   function stageTransfer() {
     if (!selectedGameweek || !selectedOutgoing || !selectedIncoming || incomingTooExpensive) return;
@@ -300,15 +284,15 @@ export default function PlannerPage() {
         subtitle={`Plan ${horizon} gameweeks ahead for Team #${teamId}`}
       />
 
-      <Panel>
+      <Panel className="border-violet-200 bg-[linear-gradient(135deg,#ffffff_0%,#f5f3ff_100%)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fpl-green">
-              Complete optimizer recommendation
+            <div className="text-xs font-extrabold uppercase tracking-[0.14em] text-violet-700">
+              What to do this gameweek
             </div>
             {data.decision ? (
               <>
-                <h2 className="mt-2 text-[20px] font-semibold text-primary">
+                <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
                   {data.decision.transfer_count > 0
                     ? `${data.decision.transfer_count} transfer${data.decision.transfer_count === 1 ? "" : "s"}`
                     : "Roll the transfer"}
@@ -317,15 +301,15 @@ export default function PlannerPage() {
                     : ""}
                 </h2>
                 {data.decision.transfers.length > 0 ? (
-                  <div className="mt-2 space-y-1 text-sm text-primary">
+                  <div className="mt-3 space-y-2 text-sm text-slate-800">
                     {data.decision.transfers.map((move) => (
-                      <div key={`${move.outgoing_id}-${move.incoming_id}`}>
-                        {move.outgoing_name} → {move.incoming_name}
+                      <div key={`${move.outgoing_id}-${move.incoming_id}`} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                        <span className="font-bold text-rose-700">Sell {move.outgoing_name}</span><ArrowRight className="h-4 w-4 text-slate-400" /><span className="font-extrabold text-emerald-700">Buy {move.incoming_name}</span>
                       </div>
                     ))}
                   </div>
                 ) : null}
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-secondary">
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
                   {data.decision.reason}
                 </p>
               </>
@@ -335,9 +319,9 @@ export default function PlannerPage() {
               </p>
             )}
           </div>
-          <div className="rounded-lg border border-fpl-border bg-fpl-raised px-4 py-3 text-right">
-            <div className="text-xs text-muted">Recommended chip</div>
-            <div className="mt-1 font-semibold text-primary">{data.decision?.chip ?? "Save"}</div>
+          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-right shadow-sm">
+            <div className="text-xs font-bold text-slate-500">Chip decision</div>
+            <div className="mt-1 text-lg font-black text-slate-950">{data.decision?.chip ?? "Save every chip"}</div>
           </div>
         </div>
         {data.decision ? (
@@ -362,6 +346,11 @@ export default function PlannerPage() {
         ) : null}
       </Panel>
 
+      {data.decision ? <SquadPitch players={recommendedPitch} title="Recommended XI after transfers" /> : null}
+
+      <details className="group rounded-2xl border border-slate-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
+        <summary className="cursor-pointer list-none px-5 py-4 text-sm font-extrabold text-slate-900 marker:hidden">Explore alternatives and build a custom plan <span className="ml-2 text-xs font-semibold text-slate-500 group-open:hidden">Show advanced planner</span></summary>
+        <div className="space-y-5 border-t border-slate-200 p-4 sm:p-5">
       <Panel>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -565,6 +554,8 @@ export default function PlannerPage() {
           </p>
         </Panel>
       </div>
+        </div>
+      </details>
     </div>
   );
 }
@@ -693,6 +684,7 @@ function playerLabel(data: PlannerResponse, elementId: number | null): string {
 function initialSquadLabel(data: InitialSquadResponse, elementId: number): string {
   return (
     data.squad.find((player) => player.element_id === elementId)?.web_name ??
+    data.squad.find((player) => player.element_id === elementId)?.player_name ??
     `#${elementId}`
   );
 }
@@ -703,62 +695,22 @@ function profileLabel(profile: RiskProfile): string {
   return "Balanced";
 }
 
-function InitialPlayer({
-  player,
-}: {
-  player: InitialSquadResponse["squad"][number];
-}) {
-  return (
-    <div className="rounded-lg border border-fpl-border bg-fpl-raised p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="font-semibold text-primary">
-            {player.web_name ?? player.player_name}
-          </div>
-          <div className="mt-1 text-[11px] text-muted">
-            {player.team} · {positionCode(player.position)} · {money(player.price)}
-          </div>
-        </div>
-        <div className="font-mono text-sm font-bold text-fpl-green">
-          {points(player.gw1_points)}
-        </div>
-      </div>
-      <div className="mt-2 text-[10px] text-muted">
-        {player.horizon_points.toFixed(1)} pts over selected horizon
-        {player.start_likelihood !== undefined
-          ? ` · ${Math.round(player.start_likelihood * 100)}% start likelihood`
-          : ""}
-      </div>
-      {player.robustness_class ? (
-        <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-secondary">
-          {player.robustness_class} · {Math.round((player.scenario_selection_rate ?? 0) * 100)}% of scenarios
-        </div>
-      ) : null}
-      {player.set_piece &&
-      (player.set_piece.penalties_rank !== null ||
-        player.set_piece.direct_free_kicks_rank !== null ||
-        player.set_piece.corners_indirect_rank !== null) ? (
-        <div className="mt-2 text-[10px] text-secondary">
-          {[
-            player.set_piece.penalties_rank !== null
-              ? `Pens #${player.set_piece.penalties_rank}`
-              : null,
-            player.set_piece.direct_free_kicks_rank !== null
-              ? `Direct FK #${player.set_piece.direct_free_kicks_rank}`
-              : null,
-            player.set_piece.corners_indirect_rank !== null
-              ? `Corners #${player.set_piece.corners_indirect_rank}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          {Math.abs(player.set_piece.transition_adjustment_per_start) >= 0.01
-            ? ` · ${player.set_piece.transition_adjustment_per_start > 0 ? "+" : ""}${player.set_piece.transition_adjustment_per_start.toFixed(2)} role xP/start`
-            : ""}
-        </div>
-      ) : null}
-    </div>
-  );
+function initialPitchPlayers(data: InitialSquadResponse): VisualSquadPlayer[] {
+  return data.squad.map((player) => ({ id: player.element_id, name: player.player_name, shortName: player.web_name, team: player.team, position: player.position, expectedPoints: player.gw1_points, startLikelihood: player.start_likelihood, playerPrice: player.price, starter: player.is_starter, benchOrder: player.bench_order, captain: player.element_id === data.captain_id, viceCaptain: player.element_id === data.vice_captain_id }));
+}
+
+function plannerPitchPlayers(data: PlannerResponse): VisualSquadPlayer[] {
+  const starting = new Set(data.decision?.starting_ids ?? data.squad.filter((player) => player.is_starter).map((player) => player.element_id));
+  const benchOrder = new Map((data.decision?.bench_order ?? []).map((id, index) => [id, index]));
+  const firstGw = data.start_gameweek;
+  const effectiveSquad = [...data.squad];
+  for (const transfer of data.decision?.transfers ?? []) {
+    if (!transfer.outgoing_id || !transfer.incoming_id) continue;
+    const outgoingIndex = effectiveSquad.findIndex((player) => player.element_id === transfer.outgoing_id);
+    const incoming = data.player_pool.find((player) => player.element_id === transfer.incoming_id);
+    if (outgoingIndex >= 0 && incoming) effectiveSquad.splice(outgoingIndex, 1, incoming);
+  }
+  return effectiveSquad.map((player) => ({ id: player.element_id, name: player.name, shortName: player.web_name, team: player.team, teamCode: player.team_code, position: player.position, expectedPoints: player.projections.find((projection) => projection.gameweek === firstGw)?.projected_points ?? 0, startLikelihood: player.start_likelihood, playerPrice: player.price, starter: starting.has(player.element_id), benchOrder: benchOrder.get(player.element_id) ?? player.pick_order, captain: player.element_id === data.decision?.captain_id, viceCaptain: player.element_id === data.decision?.vice_captain_id }));
 }
 
 function Metric({ label, value, accent, danger }: { label: string; value: string; accent?: boolean; danger?: boolean }) {

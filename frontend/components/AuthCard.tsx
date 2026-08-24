@@ -22,6 +22,7 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
   const [statusTone, setStatusTone] = useState<"info" | "error" | "success">("info");
   const [submitting, setSubmitting] = useState(false);
   const [acceptedLegal, setAcceptedLegal] = useState(false);
+  const [confirmationEmail, setConfirmationEmail] = useState("");
   const configured = isSupabaseConfigured();
 
   const emailValid = /^\S+@\S+\.\S+$/.test(email);
@@ -72,6 +73,7 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
           return;
         }
         setStatusTone("success");
+        setConfirmationEmail(email);
         setStatus("Check your email to confirm your account. The secure link will return you to connect your FPL team.");
         return;
       }
@@ -82,6 +84,28 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
       if (error) throw error;
       setStatusTone("success");
       setStatus("If an account exists for that email, a secure password-reset link is on its way.");
+    } catch (error) {
+      setStatusTone("error");
+      setStatus(friendlyAuthError(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function resendConfirmation() {
+    if (!confirmationEmail || submitting) return;
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) return;
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: confirmationEmail,
+        options: { emailRedirectTo: authRedirectUrl("/auth/callback?next=/onboarding") },
+      });
+      if (error) throw error;
+      setStatusTone("success");
+      setStatus("A fresh confirmation link has been sent. Use the newest email and open the link once.");
     } catch (error) {
       setStatusTone("error");
       setStatus(friendlyAuthError(error));
@@ -173,6 +197,14 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
 
       {!configured && !status ? <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900" role="status">Secure accounts are not configured in this local environment. Product pages remain available for development.</div> : null}
       {status ? <div className={`mt-5 rounded-xl border px-4 py-3 text-sm leading-6 ${statusTone === "error" ? "border-rose-200 bg-rose-50 text-rose-900" : statusTone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-violet-200 bg-violet-50 text-violet-900"}`} role={statusTone === "error" ? "alert" : "status"}>{status}</div> : null}
+      {mode === "signup" && confirmationEmail ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <span className="text-xs leading-5 text-slate-600">Didn&apos;t get it, or has the link expired?</span>
+          <button type="button" onClick={resendConfirmation} disabled={submitting} className="text-xs font-extrabold text-violet-700 hover:text-violet-900 disabled:opacity-50">
+            {submitting ? "Sending…" : "Send a new link"}
+          </button>
+        </div>
+      ) : null}
       <p className="mt-6 text-center text-sm text-slate-600">{copy.switchText} <Link href={copy.switchHref} className="font-bold text-violet-700 hover:text-violet-900">{copy.switchAction}</Link></p>
     </section>
   );

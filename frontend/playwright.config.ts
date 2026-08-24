@@ -4,6 +4,8 @@ export default defineConfig({
   testDir: "./e2e",
   outputDir: "./output/playwright/test-results",
   fullyParallel: true,
+  workers: 2,
+  timeout: 45_000,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { outputFolder: "./output/playwright/report", open: "never" }]],
@@ -18,7 +20,14 @@ export default defineConfig({
     { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
-    command: "npm run start -- --hostname 127.0.0.1 --port 3100",
+    command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+    env: {
+      ...process.env,
+      // E2E exercises product flows with deterministic mocked APIs. Real Supabase
+      // credentials would redirect every protected page before those flows render.
+      NEXT_PUBLIC_SUPABASE_URL: "disabled-for-e2e",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "disabled-for-e2e",
+    },
     url: "http://127.0.0.1:3100/",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
