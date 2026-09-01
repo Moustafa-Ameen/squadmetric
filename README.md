@@ -17,7 +17,7 @@
   <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" />
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-live-009688?logo=fastapi&logoColor=white" />
-  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-304%20passing-22c55e" />
+  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-305%20passing-22c55e" />
   <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-32%20passing-8b5cf6" />
 </p>
 
@@ -221,7 +221,7 @@ Useful health checks:
 | `GET /api/predictions/initial-squad?horizon=8` | Opening-squad recommendation |
 | `GET /api/operations/deadline-readiness` | Final deadline checklist |
 
-## Daily and post-Gameweek operation
+## Manual refresh and post-Gameweek operation
 
 Use the normal refresh command:
 
@@ -231,11 +231,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-2
 
 It refreshes official data every run and retrains only after a newly finalized, data-checked Gameweek is available. Provisional results and post-deadline market values are rejected.
 
-Register the same workflow with Windows Task Scheduler:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\register-daily-refresh.ps1 -TeamId YOUR_TEAM_ID
-```
+SquadMetric does not require automatic scheduling. The maintained local policy is
+manual refresh with an explicit public Team ID when manager-specific evidence is
+needed. See [docs/operations.md](docs/operations.md).
 
 <details>
 <summary><strong>Pre-deadline evidence capture</strong></summary>
@@ -325,19 +323,13 @@ Audit a completed simulation:
   --simulation-dir data/processed/simulations/RUN_DIRECTORY
 ```
 
-Run the accepted three-season recovery scorecard:
-
-```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.points_loss_audit --recovery-scorecard
-```
-
 ### Opening-squad championship
 
 ```powershell
 .\.venv\Scripts\python.exe -m fpl_intelligence.initial_squad_championship
 ```
 
-The checkpointed tournament tests each opening squad through a complete chip-aware 38-Gameweek continuation. The accepted `horizon_8_flexible_cold_start_safe` policy recorded a +210 aggregate realistic-point improvement over its identity-safe control across the three supported validation seasons, with no seasonal regression. See [phase-performance-recovery-initial-squad.md](phase-performance-recovery-initial-squad.md) for the evidence and limitations.
+The checkpointed tournament tests each opening squad through a complete chip-aware 38-Gameweek continuation. The accepted `horizon_8_flexible_cold_start_safe` policy recorded a +210 aggregate realistic-point improvement over its identity-safe control across the three supported validation seasons, with no seasonal regression. See [docs/decision-history.md](docs/decision-history.md) for the evidence, rejected variants, and current-baseline caveat.
 
 ## Rules and data integrity
 
@@ -381,7 +373,7 @@ Current verified baseline:
 
 | Gate | Result |
 |---|---:|
-| Python tests | 304 passing |
+| Python tests | 305 passing |
 | Frontend unit tests | 32 passing |
 | Desktop/mobile browser tests | 32 passing |
 | Ruff, ESLint, TypeScript | Clean |
@@ -398,10 +390,10 @@ squadmetric/
 ├── src/fpl_intelligence/     Models, rules, simulations, planners, audits
 ├── data/                     Raw snapshots, processed contracts, evidence
 ├── models/                   Versioned serving-model metadata/artifacts
-├── scripts/                  Refresh, scheduling, and operational commands
+├── scripts/                  Refresh and operational commands
 ├── supabase/                 Account schema, RLS policies, setup guide
 ├── tests/                    Backend correctness and regression suite
-└── docs/assets/              README and product visuals
+└── docs/                     Operations, decision history, and product visuals
 ```
 
 ## Product principles

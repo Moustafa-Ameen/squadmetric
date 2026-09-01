@@ -27,6 +27,7 @@ DECISION_PATHS = (
 )
 P10_OUTPUT = PROJECT_ROOT / "data/processed/p10_calibration_report.json"
 HISTORICAL_PATH = PROJECT_ROOT / "data/processed/historical_player_gw.csv"
+CALIBRATION_REFERENCE_PATH = PROJECT_ROOT / "data/reference/autosub_calibration.json"
 P10_SCHEMA_VERSION = "p10-calibration-v1"
 P10_DECISION_ENGINE_VERSION = "p10-gw1-calibrated-robustness-v1"
 
@@ -113,7 +114,17 @@ def calibrate_nonappearance_bands(
     }
 
 
-def load_autosub_calibration(paths: tuple[Path, ...] = DECISION_PATHS) -> dict[str, Any]:
+def load_autosub_calibration(paths: tuple[Path, ...] | None = None) -> dict[str, Any]:
+    paths = DECISION_PATHS if paths is None else paths
+    missing = [path for path in paths if not path.exists()]
+    if missing:
+        if paths != DECISION_PATHS:
+            raise FileNotFoundError(
+                "Autosub decision artifacts are missing: "
+                + ", ".join(str(path) for path in missing)
+            )
+        return json.loads(CALIBRATION_REFERENCE_PATH.read_text(encoding="utf-8"))
+
     frames = [pd.read_csv(path) for path in paths]
     decisions = pd.concat(frames, ignore_index=True)
     result = calibrate_autosubs(decisions)

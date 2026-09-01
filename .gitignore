@@ -10,14 +10,14 @@ frontend/output/playwright/test-results/
 *.zip
 
 data/raw/*.json
-data/raw/historical/
-data/raw/snapshots/
-data/processed/
+data/raw/historical/**
+data/raw/snapshots/**
+data/processed/**
 data/processed/*.parquet
 data/processed/*.csv
 data/processed/*.txt
 
-models/
+models/**
 models/*.joblib
 
 .env

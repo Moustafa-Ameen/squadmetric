@@ -9,6 +9,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
+REFERENCE_DIR = PROJECT_ROOT / "data" / "reference" / "model_evaluation"
 
 PLAYERS_RANKED_REQUIRED_COLUMNS = [
     "player_name",
@@ -50,29 +51,44 @@ DATA_FILES = {
     "historical_player_gw": "historical_player_gw.csv",
 }
 
+REFERENCE_FALLBACK_KEYS = {
+    "raw_accuracy",
+    "adjusted_accuracy",
+    "captaincy_backtest",
+    "top10_metrics",
+}
+
+
+def _dataset_path(key: str) -> Path | None:
+    filename = DATA_FILES.get(key)
+    if filename is None:
+        return None
+    processed_path = PROCESSED_DIR / filename
+    if processed_path.exists() or key not in REFERENCE_FALLBACK_KEYS:
+        return processed_path
+    reference_path = REFERENCE_DIR / filename
+    return reference_path if reference_path.exists() else processed_path
+
 
 @lru_cache(maxsize=len(DATA_FILES) * 4)
 def _load_dataset_versioned(key: str, modified_ns: int) -> pd.DataFrame:
     del modified_ns
-    filename = DATA_FILES.get(key)
-    if filename is None:
+    path = _dataset_path(key)
+    if path is None:
         logging.warning("Unknown data key requested: %s", key)
         return pd.DataFrame()
-
-    path = PROCESSED_DIR / filename
     if not path.exists():
-        logging.warning("Processed data file is missing: %s", path)
+        logging.warning("Data file is missing: %s", path)
         return pd.DataFrame()
 
     return pd.read_csv(path)
 
 
 def load_dataset(key: str) -> pd.DataFrame:
-    filename = DATA_FILES.get(key)
-    if filename is None:
+    path = _dataset_path(key)
+    if path is None:
         logging.warning("Unknown data key requested: %s", key)
         return pd.DataFrame()
-    path = PROCESSED_DIR / filename
     modified_ns = path.stat().st_mtime_ns if path.exists() else 0
     return _load_dataset_versioned(key, modified_ns)
 

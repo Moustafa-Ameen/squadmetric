@@ -1,0 +1,8 @@
+strategy,total_captain_points,avg_per_gameweek
+Ridge Regression captain,468.0,12.64864864864865
+Gradient Boosting Regressor captain,424.0,11.45945945945946
+Always captain most-owned player,396.0,10.702702702702704
+Random Forest Regressor captain,394.0,10.64864864864865
+Naive baseline captain,322.0,8.702702702702704
+Always captain highest prior rolling PPG player,318.0,8.594594594594595
+Random player average,86.42733920696888,2.3358740326207807

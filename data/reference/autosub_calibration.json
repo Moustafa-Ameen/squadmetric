@@ -1,0 +1,28 @@
+{
+  "any_autosub_rate": 0.4909,
+  "bench_slot_activation": [0.3636, 0.2182, 0.0727, 0.0273],
+  "gameweeks": 110,
+  "mean_autosubs": 0.6818,
+  "mean_bench_slot_activation": 0.1705,
+  "nonappearance": {
+    "by_position": {
+      "Defender": {"nonappearance_rate": 0.0647},
+      "Forward": {"nonappearance_rate": 0.0515},
+      "Goalkeeper": {"nonappearance_rate": 0.0265},
+      "Midfielder": {"nonappearance_rate": 0.0798}
+    },
+    "by_reliability_band": {
+      "high": {"nonappearance_rate": 0.0523, "selections": 1108},
+      "low": {"nonappearance_rate": 0.1163, "selections": 43},
+      "medium": {"nonappearance_rate": 0.1809, "selections": 94}
+    }
+  },
+  "provenance": {
+    "decision_gameweeks": "Accepted 2023/24, 2024/25, and 2025/26 non-Bench-Boost decisions",
+    "frozen_on": "2026-08-07",
+    "notes": "Position selection counts were not retained in the consolidated report; their measured rates are preserved.",
+    "schema_version": "autosub-calibration-reference-v1"
+  },
+  "seasons": {},
+  "starter_nonappearance_rate": 0.062
+}

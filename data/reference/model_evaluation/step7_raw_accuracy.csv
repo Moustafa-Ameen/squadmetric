@@ -1,0 +1,5 @@
+model,MAE,RMSE,beats_naive_MAE,beats_naive_RMSE
+Gradient Boosting Regressor,0.998779259186302,1.9529021195549738,yes,yes
+Random Forest Regressor,1.0018261051852144,1.9753081725269765,yes,yes
+Ridge Regression,1.0494332242523048,1.97997884553854,yes,yes
+Naive baseline,1.0505910825653915,2.183854807183571,no,no

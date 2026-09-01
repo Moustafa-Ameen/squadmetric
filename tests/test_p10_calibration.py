@@ -3,6 +3,7 @@ import pandas as pd
 from fpl_intelligence.p10_calibration import (
     calibrate_autosubs,
     calibrate_nonappearance_bands,
+    load_autosub_calibration,
     parse_player_ids,
     scenario_players,
 )
@@ -11,6 +12,20 @@ from fpl_intelligence.p10_calibration import (
 def test_parse_player_ids_handles_persisted_plus_format():
     assert parse_player_ids("1+22+333") == [1, 22, 333]
     assert parse_player_ids(float("nan")) == []
+
+
+def test_default_autosub_calibration_uses_tracked_reference_when_runs_are_absent(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "fpl_intelligence.p10_calibration.DECISION_PATHS",
+        (tmp_path / "missing-1.csv", tmp_path / "missing-2.csv"),
+    )
+
+    result = load_autosub_calibration()
+
+    assert result["gameweeks"] == 110
+    assert result["mean_bench_slot_activation"] == 0.1705
 
 
 def test_autosub_calibration_excludes_bench_boost():
