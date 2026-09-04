@@ -412,6 +412,7 @@ squadmetric/
 3. Run the relevant quality gates.
 4. Keep experimental models isolated until they pass multi-season acceptance.
 5. Never commit credentials, local `.env` files, generated browser output, or private FPL account data.
+6. Keep recommendations explainable by recording the data cutoff and rules contract used.
 
 ## Disclaimer
 
