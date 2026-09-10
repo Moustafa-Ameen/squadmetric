@@ -181,12 +181,34 @@ def evaluate_live_decision_readiness(
         manifest.get("fixtures_path")
     )
     artifact_age_hours = _artifact_age_hours(manifest, clock)
+    official_finalized_gameweeks = _official_finalized_gameweeks(bootstrap)
+    artifact_finalized_gameweeks = _artifact_finalized_gameweeks(manifest)
+    missing_finalized_gameweeks = sorted(
+        set(official_finalized_gameweeks).difference(artifact_finalized_gameweeks)
+    )
 
     if season == "unknown":
         blockers.append(
             {
                 "code": "live_season_unknown",
                 "message": "The official FPL payload does not identify an active season.",
+            }
+        )
+    if missing_finalized_gameweeks:
+        latest_official = max(official_finalized_gameweeks)
+        latest_artifact = (
+            max(artifact_finalized_gameweeks)
+            if artifact_finalized_gameweeks
+            else "none"
+        )
+        blockers.append(
+            {
+                "code": "finalized_gameweek_missing",
+                "message": (
+                    f"Official GW{latest_official} is finalized, but the current model "
+                    f"bundle covers finalized gameweeks only through {latest_artifact}. "
+                    "Run the manual season refresh before serving recommendations."
+                ),
             }
         )
     if (
@@ -279,6 +301,12 @@ def evaluate_live_decision_readiness(
             "live_inputs_applied": True,
             "player_count": len(live_player_ids),
             "team_count": live_team_count,
+            "finalized_gameweeks": official_finalized_gameweeks,
+            "latest_finalized_gameweek": (
+                max(official_finalized_gameweeks)
+                if official_finalized_gameweeks
+                else None
+            ),
         },
         artifact_data={
             "data_cutoff": manifest.get("data_cutoff"),
@@ -289,6 +317,12 @@ def evaluate_live_decision_readiness(
             "player_count": manifest.get("player_count"),
             "team_count": manifest.get("team_count"),
             "rules_version": manifest.get("rules_version"),
+            "finalized_gameweeks": artifact_finalized_gameweeks,
+            "latest_finalized_gameweek": (
+                max(artifact_finalized_gameweeks)
+                if artifact_finalized_gameweeks
+                else None
+            ),
         },
         models_checked=check_models,
     )
@@ -393,6 +427,32 @@ def _artifact_player_ids(manifest: dict[str, Any]) -> set[int] | None:
 def _artifact_json_payload_hash(raw_path: Any) -> str | None:
     payload = _artifact_json_payload(raw_path)
     return payload_hash(payload) if payload is not None else None
+
+
+def _official_finalized_gameweeks(bootstrap: dict[str, Any]) -> list[int]:
+    return sorted(
+        int(event["id"])
+        for event in bootstrap.get("events", [])
+        if event.get("id") is not None
+        and bool(event.get("finished"))
+        and bool(event.get("data_checked"))
+    )
+
+
+def _artifact_finalized_gameweeks(manifest: dict[str, Any]) -> list[int]:
+    metadata = _artifact_json_payload(manifest.get("model_metadata_path"))
+    if not isinstance(metadata, dict):
+        return []
+    values = metadata.get("finalized_current_season_gameweeks", [])
+    if not isinstance(values, list):
+        return []
+    result: set[int] = set()
+    for value in values:
+        try:
+            result.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return sorted(result)
 
 
 def _artifact_json_payload(raw_path: Any) -> Any | None:

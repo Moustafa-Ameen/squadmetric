@@ -235,6 +235,44 @@ def test_live_decision_readiness_uses_live_inputs_with_old_model_snapshot(
     assert result.artifact_data["age_hours"] == 25
 
 
+def test_live_decision_readiness_blocks_when_finalized_gameweek_is_missing(
+    monkeypatch, tmp_path
+):
+    now = datetime(2026, 9, 10, 12, tzinfo=UTC)
+    bootstrap = _bootstrap()
+    bootstrap["events"] = [
+        {"id": 1, "finished": True, "data_checked": True},
+        {"id": 2, "finished": True, "data_checked": True},
+        {"id": 3, "finished": True, "data_checked": True},
+        {"id": 4, "finished": False, "data_checked": False},
+    ]
+    fixtures = [{"id": 1, "event": 4}]
+    manifest = _stored_readiness(
+        monkeypatch,
+        tmp_path,
+        bootstrap,
+        fixtures,
+        cutoff=(now - timedelta(hours=1)).isoformat(),
+    )
+    metadata_path = tmp_path / "models.json"
+    metadata_path.write_text(
+        json.dumps({"finalized_current_season_gameweeks": [1, 2]}),
+        encoding="utf-8",
+    )
+    manifest["model_metadata_path"] = str(metadata_path)
+
+    result = readiness_module.evaluate_live_decision_readiness(
+        bootstrap, fixtures, check_models=True, now=now
+    )
+
+    assert not result.ready
+    assert "finalized_gameweek_missing" in {
+        blocker["code"] for blocker in result.blockers
+    }
+    assert result.live_data["latest_finalized_gameweek"] == 3
+    assert result.artifact_data["latest_finalized_gameweek"] == 2
+
+
 def test_live_source_outage_returns_displayable_unavailable_state(monkeypatch):
     async def unavailable():
         raise HTTPException(status_code=503, detail="offline")
