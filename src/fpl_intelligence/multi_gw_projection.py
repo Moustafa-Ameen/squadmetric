@@ -150,7 +150,7 @@ def project_players(
                 )
                 continue
 
-            baseline = baselines.get(_normalise(player.get("name"))) or {}
+            baseline = _baseline_for_player(player, baselines)
             fixture_groups[index] = []
             for fixture in player_fixtures:
                 fixture_groups[index].append(fixture)
@@ -173,7 +173,7 @@ def project_players(
             start_value = _live_start_likelihood(
                 model_start,
                 player_rows[index],
-                baselines.get(_normalise(player_rows[index].get("name"))) or {},
+                _baseline_for_player(player_rows[index], baselines),
             )
             projected_value = _rescale_projected_points(
                 predicted_value,
@@ -181,9 +181,10 @@ def project_players(
                 model_start,
                 start_value,
             )
-            regime = bps_v2_adjustment(player_rows[index], baselines.get(
-                _normalise(player_rows[index].get("name"))
-            ) or {})
+            regime = bps_v2_adjustment(
+                player_rows[index],
+                _baseline_for_player(player_rows[index], baselines),
+            )
             projected_value = max(0.0, projected_value - regime.total_penalty * start_value)
             set_piece = set_piece_transition_adjustment(
                 player_rows[index], set_piece_context
@@ -246,7 +247,7 @@ def _project_row(
     )
     team_by_id = {team.get("id"): team for team in teams}
     baselines = _recent_baselines(history)
-    baseline = baselines.get(_normalise(player.get("name"))) or {}
+    baseline = _baseline_for_player(player, baselines)
     role_context = set_piece_context or build_set_piece_context([player])
 
     output = []
@@ -499,11 +500,19 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, Any]]
     if history is None or history.empty:
         return {}
 
-    required = {"season", "gameweek", "total_points", "minutes"}
+    required = {"season", "gameweek", "minutes"}
     if not required.issubset(history.columns):
         return {}
 
     current = history.copy()
+    if "total_points" not in current.columns:
+        if "next_gameweek_points" not in current.columns:
+            return {}
+        current["total_points"] = current["next_gameweek_points"]
+    elif "next_gameweek_points" in current.columns:
+        current["total_points"] = current["total_points"].fillna(
+            current["next_gameweek_points"]
+        )
     current["gameweek"] = pd.to_numeric(current["gameweek"], errors="coerce")
     current["total_points"] = pd.to_numeric(current["total_points"], errors="coerce")
     current["minutes"] = pd.to_numeric(current["minutes"], errors="coerce")
@@ -512,7 +521,7 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, Any]]
         return {}
 
     current = current[current["season"] == current["season"].max()].sort_values("gameweek")
-    output: dict[Any, dict[str, float]] = {}
+    output: dict[Any, dict[str, Any]] = {}
     if "player_name" in current.columns:
         current["player_key"] = current["player_name"].map(_normalise)
         recent = (
@@ -521,13 +530,49 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, Any]]
             .tail(RECENT_WINDOW)
         )
         for player_name, rows in recent.groupby("player_key"):
-            output[player_name] = {
+            baseline = {
                 "minutes_last_3": float(rows["minutes"].sum()),
                 "points_last_3": float(rows["total_points"].sum()),
                 "prior_team": str(rows.iloc[-1].get("team") or ""),
+                "source_season": str(rows.iloc[-1]["season"]),
+                "latest_gameweek": int(rows["gameweek"].max()),
             }
+            output[("name", player_name)] = baseline
+
+        id_column = next(
+            (column for column in ("player_id", "element_id") if column in current.columns),
+            None,
+        )
+        if id_column is not None:
+            current[id_column] = pd.to_numeric(current[id_column], errors="coerce")
+            id_rows = current.dropna(subset=[id_column]).copy()
+            id_rows[id_column] = id_rows[id_column].astype(int)
+            recent_by_id = id_rows.groupby(id_column, sort=False).tail(RECENT_WINDOW)
+            for player_id, rows in recent_by_id.groupby(id_column):
+                output[("id", int(player_id))] = {
+                    "minutes_last_3": float(rows["minutes"].sum()),
+                    "points_last_3": float(rows["total_points"].sum()),
+                    "prior_team": str(rows.iloc[-1].get("team") or ""),
+                    "source_season": str(rows.iloc[-1]["season"]),
+                    "latest_gameweek": int(rows["gameweek"].max()),
+                }
 
     return output
+
+
+def _baseline_for_player(
+    player: dict[str, Any], baselines: dict[Any, dict[str, Any]]
+) -> dict[str, Any]:
+    """Resolve a current player by stable FPL element ID, then by name."""
+
+    raw_id = player.get("element_id", player.get("id"))
+    try:
+        player_id = int(raw_id)
+    except (TypeError, ValueError):
+        player_id = None
+    if player_id is not None and ("id", player_id) in baselines:
+        return baselines[("id", player_id)]
+    return baselines.get(("name", _normalise(player.get("name"))), {})
 
 
 def _find_player(player_id_or_name: int | str, players: list[dict[str, Any]]) -> dict[str, Any]:

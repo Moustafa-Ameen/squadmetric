@@ -2,8 +2,10 @@ import pandas as pd
 
 from fpl_intelligence.fixture_scenarios import build_fixture_scenario
 from fpl_intelligence.multi_gw_projection import (
+    _baseline_for_player,
     _fpl_difficulty,
     _model_opponent_strength,
+    _recent_baselines,
     project_player,
 )
 
@@ -16,6 +18,50 @@ class StrengthSensitivePointsModel:
 class AlwaysStartsModel:
     def predict_proba(self, features: pd.DataFrame):
         return [[0.0, 1.0] for _ in range(len(features))]
+
+
+def test_recent_baseline_uses_finalized_current_season_and_stable_player_id():
+    history = pd.DataFrame(
+        [
+            {
+                "season": "2025-26",
+                "gameweek": 38,
+                "player_id": 10,
+                "player_name": "Old Name",
+                "minutes": 10,
+                "total_points": 1,
+                "team": "OLD",
+            },
+            {
+                "season": "2026-27",
+                "gameweek": 1,
+                "player_id": 10,
+                "player_name": "New Name",
+                "minutes": 90,
+                "next_gameweek_points": 8,
+                "team": "NEW",
+            },
+            {
+                "season": "2026-27",
+                "gameweek": 2,
+                "player_id": 10,
+                "player_name": "New Name",
+                "minutes": 80,
+                "next_gameweek_points": 5,
+                "team": "NEW",
+            },
+        ]
+    )
+
+    baselines = _recent_baselines(history)
+    baseline = _baseline_for_player(
+        {"element_id": 10, "name": "A different display name"}, baselines
+    )
+
+    assert baseline["minutes_last_3"] == 170
+    assert baseline["points_last_3"] == 13
+    assert baseline["source_season"] == "2026-27"
+    assert baseline["latest_gameweek"] == 2
 
 
 def test_live_fdr_is_mapped_to_the_historical_model_strength_scale():

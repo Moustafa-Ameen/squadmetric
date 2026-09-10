@@ -230,7 +230,7 @@ async def live_projection_rows(
         start_gameweek,
         horizon,
         models=models,
-        history=data_service.historical_player_gw(),
+        history=data_service.serving_player_gw(),
     )
     metadata = _projection_metadata(
         bootstrap,

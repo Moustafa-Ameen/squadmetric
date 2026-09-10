@@ -125,6 +125,56 @@ def historical_player_gw() -> pd.DataFrame:
     return load_dataset("historical_player_gw").copy()
 
 
+def live_current_player_gw() -> pd.DataFrame:
+    """Return finalized rows captured for the active live season."""
+
+    manifest_path = PROCESSED_DIR / "current_artifact_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
+        manifest = {}
+    path = Path(
+        str(
+            manifest.get("live_history_path")
+            or (PROCESSED_DIR / "live_2026_27_player_gw.csv")
+        )
+    )
+    if not path.is_file():
+        logging.warning("Live current-season history is missing: %s", path)
+        return pd.DataFrame()
+    return _load_csv_path_versioned(str(path), path.stat().st_mtime_ns).copy()
+
+
+@lru_cache(maxsize=8)
+def _load_csv_path_versioned(path: str, modified_ns: int) -> pd.DataFrame:
+    del modified_ns
+    return pd.read_csv(Path(path))
+
+
+def serving_player_gw() -> pd.DataFrame:
+    """Combine training history with finalized current-season observations.
+
+    The live file intentionally remains separate from the immutable historical
+    training table.  Recommendation serving, however, needs both: the model was
+    trained on history while rolling minutes and form must come from the current
+    season.  Current ingestion names the observed points target
+    ``next_gameweek_points``; projection baselines use the clearer
+    ``total_points`` alias.
+    """
+
+    historical = historical_player_gw()
+    live = live_current_player_gw()
+    if live.empty:
+        return historical
+
+    live = live.copy()
+    if "total_points" not in live.columns and "next_gameweek_points" in live.columns:
+        live["total_points"] = live["next_gameweek_points"]
+    if historical.empty:
+        return live
+    return pd.concat([historical, live], ignore_index=True, sort=False)
+
+
 @lru_cache(maxsize=4)
 def _bootstrap_static_versioned(modified_ns: int) -> dict[str, Any]:
     del modified_ns

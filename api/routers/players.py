@@ -166,7 +166,7 @@ def _add_historical_form_fallback(dataframe: pd.DataFrame) -> pd.DataFrame:
     if "form" not in dataframe.columns or dataframe["form"].max() > 0:
         return dataframe
 
-    history = data_service.historical_player_gw()
+    history = data_service.serving_player_gw()
     if history.empty or "total_points" not in history.columns or "season" not in history.columns:
         return dataframe
 
@@ -450,7 +450,7 @@ async def compare_players(
 
 @router.get("/{name}/history")
 def player_history(name: str) -> list[dict[str, Any]]:
-    history = data_service.historical_player_gw()
+    history = data_service.serving_player_gw()
     if history.empty:
         return []
 
