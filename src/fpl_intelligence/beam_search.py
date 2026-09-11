@@ -113,6 +113,8 @@ class DeterministicBeamPlanner:
         max_transfers: int = 6,
         max_same_gameweek_transfers: int = 1,
         hit_policy: str = "current_gw",
+        allow_chips: bool = True,
+        minimum_transfer_horizon_gain: float = 0.0,
     ):
         if beam_width < 1 or horizon < 1 or max_transfers < 1:
             raise ValueError("beam_width, horizon, and max_transfers must be positive")
@@ -125,6 +127,10 @@ class DeterministicBeamPlanner:
         self.max_transfers = max_transfers
         self.max_same_gameweek_transfers = max_same_gameweek_transfers
         self.hit_policy = hit_policy
+        self.allow_chips = bool(allow_chips)
+        self.minimum_transfer_horizon_gain = max(
+            0.0, float(minimum_transfer_horizon_gain)
+        )
         self._chip_squad_cache: dict[tuple[Any, ...], pd.DataFrame] = {}
         self._projection_cache: dict[int, dict[int, float]] = {}
         self.last_counterfactuals: tuple[BeamAction, ...] = ()
@@ -222,7 +228,39 @@ class DeterministicBeamPlanner:
                 search_score=0.0,
                 reason="no legal beam branch",
             )
-        return beam[0].first_action
+        selected = beam[0].first_action
+        if (
+            self.minimum_transfer_horizon_gain > 0
+            and selected.chip is None
+            and selected.transfer_plan.count > 0
+        ):
+            no_action = next(
+                (
+                    action
+                    for action in self.last_root_actions
+                    if action.chip is None and action.transfer_plan.count == 0
+                ),
+                None,
+            )
+            if no_action is not None:
+                gross_gain = (
+                    selected.expected_horizon_points
+                    - no_action.expected_horizon_points
+                )
+                required_gain = (
+                    self.minimum_transfer_horizon_gain
+                    + selected.transfer_plan.hit_cost
+                )
+                if gross_gain < required_gain:
+                    return replace(
+                        no_action,
+                        reason=(
+                            "roll transfer: strongest legal move adds only "
+                            f"{gross_gain:.2f} horizon points; policy requires "
+                            f"{required_gain:.2f}"
+                        ),
+                    )
+        return selected
 
     def _expand_state(
         self,
@@ -287,7 +325,8 @@ class DeterministicBeamPlanner:
                     TransferPlan.from_decision(move, bank_after=bank_after)
                 )
         chips: list[ChipDefinition | None] = [None]
-        chips.extend(legal_chip_options(state.remaining_chips, state.gameweek, rules))
+        if self.allow_chips:
+            chips.extend(legal_chip_options(state.remaining_chips, state.gameweek, rules))
         branches: list[DecisionState] = []
         for chip in chips:
             if chip is not None and chip.name == "assistant_manager":
@@ -516,7 +555,11 @@ class DeterministicBeamPlanner:
             next_squad = retained_squad.copy()
         else:
             next_squad = retained_squad.copy()
-        next_ft = min(int(rules.max_free_transfers or 5), ft_after + 1)
+        next_ft = (
+            ft_after
+            if chip is not None and chip.name in {"wildcard", "freehit"}
+            else min(int(rules.max_free_transfers or 5), ft_after + 1)
+        )
         first_action = state.first_action or BeamAction(
             transfer_plan=transfer_plan,
             chip=chip,

@@ -669,6 +669,71 @@ def test_beam_exposes_one_counterfactual_per_legal_chip():
     assert "3xc:1" in keys
 
 
+def test_beam_can_disable_unvalidated_proactive_chip_calls():
+    squad = _squad()
+    predictions = squad.copy()
+    rules = build_historical_season_rules("2025-26")
+    planner = DeterministicBeamPlanner(
+        beam_width=2,
+        horizon=1,
+        max_transfers=2,
+        allow_chips=False,
+    )
+
+    action = planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=25.0,
+        free_transfers=1,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=tuple(chip.key for chip in chip_definitions(rules)),
+        ),
+        predictions=predictions,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert action.chip is None
+    assert all(candidate.chip is None for candidate in planner.last_root_actions)
+
+
+def test_beam_can_abstain_from_a_marginal_transfer():
+    squad = _squad()
+    upgrade = squad.iloc[[8]].copy()
+    upgrade["player_id"] = 100
+    upgrade["player_name"] = "Marginal Upgrade"
+    upgrade["team"] = "New Team"
+    upgrade["expected_points_adjusted"] += 1.0
+    predictions = pd.concat([squad, upgrade], ignore_index=True)
+    rules = build_historical_season_rules("2025-26")
+    planner = DeterministicBeamPlanner(
+        beam_width=4,
+        horizon=1,
+        max_transfers=4,
+        minimum_transfer_horizon_gain=3.0,
+    )
+
+    action = planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=25.0,
+        free_transfers=1,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=(),
+        ),
+        predictions=predictions,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert action.transfer_plan.count == 0
+    assert action.reason.startswith("roll transfer")
+
+
 def test_beam_exposes_every_distinct_root_action_without_changing_counterfactuals():
     squad = _squad()
     upgrade = squad.iloc[[8]].copy()
