@@ -13,7 +13,9 @@ from api.chip_recommendations import (
 )
 from api.chip_signals import BASELINE_WINDOW, generate_chip_alerts
 from api.chip_tracking import build_chip_status, filter_actionable_chip_alerts
+from api.manager_state import build_manager_decision_state
 from api.readiness import require_live_artifacts
+from api.recommendation_policy import proactive_chip_recommendations_enabled
 from api.routers.fixtures import fixture_source_state
 from api.routers.fpl_live import (
     _current_gameweek_from_bootstrap,
@@ -21,7 +23,7 @@ from api.routers.fpl_live import (
     _next_gameweek_from_bootstrap,
     _season_label_from_bootstrap,
 )
-from api.routers.planner import _current_player_rows, _money, _season_transition_message
+from api.routers.planner import _current_player_rows, _season_transition_message
 from fpl_intelligence.live_shadow import (
     append_shadow_record,
     compare_chip_recommendations,
@@ -88,12 +90,31 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
         }
     )[-BASELINE_WINDOW:]
     squad_gameweek = max(1, target_gameweek - 1)
-    team_entry, team_picks, historical_pick_payloads, team_history = await asyncio.gather(
+    (
+        team_entry,
+        team_picks,
+        historical_pick_payloads,
+        team_history,
+        team_transfers,
+    ) = await asyncio.gather(
         fpl_client.get_team(team_id),
         fpl_client.get_team_picks(team_id, squad_gameweek),
         _historical_picks(team_id, completed_gameweeks),
         fpl_client.get_team_history(team_id),
+        fpl_client.get_team_transfers(team_id),
     )
+    if not proactive_chip_recommendations_enabled():
+        return {
+            **response_meta,
+            "status": "insufficient_data",
+            "message": (
+                "Proactive chip calls are paused while SquadMetric builds a "
+                "season-long owned-squad validation record. Chip availability "
+                "remains live, but the optimizer will not tell you to spend one yet."
+            ),
+            "alerts": [],
+            "target_gameweek": target_gameweek,
+        }
 
     try:
         models = load_planner_models(ACTIVE_PORTFOLIO.projections.chip_model)
@@ -113,7 +134,7 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
         max(1, target_gameweek - (BASELINE_WINDOW - 1)),
         8,
         models=models,
-        history=data_service.historical_player_gw(),
+        history=data_service.serving_player_gw(),
     )
     projections_by_id = {
         player.get("element_id"): player
@@ -131,6 +152,28 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
         season=season,
         source_url=LIVE_RULES_SOURCE,
     )
+    serving_history = data_service.serving_player_gw()
+    manager_state = build_manager_decision_state(
+        target_gameweek=target_gameweek,
+        picks=team_picks.get("picks", []),
+        team_history=team_history,
+        transfers=team_transfers,
+        projected_players=projected_players,
+        serving_history=serving_history,
+        max_free_transfers=int(rules.max_free_transfers or 5),
+        started_event=team_entry.get("started_event"),
+        last_deadline_bank=team_entry.get("last_deadline_bank"),
+    )
+    if not manager_state.price_basis_complete or not manager_state.bank_basis_complete:
+        return {
+            **response_meta,
+            "status": "unavailable",
+            "message": (
+                "Chip valuation is paused because exact manager price or bank "
+                "history is unavailable."
+            ),
+            "alerts": [],
+        }
     chip_status = build_chip_status(
         bootstrap,
         team_history,
@@ -140,9 +183,9 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
     try:
         recommendation = recommend_live_chip(
             target_gameweek=target_gameweek,
-            squad=squad_frame(team_picks.get("picks", []), projected_players),
-            bank=_money(team_entry.get("last_deadline_bank")) or 0.0,
-            free_transfers=int(team_entry.get("free_transfers") or 1),
+            squad=squad_frame(manager_state.picks, projected_players),
+            bank=manager_state.bank_value or 0.0,
+            free_transfers=manager_state.free_transfers,
             chip_state=build_live_chip_state(rules, chip_status),
             rules=rules,
             frames=frames,
@@ -169,13 +212,13 @@ async def chip_tips(team_id: int | None = Query(default=None)) -> dict[str, Any]
                 max(1, target_gameweek - (BASELINE_WINDOW - 1)),
                 8,
                 models=control_models,
-                history=data_service.historical_player_gw(),
+                history=data_service.serving_player_gw(),
             )
             control_recommendation = recommend_live_chip(
                 target_gameweek=target_gameweek,
-                squad=squad_frame(team_picks.get("picks", []), control_projected_players),
-                bank=_money(team_entry.get("last_deadline_bank")) or 0.0,
-                free_transfers=int(team_entry.get("free_transfers") or 1),
+                squad=squad_frame(manager_state.picks, control_projected_players),
+                bank=manager_state.bank_value or 0.0,
+                free_transfers=manager_state.free_transfers,
                 chip_state=build_live_chip_state(rules, chip_status),
                 rules=rules,
                 frames=projection_frames(control_projected_players),

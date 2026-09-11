@@ -13,7 +13,9 @@ from api.chip_recommendations import (
 )
 from api.chip_tracking import build_chip_status
 from api.live_projection_service import current_player_rows
+from api.manager_state import build_manager_decision_state
 from api.readiness import require_live_artifacts
+from api.recommendation_policy import proactive_chip_recommendations_enabled
 from api.routers.fixtures import fixture_source_state
 from api.routers.fpl_live import (
     _current_gameweek_from_bootstrap,
@@ -106,12 +108,13 @@ async def planner(
     current_gameweek = _current_gameweek_from_bootstrap(bootstrap) or 1
     start_gameweek = _next_gameweek_from_bootstrap(bootstrap) or min(current_gameweek + 1, 38)
     squad_gameweek = max(1, start_gameweek - 1)
-    team_entry, picks_payload, team_history = await asyncio.gather(
+    team_entry, picks_payload, team_history, team_transfers = await asyncio.gather(
         fpl_client.get_team(team_id),
         fpl_client.get_team_picks(team_id, squad_gameweek),
         fpl_client.get_team_history(team_id),
+        fpl_client.get_team_transfers(team_id),
     )
-    history = data_service.historical_player_gw()
+    history = data_service.serving_player_gw()
 
     try:
         models = load_planner_models(ACTIVE_PORTFOLIO.projections.transfer_model)
@@ -180,16 +183,28 @@ async def planner(
             append_shadow_record(shadow)
         except (FileNotFoundError, RuntimeError, ValueError, KeyError) as exc:
             shadow = {"status": "unavailable", "error": str(exc)}
-    projections_by_id = {player["element_id"]: player for player in projected_players}
-    squad = _squad_rows(picks_payload.get("picks", []), projections_by_id)
-    if not squad:
-        raise HTTPException(status_code=404, detail="No squad picks were available for this team.")
-
     rules = build_season_rules(
         bootstrap,
         season=_season_label_from_bootstrap(bootstrap),
         source_url="https://fantasy.premierleague.com/api/bootstrap-static/",
     )
+    manager_state = build_manager_decision_state(
+        target_gameweek=start_gameweek,
+        picks=picks_payload.get("picks", []),
+        team_history=team_history,
+        transfers=team_transfers,
+        projected_players=projected_players,
+        serving_history=history,
+        max_free_transfers=int(rules.max_free_transfers or 5),
+        started_event=team_entry.get("started_event"),
+        last_deadline_bank=team_entry.get("last_deadline_bank"),
+    )
+    effective_picks = list(manager_state.picks)
+    projections_by_id = {player["element_id"]: player for player in projected_players}
+    squad = _squad_rows(effective_picks, projections_by_id)
+    if not squad:
+        raise HTTPException(status_code=404, detail="No squad picks were available for this team.")
+
     chip_status = build_chip_status(
         bootstrap,
         team_history,
@@ -200,22 +215,32 @@ async def planner(
     decision = None
     decision_evidence = None
     decision_error = None
-    decision_squad = squad_frame(picks_payload.get("picks", []), projected_players)
+    decision_squad = squad_frame(effective_picks, projected_players)
     transfer_frames = projection_frames(projected_players)
     chip_frames = projection_frames(chip_projected_players)
     current_predictions = transfer_frames.get(start_gameweek)
     if (
-        len(decision_squad) == 15
+        manager_state.price_basis_complete
+        and manager_state.bank_basis_complete
+        and len(decision_squad) == 15
         and current_predictions is not None
         and not current_predictions.empty
     ):
         try:
-            beam = DeterministicBeamPlanner(horizon=min(3, projection_horizon))
+            beam = DeterministicBeamPlanner(
+                horizon=horizon,
+                max_transfers=8,
+                max_same_gameweek_transfers=min(
+                    5, max(2, manager_state.free_transfers + 1)
+                ),
+                allow_chips=proactive_chip_recommendations_enabled(),
+                minimum_transfer_horizon_gain=max(3.0, float(horizon)),
+            )
             action = beam.decide(
                 gameweek=start_gameweek,
                 squad=decision_squad,
-                bank=_money(team_entry.get("last_deadline_bank")) or 0.0,
-                free_transfers=int(team_entry.get("free_transfers") or 1),
+                bank=manager_state.bank_value or 0.0,
+                free_transfers=manager_state.free_transfers,
                 chip_state=chip_state,
                 predictions=current_predictions.copy(),
                 future_predictions={
@@ -238,13 +263,24 @@ async def planner(
                     root_actions=beam.last_root_actions,
                     squad=decision_squad,
                     predictions=current_predictions,
-                    bank=_money(team_entry.get("last_deadline_bank")) or 0.0,
-                    free_transfers=int(team_entry.get("free_transfers") or 1),
+                    bank=manager_state.bank_value or 0.0,
+                    free_transfers=manager_state.free_transfers,
                     chip_state=chip_state,
                     planner=beam,
                 )
         except (ValueError, KeyError, IndexError) as exc:
             decision_error = str(exc)
+    elif not manager_state.price_basis_complete:
+        decision_error = (
+            "Exact purchase-price history is unavailable for player IDs "
+            + ", ".join(str(value) for value in manager_state.missing_purchase_price_ids)
+            + "; transfer advice is paused to avoid an invalid budget."
+        )
+    elif not manager_state.bank_basis_complete:
+        decision_error = (
+            "The current bank could not be reconstructed from public manager "
+            "history; transfer advice is paused to avoid an invalid budget."
+        )
     elif len(decision_squad) != 15:
         decision_error = "A complete 15-player squad is required for a legal decision."
     else:
@@ -308,8 +344,11 @@ async def planner(
             "Projections assume current form and role continue; "
             "fixture context changes by gameweek."
         ),
-        "bank_value": _money(team_entry.get("last_deadline_bank")),
-        "free_transfers_available": int(team_entry.get("free_transfers") or 0),
+        "bank_value": manager_state.bank_value,
+        "free_transfers_available": manager_state.free_transfers,
+        "manager_state_provenance": manager_state.provenance,
+        "purchase_price_state_complete": manager_state.price_basis_complete,
+        "bank_state_complete": manager_state.bank_basis_complete,
         "max_extra_free_transfers": int(settings.get("max_extra_free_transfers") or 4),
         "baseline": baseline,
         "squad": squad,
@@ -606,9 +645,12 @@ def _decision_evidence_payload(
     """Serialize the generated root action space without influencing selection."""
 
     selected_signature = _action_signature(selected_action)
-    actions = list(root_actions)
-    if not any(_action_signature(action) == selected_signature for action in actions):
-        actions.append(selected_action)
+    actions = [
+        action
+        for action in root_actions
+        if _action_signature(action) != selected_signature
+    ]
+    actions.append(selected_action)
     actions.sort(
         key=lambda action: (
             -round(float(action.search_score), 8),
@@ -637,6 +679,8 @@ def _decision_evidence_payload(
             "max_transfers": planner.max_transfers,
             "max_same_gameweek_transfers": planner.max_same_gameweek_transfers,
             "hit_policy": planner.hit_policy,
+            "allow_chips": planner.allow_chips,
+            "minimum_transfer_horizon_gain": planner.minimum_transfer_horizon_gain,
         },
         "candidate_set_complete": True,
         "candidate_count": len(branches),

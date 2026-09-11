@@ -477,7 +477,7 @@ def test_players_form_falls_back_to_recent_history_when_snapshot_is_zero(monkeyp
     )
 
     monkeypatch.setattr(players_router.data_service, "players", lambda: ranked_players.copy())
-    monkeypatch.setattr(players_router.data_service, "historical_player_gw", lambda: history.copy())
+    monkeypatch.setattr(players_router.data_service, "serving_player_gw", lambda: history.copy())
 
     response = asyncio.run(_get("/api/players?sort_by=form&limit=1"))
 
@@ -577,7 +577,7 @@ def test_form_fallback_diverges_from_season_ppg_in_both_directions(monkeypatch):
     )
 
     monkeypatch.setattr(players_router.data_service, "players", lambda: ranked_players.copy())
-    monkeypatch.setattr(players_router.data_service, "historical_player_gw", lambda: history.copy())
+    monkeypatch.setattr(players_router.data_service, "serving_player_gw", lambda: history.copy())
 
     response = asyncio.run(_get("/api/players?sort_by=name&limit=2"))
 
@@ -1032,6 +1032,9 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
     async def fake_history(team_id):
         return {"chips": []}
 
+    async def fake_transfers(team_id):
+        return []
+
     async def fake_fixtures():
         return []
 
@@ -1070,6 +1073,7 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
     monkeypatch.setattr(planner_router.fpl_client, "get_team", fake_team)
     monkeypatch.setattr(planner_router.fpl_client, "get_team_picks", fake_picks)
     monkeypatch.setattr(planner_router.fpl_client, "get_team_history", fake_history)
+    monkeypatch.setattr(planner_router.fpl_client, "get_team_transfers", fake_transfers)
     monkeypatch.setattr(planner_router.fpl_client, "get_fixtures", fake_fixtures)
     monkeypatch.setattr(planner_router, "fixture_source_state", fake_fixture_source_state)
     monkeypatch.setattr(
@@ -1077,7 +1081,20 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
         "players",
         lambda: pd.DataFrame([{"player_name": "Example Midfielder"}]),
     )
-    monkeypatch.setattr(planner_router.data_service, "historical_player_gw", lambda: pd.DataFrame())
+    monkeypatch.setattr(
+        planner_router.data_service,
+        "serving_player_gw",
+        lambda: pd.DataFrame(
+            [
+                {
+                    "season": "2026-27",
+                    "gameweek": 1,
+                    "player_id": 10,
+                    "price_before_deadline": 6.0,
+                }
+            ]
+        ),
+    )
     monkeypatch.setattr(
         planner_router,
         "load_planner_models",
@@ -1132,6 +1149,52 @@ def test_planner_returns_transition_state_without_projecting(monkeypatch):
     assert payload["baseline"] == []
     assert payload["squad"] == []
     assert payload["decision"] is None
+
+
+def test_team_summary_reconstructs_free_transfers_from_public_history(monkeypatch):
+    async def fake_team(team_id):
+        return {
+            "name": "Test XI",
+            "summary_overall_rank": 100,
+            "summary_overall_points": 180,
+            "last_deadline_bank": 5,
+            "summary_event_points": 60,
+            "last_deadline_value": 1005,
+        }
+
+    async def fake_bootstrap():
+        return {
+            "events": [
+                {"id": 1, "finished": True, "data_checked": True},
+                {"id": 2, "finished": True, "data_checked": True},
+                {"id": 3, "is_current": True},
+                {"id": 4, "is_next": True},
+            ],
+            "game_settings": {"max_extra_free_transfers": 4},
+        }
+
+    async def fake_history(team_id):
+        return {
+            "current": [
+                {"event": 1, "event_transfers": 0},
+                {"event": 2, "event_transfers": 0},
+                {"event": 3, "event_transfers": 12},
+            ],
+            "chips": [{"name": "wildcard", "event": 3}],
+        }
+
+    async def fake_transfers(team_id):
+        return []
+
+    monkeypatch.setattr(fpl_live.fpl_client, "get_team", fake_team)
+    monkeypatch.setattr(fpl_live.fpl_client, "get_bootstrap", fake_bootstrap)
+    monkeypatch.setattr(fpl_live.fpl_client, "get_team_history", fake_history)
+    monkeypatch.setattr(fpl_live.fpl_client, "get_team_transfers", fake_transfers)
+
+    payload = asyncio.run(fpl_live.team(10))
+
+    assert payload["free_transfers_available"] == 2
+    assert payload["manager_state_provenance"] == "public-transfer-history-v1"
 
 
 def test_chip_tips_returns_clear_no_team_state():

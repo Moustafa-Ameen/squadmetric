@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -6,11 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api import fpl_client
 from api.chip_tracking import build_chip_status
 from api.live_projection_service import live_projection_rows
+from api.manager_state import current_bank_value, infer_free_transfers
 from api.readiness import live_decision_context, require_live_artifacts
 from api.routers.fixtures import fixture_source_state
 from api.routers.predictions import BEST_MODEL
 from fpl_intelligence.price_economics import live_pick_price
-from fpl_intelligence.season_rules import infer_season_from_bootstrap
+from fpl_intelligence.season_rules import build_season_rules, infer_season_from_bootstrap
 
 router = APIRouter(prefix="/api/fpl", tags=["fpl-live"])
 _LIVE_ARTIFACTS_DEPENDENCY = Depends(require_live_artifacts)
@@ -146,15 +148,43 @@ async def season_state() -> dict[str, Any]:
 
 @router.get("/team/{team_id}")
 async def team(team_id: int) -> dict[str, Any]:
-    entry = await fpl_client.get_team(team_id)
+    entry, bootstrap, history, transfers = await asyncio.gather(
+        fpl_client.get_team(team_id),
+        fpl_client.get_bootstrap(),
+        fpl_client.get_team_history(team_id),
+        fpl_client.get_team_transfers(team_id),
+    )
+    target_gameweek = (
+        _next_gameweek_from_bootstrap(bootstrap)
+        or _current_gameweek_from_bootstrap(bootstrap)
+        or 1
+    )
+    rules = build_season_rules(
+        bootstrap,
+        season=infer_season_from_bootstrap(bootstrap),
+        source_url="https://fantasy.premierleague.com/api/bootstrap-static/",
+    )
+    free_transfers = infer_free_transfers(
+        target_gameweek=target_gameweek,
+        team_history=history,
+        transfers=transfers,
+        max_free_transfers=int(rules.max_free_transfers or 5),
+        started_event=entry.get("started_event"),
+    )
+    bank_value = current_bank_value(
+        last_deadline_bank=entry.get("last_deadline_bank"),
+        transfers=transfers,
+        target_gameweek=target_gameweek,
+    )
     return {
         "team_name": entry.get("name"),
         "overall_rank": entry.get("summary_overall_rank"),
         "total_points": entry.get("summary_overall_points"),
-        "bank_value": _money(entry.get("last_deadline_bank")),
+        "bank_value": bank_value,
         "current_gw_points": entry.get("summary_event_points"),
         "squad_value": _money(entry.get("last_deadline_value")),
-        "free_transfers_available": entry.get("free_transfers"),
+        "free_transfers_available": free_transfers,
+        "manager_state_provenance": "public-transfer-history-v1",
     }
 
 
