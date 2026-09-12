@@ -1,4 +1,4 @@
-"""P8 deadline freshness, immutable decision snapshots, and drift audits."""
+"""Deadline freshness, immutable opening-squad snapshots, and drift audits."""
 
 from __future__ import annotations
 
@@ -58,10 +58,22 @@ def build_shadow_snapshot(
     *,
     captured_at: str,
 ) -> dict[str, Any]:
+    deadline = str(recommendation.get("deadline") or "").strip()
+    if not deadline:
+        raise ValueError("Opening-squad shadow capture requires the official GW1 deadline")
+    captured = parse_timestamp(captured_at)
+    deadline_at = parse_timestamp(deadline)
+    cutoff = parse_timestamp(str(recommendation["data_cutoff"]))
+    if captured >= deadline_at or cutoff >= deadline_at:
+        raise ValueError(
+            "Opening-squad shadow capture is locked after the GW1 deadline"
+        )
     squad = sorted(int(row["element_id"]) for row in recommendation["squad"])
     payload = {
-        "schema_version": "p11-gw1-shadow-v3",
+        "schema_version": "opening-squad-shadow-v4",
         "captured_at": captured_at,
+        "deadline": deadline,
+        "immutable_after_deadline": True,
         "season": recommendation["season"],
         "data_cutoff": recommendation["data_cutoff"],
         "bootstrap_hash": recommendation["bootstrap_hash"],
@@ -112,6 +124,8 @@ def compare_snapshots(previous: dict[str, Any] | None, current: dict[str, Any]) 
 
 
 def persist_shadow_snapshot(snapshot: dict[str, Any], root: Path = SHADOW_ROOT) -> Path:
+    if not snapshot.get("immutable_after_deadline"):
+        raise ValueError("Shadow snapshot is missing its immutability contract")
     root.mkdir(parents=True, exist_ok=True)
     filename = (
         f"{snapshot['captured_at'].replace(':', '-')}-"

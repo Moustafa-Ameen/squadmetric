@@ -13,6 +13,7 @@ def _recommendation() -> dict:
     return {
         "season": "2026-27",
         "data_cutoff": "2026-08-07T08:00:00Z",
+        "deadline": "2026-08-21T17:30:00Z",
         "bootstrap_hash": "bootstrap",
         "rules_version": "rules",
         "portfolio_version": "portfolio",
@@ -79,3 +80,14 @@ def test_shadow_snapshot_is_deterministic_and_reports_drift(tmp_path):
     assert drift["players_in"] == [20]
     assert drift["players_out"] == [15]
     assert drift["captain_changed"]
+
+
+def test_shadow_snapshot_rejects_post_deadline_reconstruction():
+    try:
+        build_shadow_snapshot(
+            _recommendation(), captured_at="2026-08-22T09:00:00Z"
+        )
+    except ValueError as exc:
+        assert "locked after the GW1 deadline" in str(exc)
+    else:
+        raise AssertionError("post-deadline opening snapshot should be rejected")
