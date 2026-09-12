@@ -14,7 +14,9 @@ audit, and handoff files. Git history remains the source for commit-level detail
 - Opening squad: `horizon_8_flexible_cold_start_safe`. It uses an identity-safe
   eight-Gameweek policy when prior seasons exist and a value baseline otherwise.
 - In-season engine: deterministic beam search over legal transfer, lineup,
-  captaincy, bench, and chip states. The live route searches three Gameweeks.
+  captaincy, and bench states. The live route honors the requested three-, five-,
+  or eight-Gameweek horizon and evaluates multi-transfer bundles against the
+  manager's reconstructed free-transfer balance.
 - Rules: season-versioned scoring, BPS, defensive contributions, transfers,
   selling prices, and chip inventories. Current 2026/27 rules use eight chips in
   two half-season sets, a GW19 reset, DC v1, and BPS v2.
@@ -22,6 +24,16 @@ audit, and handoff files. Git history remains the source for commit-level detail
   contribution data remains missing; scoring eras are never blended.
 - Evidence: recommendations can be frozen before a deadline and settled only after
   official FPL marks the Gameweek both finished and data-checked.
+- Live rolling form: finalized current-season rows are joined by stable FPL element
+  ID. Serving fails closed if an official finalized Gameweek is absent from the
+  model bundle.
+- Manager economics: free transfers and purchase/selling prices are reconstructed
+  from public transfer history; incomplete price evidence suppresses advice.
+- Chip policy: proactive chip calls are disabled by default until a credible
+  season-long owned-squad validation record exists.
+- Actionability: marginal transfers are shown as alternatives rather than calls;
+  the production threshold scales from three points at a three-Gameweek horizon
+  to eight points at an eight-Gameweek horizon, before any hit cost.
 
 ## Accepted engineering and decision changes
 
@@ -70,8 +82,8 @@ audit, and handoff files. Git history remains the source for commit-level detail
 ### Production routing and live operation
 
 - Separated projections by consumer, then promoted Ridge for transfers and
-  captaincy and Gradient Boosting for chip valuation. Added explicit metadata and
-  an all-Ridge rollback.
+  captaincy. Gradient Boosting chip valuation remains available only behind an
+  explicit experimental flag. Added explicit metadata and an all-Ridge rollback.
 - Built the complete planner response: transfers/roll, hits, chip slot, XI, ordered
   bench, captain, vice, immediate/horizon value, uncertainty, opportunity cost,
   provenance, and legal alternatives.

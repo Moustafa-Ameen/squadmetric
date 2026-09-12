@@ -17,7 +17,7 @@
   <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" />
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-live-009688?logo=fastapi&logoColor=white" />
-  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-305%20passing-22c55e" />
+  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-317%20passing-22c55e" />
   <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-32%20passing-8b5cf6" />
 </p>
 
@@ -271,20 +271,23 @@ The acknowledgment is fail-closed: `-FinalNewsReviewed` without an official sour
 </details>
 
 <details>
-<summary><strong>Calibration, robustness, and set pieces</strong></summary>
+<summary><strong>Preseason robustness and set pieces</strong></summary>
 
 ```powershell
-# Autosub calibration and 27-scenario opening-squad robustness tournament
+# Preseason-only autosub calibration and opening-squad robustness
 .\.venv\Scripts\python.exe -m fpl_intelligence.p10_calibration
 
-# Deadline finalization report
+# Preseason-only deadline finalization report
 .\.venv\Scripts\python.exe -m fpl_intelligence.p11_deadline_finalization
 
-# Official penalties, direct free kicks, and corners audit
+# Current official penalties, direct free kicks, and corners audit
 .\.venv\Scripts\python.exe -m fpl_intelligence.p12_set_piece_report
 ```
 
-Set-piece intelligence applies only the change from the final 2025/26 role, preventing established penalty returns from being counted twice.
+The refresh script preserves the first two outputs once GW1 has begun; it does not
+rewrite opening-squad evidence with later information. Set-piece intelligence
+applies only the change from the final 2025/26 role, preventing established penalty
+returns from being counted twice.
 
 </details>
 
@@ -373,7 +376,7 @@ Current verified baseline:
 
 | Gate | Result |
 |---|---:|
-| Python tests | 305 passing |
+| Python tests | 317 passing |
 | Frontend unit tests | 32 passing |
 | Desktop/mobile browser tests | 32 passing |
 | Ruff, ESLint, TypeScript | Clean |

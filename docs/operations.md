@@ -24,13 +24,20 @@ manager-specific evidence is wanted:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-27.ps1 `
-  -TeamId YOUR_PUBLIC_FPL_TEAM_ID
+  -TeamId YOUR_PUBLIC_FPL_TEAM_ID `
+  -ModelTeamId SQUADMETRIC_MODEL_TEAM_ID
 ```
 
 The workflow refreshes official data, appends a newly finalized Gameweek at most
-once, retrains the fixed serving family when required, rebuilds P10/P11/P12 reports,
-settles eligible frozen evidence, and captures the next deadline decision. It never
-performs an FPL action.
+once, retrains the fixed serving family when required, settles eligible frozen
+evidence, and captures the next deadline decision. Preseason opening-squad
+robustness and finalization artifacts are immutable once GW1 begins; only the
+current set-piece audit is rebuilt in season. It never performs an FPL action.
+
+`-TeamId` is a personal diagnostic account and is never counted as product
+performance. `-ModelTeamId` must identify the actual FPL account created for the
+SquadMetric squad; it writes a separate official per-Gameweek scorecard and freezes
+that account's next recommendation evidence.
 
 Safe read-only finalization check:
 

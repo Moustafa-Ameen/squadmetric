@@ -33,7 +33,7 @@ The website is a Next.js Node server, not a static export. It relies on same-ori
 7. Use `/api/health` for liveness and `/api/readiness` for decision-serving
    readiness. A healthy process with stale or drifted artifacts is intentionally
    not recommendation-ready.
-8. Keep the daily 2026/27 refresh task running independently of the web process.
+8. Run the 2026/27 refresh manually after an official gameweek is finalized and data-checked. The app deliberately does not update artifacts automatically and blocks recommendations when a finalized gameweek is missing.
 
 ## Vercel launch checklist
 
