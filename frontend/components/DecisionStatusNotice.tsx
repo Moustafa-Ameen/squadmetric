@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, DatabaseZap, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, DatabaseZap } from "lucide-react";
 import { decisionStatusLabel, recommendationsAreReady, squadAccessMessage } from "@/lib/decisionState";
 import type { SquadAccessState } from "@/lib/decisionState";
 import type { SeasonState } from "@/lib/types";
@@ -12,7 +12,7 @@ export function DecisionStatusNotice({
 }) {
   const ready = recommendationsAreReady(seasonState);
   const unavailable = seasonState.decision_status === "unavailable";
-  const Icon = ready ? CheckCircle2 : unavailable ? DatabaseZap : RefreshCw;
+  const Icon = ready ? CheckCircle2 : unavailable ? DatabaseZap : AlertTriangle;
   const age = seasonState.artifact_data.age_hours;
   const tone = ready
     ? "border-emerald-200 bg-emerald-50"
@@ -33,7 +33,7 @@ export function DecisionStatusNotice({
       role={unavailable ? "alert" : "status"}
     >
       <div className="flex items-start gap-3">
-        <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${iconTone} ${!ready && !unavailable ? "animate-spin" : ""}`} />
+        <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${iconTone}`} />
         <div className="min-w-0">
           <div className="font-semibold text-primary">{decisionStatusLabel(seasonState)}</div>
           {ready ? (
@@ -43,7 +43,7 @@ export function DecisionStatusNotice({
           ) : (
             <>
               <p className="mt-1 text-sm text-secondary">
-                Official FPL data changed, so SquadMetric is validating the next recommendation snapshot.
+                Recommendations are paused until the processed model bundle is manually refreshed.
                 {typeof age === "number" ? ` Current artifacts are ${age.toFixed(1)} hours old.` : ""}
               </p>
               {!compact && seasonState.decision_blockers.length ? (

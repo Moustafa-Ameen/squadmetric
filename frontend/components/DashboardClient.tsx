@@ -17,25 +17,25 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { OverviewResponse, SeasonState } from "@/lib/types";
+import type { DecisionCenterResponse, OverviewResponse, SeasonState } from "@/lib/types";
 
-export function DashboardClient({ overview, seasonState, seasonStateUnavailable }: { overview: OverviewResponse; seasonState: SeasonState | null; seasonStateUnavailable: boolean }) {
-  const [teamId, setTeamId] = useState("");
+export function DashboardClient({ overview, seasonState, seasonStateUnavailable, decisionCenter, teamId }: { overview: OverviewResponse; seasonState: SeasonState | null; seasonStateUnavailable: boolean; decisionCenter: DecisionCenterResponse | null; teamId: string }) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    queueMicrotask(() => setTeamId(window.localStorage.getItem("fpl_team_id") ?? ""));
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const topCaptain = overview.captains[0] ?? overview.predictions[0];
-  const popularAlternative = overview.captains[1] ?? overview.predictions[1];
+  const personalized = teamId && decisionCenter?.status === "ready" ? decisionCenter.recommendation : undefined;
+  const genericCaptain = overview.captains[0] ?? overview.predictions[0];
+  const topCaptain = personalized?.starting_xi.find((player) => player.element_id === personalized.captain_id) ?? (!teamId ? genericCaptain : undefined);
+  const popularAlternative = personalized?.starting_xi.find((player) => player.element_id === personalized.vice_captain_id) ?? (!teamId ? overview.captains[1] ?? overview.predictions[1] : undefined);
   const differential = overview.gems[0];
-  const transfer = overview.transfers[0];
+  const transfer = personalized?.transfers[0];
   const gameweek = seasonState?.next_gw ?? seasonState?.current_gw ?? 1;
   const deadline = formatDeadline(seasonState?.next_season_start, now);
-  const projectedPoints = useMemo(() => overview.predictions.slice(0, 11).reduce((total, player) => total + (player.expected_points ?? 0), 0), [overview.predictions]);
+  const projectedPoints = useMemo(() => personalized?.expected_gameweek_points ?? overview.predictions.slice(0, 11).reduce((total, player) => total + (player.expected_points ?? 0), 0), [overview.predictions, personalized]);
 
   if (seasonState && !seasonState.recommendations_ready) {
     return (
@@ -69,7 +69,7 @@ export function DashboardClient({ overview, seasonState, seasonStateUnavailable 
           <div className="border-b border-white/10 px-6 py-5 sm:px-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-emerald-300"><Sparkles className="h-4 w-4" />Primary recommendation</div>
-              <span className="rounded-full bg-emerald-400/15 px-3 py-1.5 text-xs font-bold text-emerald-200">High confidence</span>
+              <span className="rounded-full bg-emerald-400/15 px-3 py-1.5 text-xs font-bold capitalize text-emerald-200">{personalized ? `${personalized.confidence} confidence` : teamId ? "Personal plan unavailable" : "Generic scouting view"}</span>
             </div>
           </div>
           <div className="px-6 py-7 sm:px-7 sm:py-8">
@@ -77,7 +77,7 @@ export function DashboardClient({ overview, seasonState, seasonStateUnavailable 
               <div>
                 <div className="text-sm font-semibold text-slate-400">Captain for Gameweek {gameweek}</div>
                 <h2 className="mt-2 text-3xl font-black tracking-[-0.035em] sm:text-4xl">{topCaptain ? displayName(topCaptain) : "Recommendation pending"}</h2>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">{topCaptain?.reasoning ?? "Best available blend of projected points and expected minutes in the current model."}</p>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">{personalized?.reason ?? (teamId ? decisionCenter?.message ?? "Open the decision center to retry your personalized plan." : genericCaptain?.reasoning ?? "Generic scouting leader until you link a team.")}</p>
               </div>
               {topCaptain ? <div className="min-w-36 rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-center"><div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Expected points</div><div className="mt-2 text-3xl font-black text-emerald-300">{topCaptain.expected_points.toFixed(1)}</div><div className="mt-1 text-xs text-slate-400">{Math.round(topCaptain.start_likelihood * 100)}% start chance</div></div> : null}
             </div>
@@ -86,18 +86,18 @@ export function DashboardClient({ overview, seasonState, seasonStateUnavailable 
         </article>
 
         <aside className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <AlternativeCard eyebrow="Popular alternative" name={popularAlternative ? displayName(popularAlternative) : "Not available"} detail={popularAlternative ? `${popularAlternative.expected_points.toFixed(1)} xP · ${Math.round(popularAlternative.start_likelihood * 100)}% start chance` : "Waiting for another option"} icon={<Shield className="h-5 w-5" />} tone="violet" />
-          <AlternativeCard eyebrow="Differential alternative" name={differential?.name ?? "Not available"} detail={differential ? `${(differential.selected_by_percent ?? 0).toFixed(1)}% selected · Higher variance` : "Waiting for a differential"} icon={<TrendingUp className="h-5 w-5" />} tone="amber" />
+          <AlternativeCard eyebrow={personalized ? "Vice-captain" : "Scouting alternative"} name={popularAlternative ? displayName(popularAlternative) : "Not available"} detail={popularAlternative ? `${popularAlternative.expected_points.toFixed(1)} xP · ${Math.round(popularAlternative.start_likelihood * 100)}% start chance` : "No squad-relative alternative available"} icon={<Shield className="h-5 w-5" />} tone="violet" />
+          <AlternativeCard eyebrow="Generic differential scout" name={differential?.name ?? "Not available"} detail={differential ? `${(differential.selected_by_percent ?? 0).toFixed(1)}% selected · Not a squad recommendation` : "Waiting for a differential"} icon={<TrendingUp className="h-5 w-5" />} tone="amber" />
         </aside>
       </section>
 
       <section aria-labelledby="weekly-actions-title">
         <div className="flex items-end justify-between gap-4"><div><div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Your checklist</div><h2 id="weekly-actions-title" className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">This gameweek’s decisions</h2></div><Link href="/decisions" className="hidden text-sm font-bold text-violet-700 hover:text-violet-900 sm:inline-flex sm:items-center sm:gap-2">Open full plan<ArrowRight className="h-4 w-4" /></Link></div>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <ActionCard icon={<RefreshCw className="h-5 w-5" />} label="Transfers" value={transfer ? `Watch ${displayName(transfer)}` : "No move identified"} detail={transfer ? `${transfer.expected_points.toFixed(1)} xP · £${transfer.price.toFixed(1)}m` : "Review after team news"} href="/transfers" />
+          <ActionCard icon={<RefreshCw className="h-5 w-5" />} label="Transfers" value={transfer ? `${transfer.outgoing_name ?? "Player"} → ${transfer.incoming_name ?? "Player"}` : personalized ? "Roll the transfer" : "No personalized call"} detail={transfer ? `${transfer.projected_gain.toFixed(2)} projected-point gain` : personalized?.transfer_action ?? "Open the decision center"} href="/transfers" />
           <ActionCard icon={<Crown className="h-5 w-5" />} label="Captain" value={topCaptain ? displayName(topCaptain) : "Pending"} detail="Primary pick ready" href="/captain" complete />
           <ActionCard icon={<Users className="h-5 w-5" />} label="Bench" value={teamId ? "Review order" : "Link team first"} detail="Balance upside and autosub cover" href="/squad" />
-          <ActionCard icon={<Zap className="h-5 w-5" />} label="Chip" value="Review opportunity" detail="Compare use now versus save value" href="/chips" />
+          <ActionCard icon={<Zap className="h-5 w-5" />} label="Chip" value="Proactive calls paused" detail="Availability remains live while validation builds" href="/chips" />
         </div>
       </section>
 

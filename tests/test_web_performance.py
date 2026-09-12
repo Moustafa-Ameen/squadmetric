@@ -38,7 +38,7 @@ def test_live_projection_cache_reuses_identical_data_hashes(monkeypatch):
     monkeypatch.setattr(projection_service, "project_players", fake_project_players)
     monkeypatch.setattr(
         projection_service.data_service,
-        "historical_player_gw",
+        "serving_player_gw",
         lambda: pd.DataFrame(),
     )
     monkeypatch.setattr(
@@ -122,7 +122,7 @@ def test_projection_cache_ignores_live_score_noise_but_keeps_metadata_fresh(
     monkeypatch.setattr(projection_service, "project_players", fake_project_players)
     monkeypatch.setattr(
         projection_service.data_service,
-        "historical_player_gw",
+        "serving_player_gw",
         lambda: pd.DataFrame(),
     )
     monkeypatch.setattr(
@@ -193,7 +193,7 @@ def test_projection_cache_invalidates_on_actionable_live_changes(monkeypatch):
     monkeypatch.setattr(projection_service, "project_players", fake_project_players)
     monkeypatch.setattr(
         projection_service.data_service,
-        "historical_player_gw",
+        "serving_player_gw",
         lambda: pd.DataFrame(),
     )
     monkeypatch.setattr(

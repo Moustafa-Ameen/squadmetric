@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { ArrowRight, CalendarClock, RefreshCw, ShieldCheck, Users, UserRoundSearch } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { getOverview, getSeasonState } from "@/lib/api";
-import type { OverviewResponse, SeasonState } from "@/lib/types";
+import { getDecisionCenter, getOverview, getSeasonState } from "@/lib/api";
+import type { DecisionCenterResponse, OverviewResponse, SeasonState } from "@/lib/types";
 import { DashboardClient } from "./DashboardClient";
 import { DashboardSkeleton } from "./LoadingState";
 
@@ -13,11 +13,19 @@ export function DashboardLoader() {
   const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
   const [overviewError, setOverviewError] = useState(false);
   const [seasonError, setSeasonError] = useState(false);
+  const [decisionCenter, setDecisionCenter] = useState<DecisionCenterResponse | null>(null);
+  const [teamId, setTeamId] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [overviewResult, seasonResult] = await Promise.allSettled([getOverview(), getSeasonState()]);
+    const linkedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
+    setTeamId(linkedTeamId);
+    const [overviewResult, seasonResult, decisionResult] = await Promise.allSettled([
+      getOverview(),
+      getSeasonState(),
+      linkedTeamId ? getDecisionCenter(linkedTeamId, 3) : Promise.resolve(null),
+    ]);
     if (overviewResult.status === "fulfilled") {
       setOverview(overviewResult.value);
       setOverviewError(false);
@@ -32,23 +40,18 @@ export function DashboardLoader() {
       setSeasonState(null);
       setSeasonError(true);
     }
+    setDecisionCenter(decisionResult.status === "fulfilled" ? decisionResult.value : null);
     setLoading(false);
   }, []);
 
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
-
-  useEffect(() => {
-    if (!overviewError && seasonState?.recommendations_ready !== false) return;
-    const timer = window.setInterval(() => void load(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [load, overviewError, seasonState?.recommendations_ready]);
 
   if (loading && !overview && !seasonState && !overviewError) return <DashboardSkeleton />;
   if (overviewError || !overview || seasonState?.recommendations_ready === false) {
     return <DashboardRefreshState seasonState={seasonState} loading={loading} onRefresh={load} />;
   }
 
-  return <DashboardClient overview={overview} seasonState={seasonState} seasonStateUnavailable={seasonError} />;
+  return <DashboardClient overview={overview} seasonState={seasonState} seasonStateUnavailable={seasonError} decisionCenter={decisionCenter} teamId={teamId} />;
 }
 
 function DashboardRefreshState({
@@ -69,7 +72,7 @@ function DashboardRefreshState({
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Gameweek {gameweek}</div>
           <h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Your decision dashboard</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Your team and planning tools stay available while fresh recommendations are checked.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Your team and planning tools remain available while recommendations are paused.</p>
         </div>
         <button type="button" onClick={() => void onRefresh()} disabled={loading} className="sm-secondary-button self-start px-4 py-2.5 sm:self-auto">
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -80,9 +83,9 @@ function DashboardRefreshState({
       <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 p-6 text-white shadow-[0_22px_60px_rgba(15,23,42,0.18)] sm:p-8" role="status">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-amber-300"><RefreshCw className="h-4 w-4 animate-spin" />Preparing fresh recommendations</div>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.035em] sm:text-3xl">Official FPL data changed. We’re checking the next plan.</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-300">SquadMetric temporarily withholds transfer, captain and chip calls instead of showing advice built from mismatched data. This page checks again automatically every minute.</p>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-amber-300"><RefreshCw className="h-4 w-4" />Manual refresh required</div>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.035em] sm:text-3xl">Recommendations are paused until the data bundle is refreshed.</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">SquadMetric withholds transfer, captain and chip calls when a finalized gameweek is missing. It will not update data automatically; run the manual refresh, then use “Check again”.</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 lg:min-w-64">
             <div className="flex items-center gap-2 text-sm font-bold text-emerald-300"><ShieldCheck className="h-5 w-5" />Your account is safe</div>
@@ -94,7 +97,7 @@ function DashboardRefreshState({
 
       <section>
         <div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Available now</div>
-        <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Keep planning while recommendations update</h2>
+        <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Keep planning while recommendations are paused</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <RefreshLink href="/squad" title="My Team" detail="Review your current XI and bench." icon={<Users className="h-5 w-5" />} />
           <RefreshLink href="/stats" title="Players" detail="Browse current official players and prices." icon={<UserRoundSearch className="h-5 w-5" />} />

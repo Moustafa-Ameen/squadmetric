@@ -187,12 +187,13 @@ test("decision dashboard prioritizes recommendations and progressively discloses
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test("decision dashboard stays useful while recommendations refresh", async ({ page }) => {
+test("decision dashboard stays useful while recommendations await a manual refresh", async ({ page }) => {
   await page.route("**/api/fpl/season-state", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...seasonState, recommendations_ready: false, decision_status: "blocked", decision_blockers: [{ code: "bootstrap_drift", message: "Official player data changed." }] }) }));
   await page.route("**/api/predictions/overview", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: { code: "recommendations_blocked" } }) }));
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "Your decision dashboard" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Official FPL data changed. We’re checking the next plan." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recommendations are paused until the data bundle is refreshed." })).toBeVisible();
+  await expect(page.getByText("It will not update data automatically", { exact: false })).toBeVisible();
   await expect(page.getByText("Dashboard unavailable")).not.toBeVisible();
   await expect(page.locator('a[href="/stats"]').filter({ hasText: "Browse current official players and prices." })).toBeVisible();
   await expect(page.locator('a[href="/deadline"]').filter({ hasText: "Follow final checks and team-news timing." })).toBeVisible();

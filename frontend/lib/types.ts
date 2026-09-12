@@ -239,6 +239,8 @@ export interface SeasonState {
     fixtures_hash: string | null;
     player_count: number | null;
     team_count: number | null;
+    finalized_gameweeks?: number[];
+    latest_finalized_gameweek?: number | null;
   };
   artifact_data: {
     data_cutoff: string | null;
@@ -248,6 +250,8 @@ export interface SeasonState {
     player_count: number | null;
     team_count: number | null;
     rules_version: string | null;
+    finalized_gameweeks?: number[];
+    latest_finalized_gameweek?: number | null;
   };
 }
 
