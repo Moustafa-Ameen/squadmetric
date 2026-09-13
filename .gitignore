@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .playwright-cli/
+.runtime/
 frontend/output/playwright/report/
 frontend/output/playwright/test-results/
 *.pyc

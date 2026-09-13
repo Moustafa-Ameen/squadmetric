@@ -195,20 +195,31 @@ This fetches official bootstrap/fixtures, writes immutable snapshots, rebuilds p
 
 ### 4. Run
 
-Terminal 1 — API:
+From the repository root, one command starts the API and website, waits for both
+to become ready, and opens [http://localhost:3000](http://localhost:3000):
 
 ```powershell
-.\.venv\Scripts\uvicorn.exe api.main:app --reload
+.\start.cmd
 ```
 
-Terminal 2 — website:
+Keep that terminal open while using SquadMetric. Press `Ctrl+C` to stop both
+services. Startup logs are written under `.runtime/squadmetric/`. On a fresh clone,
+the launcher creates the Python environment and installs dependencies when needed.
+It does not refresh season data or create any automatic schedule.
 
-```powershell
-cd frontend
-npm.cmd run dev
-```
+If the configured Supabase project cannot be reached, the launcher automatically
+opens the dashboard in local workspace mode. Recommendations and browser-local
+settings remain usable, while sign-in and cloud account sync stay disabled for
+that run; `.env.local` is not changed.
 
-Open [http://localhost:3000](http://localhost:3000).
+The default launcher uses an optimized frontend build so page-to-page navigation
+stays fast. It rebuilds only when frontend source files change. Use
+`.\start.cmd -Dev` when actively editing the website and you need hot reload.
+
+To start without opening a browser, use `.\start.cmd -NoBrowser`. Optional
+`-BackendPort` and `-FrontendPort` arguments can override the default ports.
+The wrapper bypasses local `.ps1` execution-policy restrictions only for this run;
+it does not change the machine's PowerShell policy.
 
 Useful health checks:
 
