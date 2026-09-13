@@ -1,9 +1,11 @@
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
 from api import data_service, fpl_client
+from api.chip_opportunities import build_chip_opportunities
 from api.chip_recommendations import (
     LIVE_RULES_SOURCE,
     build_live_chip_state,
@@ -13,6 +15,7 @@ from api.chip_recommendations import (
 )
 from api.chip_signals import BASELINE_WINDOW, generate_chip_alerts
 from api.chip_tracking import build_chip_status, filter_actionable_chip_alerts
+from api.live_projection_service import live_projection_rows
 from api.manager_state import build_manager_decision_state
 from api.readiness import require_live_artifacts
 from api.recommendation_policy import proactive_chip_recommendations_enabled
@@ -39,6 +42,97 @@ router = APIRouter(
     dependencies=[Depends(require_live_artifacts)],
 )
 ACTIVE_PORTFOLIO = get_production_portfolio()
+
+
+@router.get("/chip-opportunities")
+async def chip_opportunities() -> dict[str, Any]:
+    """Return league-wide chip windows without requiring a manager or squad."""
+
+    bootstrap, fixture_rows = await asyncio.gather(
+        fpl_client.get_bootstrap(),
+        fpl_client.get_fixtures(),
+    )
+    fixture_state = await fixture_source_state(fixture_rows)
+    season = _season_label_from_bootstrap(bootstrap)
+    season_state = _detect_season_state(bootstrap, fixture_state)
+    response_meta = {
+        "season_state": season_state,
+        "fpl_api_season": season,
+        "fixture_season": fixture_state.get("season", "unknown"),
+        "difficulty_source": fixture_state.get("difficulty_source", "unknown"),
+        "current_gw": _current_gameweek_from_bootstrap(bootstrap),
+        "next_gw": _next_gameweek_from_bootstrap(bootstrap),
+    }
+    if season_state != "in_season":
+        return {
+            **response_meta,
+            "status": "unavailable",
+            "message": _season_transition_message(
+                season,
+                fixture_state.get("next_kickoff"),
+                season_state=season_state,
+            ),
+            "opportunities": [],
+        }
+
+    target_gameweek = (
+        _next_gameweek_from_bootstrap(bootstrap)
+        or _current_gameweek_from_bootstrap(bootstrap)
+        or 1
+    )
+    try:
+        projected_players, _ = await live_projection_rows(
+            model_name=ACTIVE_PORTFOLIO.projections.chip_model,
+            start_gameweek=target_gameweek,
+            horizon=8,
+        )
+        opportunities = build_chip_opportunities(
+            bootstrap,
+            fixture_rows,
+            projected_players,
+            target_gameweek=target_gameweek,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError, KeyError, IndexError) as exc:
+        return {
+            **response_meta,
+            "status": "unavailable",
+            "message": f"Chip opportunities are temporarily unavailable: {exc}",
+            "opportunities": [],
+        }
+
+    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    horizon_end = max(
+        (
+            int(row["recommended_gameweek"])
+            for row in opportunities
+            if row.get("recommended_gameweek") is not None
+        ),
+        default=target_gameweek + 7,
+    )
+    return {
+        **response_meta,
+        "status": "ready",
+        "message": (
+            "League-wide chip opportunities based on public fixtures, player form, "
+            "expected involvement, defensive weakness and predicted minutes."
+        ),
+        "target_gameweek": target_gameweek,
+        "horizon_end_gameweek": max(target_gameweek + 7, horizon_end),
+        "opportunities": opportunities,
+        "personalized": False,
+        "automatic_chip_actions": False,
+        "model": ACTIVE_PORTFOLIO.projections.chip_model,
+        "portfolio_version": ACTIVE_PORTFOLIO.version,
+        "data_cutoff": generated_at,
+        "generated_at": generated_at,
+        "methodology": [
+            "Triple Captain combines projected points, minutes confidence, expected "
+            "goal involvement and opponent defensive xGC.",
+            "Bench Boost compares affordable four-player bench combinations and minutes.",
+            "Free Hit prioritizes published blank and double Gameweeks.",
+            "Wildcard highlights clusters of teams beginning strong five-Gameweek runs.",
+        ],
+    }
 
 
 @router.get("/chip-tips")

@@ -789,6 +789,57 @@ export interface ChipTipsResponse {
   generated_at?: string;
 }
 
+export interface ChipOpportunityCandidate {
+  gameweek?: number;
+  player?: string;
+  team?: string;
+  opponents?: string[];
+  venue?: string;
+  projected_points?: number;
+  start_probability?: number;
+  xgi_per_90?: number;
+  opponent_xgc_per_90?: number;
+  projected_bench_points?: number;
+  average_start_probability?: number;
+  blank_teams?: string[];
+  double_teams?: string[];
+  teams?: Array<{ team: string; average_difficulty: number }>;
+}
+
+export interface ChipOpportunity {
+  chip_type: "3xc" | "bboost" | "freehit" | "wildcard";
+  chip: string;
+  recommended_gameweek: number | null;
+  headline: string;
+  summary: string;
+  confidence: "low" | "medium" | "high";
+  why_now: string[];
+  why_wait: string;
+  primary_candidate: ChipOpportunityCandidate | null;
+  alternatives: ChipOpportunityCandidate[];
+}
+
+export interface ChipOpportunitiesResponse {
+  status: "unavailable" | "ready";
+  season_state?: SeasonStateCode;
+  fpl_api_season?: string;
+  fixture_season?: string;
+  difficulty_source?: string;
+  current_gw?: number | null;
+  next_gw?: number | null;
+  target_gameweek?: number;
+  horizon_end_gameweek?: number;
+  message: string;
+  opportunities: ChipOpportunity[];
+  personalized?: false;
+  automatic_chip_actions?: false;
+  model?: string;
+  portfolio_version?: string;
+  data_cutoff?: string;
+  generated_at?: string;
+  methodology?: string[];
+}
+
 export type ChipAvailabilityStatus = "used" | "available" | "not_yet_available" | "expired";
 
 export interface ChipStatusRow {
