@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -10,6 +11,11 @@ TIMEOUT_SECONDS = 10.0
 UNAVAILABLE_MESSAGE = "FPL data is temporarily unavailable. Try again shortly."
 BOOTSTRAP_CACHE_SECONDS = 300.0
 FIXTURES_CACHE_SECONDS = 60.0
+TEAM_CACHE_SECONDS = 60.0
+PICKS_CACHE_SECONDS = 60.0
+HISTORY_CACHE_SECONDS = 300.0
+TRANSFERS_CACHE_SECONDS = 60.0
+LIVE_GAMEWEEK_CACHE_SECONDS = 15.0
 ARTIFACT_MANIFEST_PATH = (
     Path(__file__).resolve().parents[1]
     / "data"
@@ -18,6 +24,8 @@ ARTIFACT_MANIFEST_PATH = (
 )
 _BOOTSTRAP_CACHE: tuple[float, int | None, dict[str, Any]] | None = None
 _FIXTURES_CACHE: tuple[float, int | None, list[dict[str, Any]]] | None = None
+_RESOURCE_CACHE: dict[str, tuple[float, Any]] = {}
+_RESOURCE_REQUESTS: dict[str, asyncio.Task[Any]] = {}
 
 
 def _artifact_manifest_mtime_ns() -> int | None:
@@ -62,6 +70,26 @@ async def _get(path: str) -> Any:
         ) from exc
 
 
+async def _cached_get(path: str, *, ttl_seconds: float) -> Any:
+    cached = _RESOURCE_CACHE.get(path)
+    if cached is not None and monotonic() - cached[0] < ttl_seconds:
+        return cached[1]
+
+    request = _RESOURCE_REQUESTS.get(path)
+    if request is None:
+        request = asyncio.create_task(_get(path))
+        _RESOURCE_REQUESTS[path] = request
+
+    try:
+        payload = await request
+    finally:
+        if _RESOURCE_REQUESTS.get(path) is request:
+            _RESOURCE_REQUESTS.pop(path, None)
+
+    _RESOURCE_CACHE[path] = (monotonic(), payload)
+    return payload
+
+
 async def get_bootstrap() -> dict[str, Any]:
     global _BOOTSTRAP_CACHE
     manifest_mtime = _artifact_manifest_mtime_ns()
@@ -101,20 +129,36 @@ def clear_fixtures_cache() -> None:
 
 
 async def get_team(team_id: int) -> dict[str, Any]:
-    return await _get(f"entry/{team_id}/")
+    return await _cached_get(f"entry/{team_id}/", ttl_seconds=TEAM_CACHE_SECONDS)
 
 
 async def get_team_picks(team_id: int, gw: int) -> dict[str, Any]:
-    return await _get(f"entry/{team_id}/event/{gw}/picks/")
+    return await _cached_get(
+        f"entry/{team_id}/event/{gw}/picks/",
+        ttl_seconds=PICKS_CACHE_SECONDS,
+    )
 
 
 async def get_team_history(team_id: int) -> dict[str, Any]:
-    return await _get(f"entry/{team_id}/history/")
+    return await _cached_get(
+        f"entry/{team_id}/history/",
+        ttl_seconds=HISTORY_CACHE_SECONDS,
+    )
 
 
 async def get_team_transfers(team_id: int) -> list[dict[str, Any]]:
-    return await _get(f"entry/{team_id}/transfers/")
+    return await _cached_get(
+        f"entry/{team_id}/transfers/",
+        ttl_seconds=TRANSFERS_CACHE_SECONDS,
+    )
 
 
 async def get_live_gw(gw: int) -> dict[str, Any]:
-    return await _get(f"event/{gw}/live/")
+    return await _cached_get(
+        f"event/{gw}/live/",
+        ttl_seconds=LIVE_GAMEWEEK_CACHE_SECONDS,
+    )
+
+
+def clear_resource_cache() -> None:
+    _RESOURCE_CACHE.clear()
