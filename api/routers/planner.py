@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import json
+from copy import deepcopy
+from time import monotonic
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +14,7 @@ from api.chip_recommendations import (
     squad_frame,
 )
 from api.chip_tracking import build_chip_status
-from api.live_projection_service import current_player_rows
+from api.live_projection_service import current_player_rows, live_projection_rows
 from api.manager_state import build_manager_decision_state
 from api.readiness import require_live_artifacts
 from api.recommendation_policy import proactive_chip_recommendations_enabled
@@ -25,6 +27,7 @@ from api.routers.fpl_live import (
 )
 from fpl_intelligence.artifact_contract import load_current_artifact_manifest
 from fpl_intelligence.beam_search import (
+    FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
     DeterministicBeamPlanner,
     _captain_ids,
     _fast_lineup,
@@ -51,6 +54,11 @@ router = APIRouter(
     dependencies=[Depends(require_live_artifacts)],
 )
 ACTIVE_PORTFOLIO = get_production_portfolio()
+DECISION_CENTER_CACHE_SECONDS = 60.0
+_DECISION_CENTER_CACHE: dict[
+    tuple[int, int],
+    tuple[float, dict[str, Any]],
+] = {}
 
 
 @router.get("/planner")
@@ -116,11 +124,6 @@ async def planner(
     )
     history = data_service.serving_player_gw()
 
-    try:
-        models = load_planner_models(ACTIVE_PORTFOLIO.projections.transfer_model)
-    except (FileNotFoundError, RuntimeError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
     player_rows = _current_player_rows(bootstrap)
     if not player_rows:
         raise HTTPException(
@@ -129,34 +132,27 @@ async def planner(
         )
 
     projection_horizon = max(horizon, 8)
-    projected_players = project_players(
-        player_rows,
-        fixture_rows,
-        bootstrap.get("teams", []),
-        start_gameweek,
-        projection_horizon,
-        models=models,
-        history=history,
-    )
-    chip_models = (
-        models
-        if ACTIVE_PORTFOLIO.projections.chip_model
-        == ACTIVE_PORTFOLIO.projections.transfer_model
-        else load_planner_models(ACTIVE_PORTFOLIO.projections.chip_model)
-    )
-    chip_projected_players = (
-        projected_players
-        if chip_models is models
-        else project_players(
-            player_rows,
-            fixture_rows,
-            bootstrap.get("teams", []),
-            start_gameweek,
-            projection_horizon,
-            models=chip_models,
-            history=history,
+    allow_personalized_chips = proactive_chip_recommendations_enabled()
+    try:
+        projected_players, _ = await live_projection_rows(
+            model_name=ACTIVE_PORTFOLIO.projections.transfer_model,
+            start_gameweek=start_gameweek,
+            horizon=projection_horizon,
         )
-    )
+        chip_projected_players = projected_players
+        if (
+            allow_personalized_chips
+            and
+            ACTIVE_PORTFOLIO.projections.chip_model
+            != ACTIVE_PORTFOLIO.projections.transfer_model
+        ):
+            chip_projected_players, _ = await live_projection_rows(
+                model_name=ACTIVE_PORTFOLIO.projections.chip_model,
+                start_gameweek=start_gameweek,
+                horizon=projection_horizon,
+            )
+    except (FileNotFoundError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     shadow = None
     if shadow_enabled():
         control = get_production_portfolio("m8_control")
@@ -228,13 +224,14 @@ async def planner(
     ):
         try:
             beam = DeterministicBeamPlanner(
+                beam_width=4,
                 horizon=horizon,
-                max_transfers=8,
+                max_transfers=6,
                 max_same_gameweek_transfers=min(
                     5, max(2, manager_state.free_transfers + 1)
                 ),
-                allow_chips=proactive_chip_recommendations_enabled(),
-                minimum_transfer_horizon_gain=max(3.0, float(horizon)),
+                allow_chips=allow_personalized_chips,
+                minimum_transfer_horizon_gain=FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
             )
             action = beam.decide(
                 gameweek=start_gameweek,
@@ -369,12 +366,23 @@ async def decision_center(
             status_code=400,
             detail="Connect your FPL team ID before requesting a weekly decision.",
         )
+    cache_key = (int(team_id), int(horizon))
+    cached = _DECISION_CENTER_CACHE.get(cache_key)
+    if cached is not None and monotonic() - cached[0] < DECISION_CENTER_CACHE_SECONDS:
+        return deepcopy(cached[1])
+
     payload = await planner(
         team_id=team_id,
         horizon=horizon,
         include_evidence=True,
     )
-    return _decision_center_payload(payload)
+    response = _decision_center_payload(payload)
+    _DECISION_CENTER_CACHE[cache_key] = (monotonic(), deepcopy(response))
+    return response
+
+
+def clear_decision_center_cache() -> None:
+    _DECISION_CENTER_CACHE.clear()
 
 
 def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:

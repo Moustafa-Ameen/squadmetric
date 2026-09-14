@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 from api import fpl_client
 from api import live_projection_service as projection_service
+from api.routers import planner as planner_router
 from api.routers import predictions as predictions_router
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -228,6 +229,59 @@ def test_fixture_client_uses_short_warm_cache(monkeypatch):
     assert asyncio.run(fpl_client.get_fixtures()) == [{"id": 1}]
     assert calls == 1
     fpl_client.clear_fixtures_cache()
+
+
+def test_team_client_coalesces_concurrent_requests_and_reuses_short_cache(monkeypatch):
+    calls = 0
+
+    async def fake_get(path):
+        nonlocal calls
+        calls += 1
+        assert path == "entry/3254925/"
+        await asyncio.sleep(0)
+        return {"id": 3254925, "name": "Cached Team"}
+
+    monkeypatch.setattr(fpl_client, "_get", fake_get)
+    fpl_client.clear_resource_cache()
+
+    async def fetch_twice():
+        return await asyncio.gather(
+            fpl_client.get_team(3254925),
+            fpl_client.get_team(3254925),
+        )
+
+    first = asyncio.run(fetch_twice())
+    second = asyncio.run(fpl_client.get_team(3254925))
+
+    assert first == [second, second]
+    assert calls == 1
+    fpl_client.clear_resource_cache()
+
+
+def test_decision_center_reuses_completed_plan_for_one_minute(monkeypatch):
+    calls = 0
+
+    async def fake_planner(**kwargs):
+        nonlocal calls
+        calls += 1
+        return {
+            "team_id": kwargs["team_id"],
+            "season_state": "preseason",
+            "start_gameweek": 1,
+            "horizon": kwargs["horizon"],
+            "message": "Not ready",
+        }
+
+    monkeypatch.setattr(planner_router, "planner", fake_planner)
+    planner_router.clear_decision_center_cache()
+
+    first = asyncio.run(planner_router.decision_center(team_id=3254925, horizon=5))
+    first["message"] = "Mutated by consumer"
+    second = asyncio.run(planner_router.decision_center(team_id=3254925, horizon=5))
+
+    assert calls == 1
+    assert second["message"] == "Not ready"
+    planner_router.clear_decision_center_cache()
 
 
 def test_overview_payload_is_compact_and_reuses_projection_run(monkeypatch):

@@ -1069,6 +1069,9 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
         }
     ]
 
+    async def fake_live_projection_rows(**kwargs):
+        return projected, {"model": kwargs["model_name"]}
+
     monkeypatch.setattr(planner_router.fpl_client, "get_bootstrap", fake_bootstrap)
     monkeypatch.setattr(planner_router.fpl_client, "get_team", fake_team)
     monkeypatch.setattr(planner_router.fpl_client, "get_team_picks", fake_picks)
@@ -1101,6 +1104,11 @@ def test_planner_returns_squad_and_baseline(monkeypatch):
         lambda *args, **kwargs: (object(), object()),
     )
     monkeypatch.setattr(planner_router, "project_players", lambda *args, **kwargs: projected)
+    monkeypatch.setattr(
+        planner_router,
+        "live_projection_rows",
+        fake_live_projection_rows,
+    )
 
     response = asyncio.run(_get("/api/predictions/planner?team_id=10&horizon=3"))
 

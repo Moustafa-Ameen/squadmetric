@@ -28,6 +28,7 @@ from fpl_intelligence.chip_simulation import (
     _projection_map,
     apply_chip,
     build_chip_squad,
+    chip_replaces_ordinary_transfer,
     legal_chip_options,
 )
 from fpl_intelligence.price_economics import (
@@ -38,6 +39,8 @@ from fpl_intelligence.season_rules import SeasonRules
 from fpl_intelligence.squad_optimizer import VALID_FORMATIONS
 
 HIT_POLICIES = ("current_gw", "horizon_value")
+FREE_TRANSFER_MINIMUM_HORIZON_GAIN = 2.0
+PRIORITY_REPLACEMENT_MAX_START_PROBABILITY = 0.25
 MULTI_TRANSFER_INCREMENTAL_MARGIN = 1.25
 MULTI_TRANSFER_HIT_SAFETY_MARGIN = 0.75
 MULTI_TRANSFER_MIN_GROSS_GAIN_PER_MOVE = 3.0
@@ -231,14 +234,19 @@ class DeterministicBeamPlanner:
         selected = beam[0].first_action
         if (
             self.minimum_transfer_horizon_gain > 0
-            and selected.chip is None
             and selected.transfer_plan.count > 0
+            and not chip_replaces_ordinary_transfer(selected.chip)
         ):
+            selected_chip_key = selected.chip.key if selected.chip is not None else None
             no_action = next(
                 (
                     action
                     for action in self.last_root_actions
-                    if action.chip is None and action.transfer_plan.count == 0
+                    if (
+                        (action.chip.key if action.chip is not None else None)
+                        == selected_chip_key
+                        and action.transfer_plan.count == 0
+                    )
                 ),
                 None,
             )
@@ -247,17 +255,29 @@ class DeterministicBeamPlanner:
                     selected.expected_horizon_points
                     - no_action.expected_horizon_points
                 )
+                priority_replacement = _replaces_unavailable_player(
+                    selected.transfer_plan,
+                    squad,
+                )
                 required_gain = (
-                    self.minimum_transfer_horizon_gain
+                    selected.transfer_plan.hit_cost
+                    if priority_replacement and selected.transfer_plan.hit_cost == 0
+                    else self.minimum_transfer_horizon_gain
                     + selected.transfer_plan.hit_cost
                 )
-                if gross_gain < required_gain:
+                below_gate = (
+                    gross_gain <= 0
+                    if priority_replacement and selected.transfer_plan.hit_cost == 0
+                    else gross_gain < required_gain
+                )
+                if below_gate:
                     return replace(
                         no_action,
-                        reason=(
-                            "roll transfer: strongest legal move adds only "
-                            f"{gross_gain:.2f} horizon points; policy requires "
-                            f"{required_gain:.2f}"
+                        reason=_transfer_gate_reason(
+                            gross_gain=gross_gain,
+                            required_gain=required_gain,
+                            hit_cost=selected.transfer_plan.hit_cost,
+                            horizon=self.horizon,
                         ),
                     )
         return selected
@@ -598,6 +618,58 @@ class DeterministicBeamPlanner:
         if key not in self._projection_cache:
             self._projection_cache[key] = _projection_map(frame)
         return self._projection_cache[key]
+
+
+def _replaces_unavailable_player(
+    transfer_plan: TransferPlan,
+    squad: pd.DataFrame,
+) -> bool:
+    """Identify a free move that removes a confirmed or near-certain non-player."""
+
+    outgoing_ids = {
+        int(move.outgoing_id)
+        for move in transfer_plan.moves
+        if move.outgoing_id is not None
+    }
+    if not outgoing_ids or "player_id" not in squad:
+        return False
+    outgoing = squad[squad["player_id"].isin(outgoing_ids)]
+    for player in outgoing.to_dict("records"):
+        status = str(player.get("status") or "").strip().casefold()
+        if status in {"i", "s", "u", "n"}:
+            return True
+        chance = player.get("chance_of_playing_next_round")
+        if chance is not None and pd.notna(chance) and float(chance) <= 0:
+            return True
+        start_probability = player.get("probability_60_plus_minutes")
+        if (
+            start_probability is not None
+            and pd.notna(start_probability)
+            and float(start_probability) <= PRIORITY_REPLACEMENT_MAX_START_PROBABILITY
+        ):
+            return True
+    return False
+
+
+def _transfer_gate_reason(
+    *,
+    gross_gain: float,
+    required_gain: float,
+    hit_cost: int,
+    horizon: int,
+) -> str:
+    gain = f"{gross_gain:+.1f}"
+    required = f"{required_gain:+.1f}"
+    if hit_cost:
+        return (
+            f"Avoid the -{hit_cost} hit: the best move projects {gain} points before "
+            f"the hit across {horizon} gameweeks, below the {required} needed to "
+            "justify it."
+        )
+    return (
+        f"Bank the free transfer: the best move projects {gain} points across "
+        f"{horizon} gameweeks, below the {required} minimum for using it."
+    )
 
 
 def generate_transfer_options(

@@ -731,7 +731,125 @@ def test_beam_can_abstain_from_a_marginal_transfer():
     )
 
     assert action.transfer_plan.count == 0
-    assert action.reason.startswith("roll transfer")
+    assert action.reason.startswith("Bank the free transfer")
+    assert "policy" not in action.reason.casefold()
+
+
+def test_beam_accepts_two_point_horizon_gain_for_a_free_transfer():
+    squad = _squad()
+    upgrade = squad.iloc[[8]].copy()
+    upgrade["player_id"] = 100
+    upgrade["player_name"] = "Two Point Upgrade"
+    upgrade["team"] = "New Team"
+    upgrade["expected_points_adjusted"] += 2.1
+    predictions = pd.concat([squad, upgrade], ignore_index=True)
+    rules = build_historical_season_rules("2025-26")
+    planner = DeterministicBeamPlanner(
+        beam_width=4,
+        horizon=1,
+        max_transfers=4,
+        allow_chips=False,
+        minimum_transfer_horizon_gain=2.0,
+    )
+
+    action = planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=25.0,
+        free_transfers=1,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=(),
+        ),
+        predictions=predictions,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert action.transfer_plan.count == 1
+
+
+def test_chip_branch_cannot_bypass_six_point_hit_gate():
+    squad = _squad()
+    upgrade = squad.iloc[[8]].copy()
+    upgrade["player_id"] = 100
+    upgrade["player_name"] = "Sub Six Hit Upgrade"
+    upgrade["team"] = "New Team"
+    upgrade["expected_points_adjusted"] += 2.9
+    predictions = pd.concat([squad, upgrade], ignore_index=True)
+    rules = build_historical_season_rules("2025-26")
+    bench_boost = next(
+        chip for chip in chip_definitions(rules) if chip.name == "bboost"
+    )
+    planner = DeterministicBeamPlanner(
+        beam_width=6,
+        horizon=1,
+        max_transfers=4,
+        allow_chips=True,
+        minimum_transfer_horizon_gain=2.0,
+    )
+
+    action = planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=25.0,
+        free_transfers=0,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=(bench_boost.key,),
+        ),
+        predictions=predictions,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert action.chip is not None and action.chip.name == "bboost"
+    assert action.transfer_plan.count == 0
+    assert "Avoid the -4 hit" in action.reason
+    assert "+6.0 needed" in action.reason
+
+
+def test_confirmed_non_player_is_replaced_by_any_positive_free_transfer():
+    squad = _squad()
+    squad.loc[squad["player_id"] == 9, "status"] = "i"
+    squad.loc[squad["player_id"] == 9, "probability_60_plus_minutes"] = 0.0
+    upgrade = squad.loc[squad["player_id"] == 9].copy()
+    upgrade["player_id"] = 100
+    upgrade["player_name"] = "Available Replacement"
+    upgrade["team"] = "New Team"
+    upgrade["status"] = "a"
+    upgrade["probability_60_plus_minutes"] = 1.0
+    upgrade["expected_points_adjusted"] += 0.5
+    predictions = pd.concat([squad, upgrade], ignore_index=True)
+    rules = build_historical_season_rules("2025-26")
+    planner = DeterministicBeamPlanner(
+        beam_width=4,
+        horizon=1,
+        max_transfers=4,
+        allow_chips=False,
+        minimum_transfer_horizon_gain=2.0,
+    )
+
+    action = planner.decide(
+        gameweek=2,
+        squad=squad,
+        bank=25.0,
+        free_transfers=1,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=(),
+        ),
+        predictions=predictions,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert action.transfer_plan.count == 1
+    assert action.transfer.outgoing_id == 9
+    assert action.transfer.incoming_id == 100
 
 
 def test_beam_exposes_every_distinct_root_action_without_changing_counterfactuals():
