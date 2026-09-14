@@ -2,6 +2,7 @@ import type {
   AccuracyResult,
   BacktestResult,
   CaptainPick,
+  ChipOpportunitiesResponse,
   ChipStatusResponse,
   ChipTipsResponse,
   DraftWorkspaceResponse,
@@ -28,16 +29,30 @@ const SERVER_API_BASE =
   process.env.FPL_API_SERVER_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
   "http://localhost:8000";
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+const completedGetRequests = new Map<string, { expiresAt: number; value: unknown }>();
+
+type FetchJsonOptions = RequestInit & {
+  next?: { revalidate: number };
+  clientCacheMs?: number;
+};
 
 export class ApiError extends Error {
+  public readonly status: number;
+  public readonly code: string;
+  public readonly detail: unknown;
+
   constructor(
     message: string,
-    public readonly status: number,
-    public readonly code: string,
-    public readonly detail: unknown,
+    status: number,
+    code: string,
+    detail: unknown,
   ) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -47,29 +62,62 @@ export function apiErrorCode(error: unknown): string | null {
 
 async function fetchJson<T>(
   path: string,
-  options: RequestInit & { next?: { revalidate: number } } = { next: { revalidate: 300 } },
+  options: FetchJsonOptions = { next: { revalidate: 300 } },
 ): Promise<T> {
   const base = typeof window === "undefined" ? SERVER_API_BASE : CLIENT_API_BASE;
-  const response = await fetch(`${base}${path}`, options);
-  if (!response.ok) {
-    let detail: unknown = null;
-    try {
-      const body = (await response.json()) as { detail?: unknown };
-      detail = body.detail ?? body;
-    } catch {
-      detail = null;
-    }
-    const structured = detail && typeof detail === "object" ? detail as Record<string, unknown> : null;
-    const message =
-      (structured && typeof structured.message === "string" && structured.message) ||
-      (typeof detail === "string" && detail) ||
-      `API request failed: ${path}`;
-    const code =
-      (structured && typeof structured.code === "string" && structured.code) ||
-      `http_${response.status}`;
-    throw new ApiError(message, response.status, code, detail);
+  const url = `${base}${path}`;
+  const method = (options.method ?? "GET").toUpperCase();
+  const requestKey = `${method}:${url}`;
+  const { clientCacheMs = 0, ...requestOptions } = options;
+
+  if (method === "GET") {
+    const completed = completedGetRequests.get(requestKey);
+    if (completed && completed.expiresAt > Date.now()) return completed.value as T;
+    if (completed) completedGetRequests.delete(requestKey);
+    const existing = inFlightGetRequests.get(requestKey);
+    if (existing) return existing as Promise<T>;
   }
-  return response.json() as Promise<T>;
+
+  const request = requestJson<T>(url, path, requestOptions);
+  if (method !== "GET") return request;
+
+  inFlightGetRequests.set(requestKey, request);
+  try {
+    const value = await request;
+    if (clientCacheMs > 0) {
+      completedGetRequests.set(requestKey, {
+        expiresAt: Date.now() + clientCacheMs,
+        value,
+      });
+    }
+    return value;
+  } finally {
+    if (inFlightGetRequests.get(requestKey) === request) {
+      inFlightGetRequests.delete(requestKey);
+    }
+  }
+}
+
+async function requestJson<T>(url: string, path: string, options: RequestInit): Promise<T> {
+  const response = await fetch(url, options);
+  if (response.ok) return response.json() as Promise<T>;
+
+  let detail: unknown = null;
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    detail = body.detail ?? body;
+  } catch {
+    detail = null;
+  }
+  const structured = detail && typeof detail === "object" ? detail as Record<string, unknown> : null;
+  const message =
+    (structured && typeof structured.message === "string" && structured.message) ||
+    (typeof detail === "string" && detail) ||
+    `API request failed: ${path}`;
+  const code =
+    (structured && typeof structured.code === "string" && structured.code) ||
+    `http_${response.status}`;
+  throw new ApiError(message, response.status, code, detail);
 }
 
 export async function getCurrentGameweek(): Promise<{ current_gw: number | null }> {
@@ -180,7 +228,7 @@ export async function getDecisionCenter(
 ): Promise<DecisionCenterResponse> {
   return fetchJson(
     `/api/predictions/decision-center?team_id=${encodeURIComponent(teamId)}&horizon=${horizon}`,
-    { cache: "no-store" },
+    { cache: "no-store", clientCacheMs: 60_000 },
   );
 }
 
@@ -216,6 +264,10 @@ export async function getPostGameweekReview(teamId: string): Promise<PostGamewee
 export async function getChipTips(teamId?: string): Promise<ChipTipsResponse> {
   const suffix = teamId ? "?team_id=" + encodeURIComponent(teamId) : "";
   return fetchJson("/api/chip-tips" + suffix, { cache: "no-store" });
+}
+
+export async function getChipOpportunities(): Promise<ChipOpportunitiesResponse> {
+  return fetchJson("/api/chip-opportunities", { cache: "no-store" });
 }
 
 export async function getChipStatuses(teamId?: string): Promise<ChipStatusResponse> {

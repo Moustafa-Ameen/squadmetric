@@ -1,15 +1,26 @@
 "use client";
 
-import { ArrowRight, Banknote, CalendarClock, CheckCircle2, Crown, ShieldCheck, Sparkles } from "lucide-react";
+import Link from "next/link";
+import {
+  CalendarClock,
+  Check,
+  ChevronDown,
+  Crown,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Target,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DecisionStatusNotice } from "@/components/DecisionStatusNotice";
 import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
+import { SquadPitch, type VisualSquadPlayer } from "@/components/SquadPitch";
 import { getDecisionCenter, getSeasonState } from "@/lib/api";
 import { persistDecisionResponse, persistWeeklyRecommendation } from "@/lib/accountStorage";
-import { decisionHeadline, formatChip, recommendationIsComplete } from "@/lib/decisionCenter";
-import { points, positionCode } from "@/lib/format";
+import { formatChip, recommendationIsComplete } from "@/lib/decisionCenter";
+import { points } from "@/lib/format";
 import type {
   DecisionCenterAlternative,
   DecisionCenterPlayer,
@@ -86,12 +97,11 @@ export default function DecisionCenterPage() {
   if (!teamId) {
     return (
       <div className="space-y-5">
-        <SectionHeader title="This Week" subtitle="One complete recommendation for your next deadline" />
+        <SectionHeader title="Gameweek plan" subtitle="Your transfer, captain and starting XI in one place" />
         <Panel>
-          <h2 className="text-lg font-semibold text-primary">Connect your FPL Team ID</h2>
-          <p className="mt-2 text-sm leading-6 text-secondary">
-            Save your Team ID in the sidebar. The decision center will then evaluate your actual
-            squad, bank, free transfers, chips, captaincy, bench, and legal hit options together.
+          <h2 className="text-lg font-extrabold text-slate-950">Connect your FPL team first</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Add your Team ID from My Team so SquadMetric can build a legal plan around your squad and bank.
           </p>
         </Panel>
       </div>
@@ -100,7 +110,7 @@ export default function DecisionCenterPage() {
   if (seasonState && !seasonState.recommendations_ready) {
     return (
       <div className="space-y-5">
-        <SectionHeader title="This Week" subtitle={`Team #${teamId} · recommendations paused`} />
+        <SectionHeader title="Gameweek plan" subtitle={`Team #${teamId} · recommendations paused`} />
         <DecisionStatusNotice seasonState={seasonState} />
       </div>
     );
@@ -108,8 +118,8 @@ export default function DecisionCenterPage() {
   if (!data || data.status !== "ready" || !recommendation || !recommendationIsComplete(recommendation)) {
     return (
       <div className="space-y-5">
-        <SectionHeader title="This Week" subtitle={`Team #${teamId}`} />
-        <div className="rounded-lg border border-fpl-amber/30 bg-fpl-amber/10 p-5 text-sm leading-6 text-secondary">
+        <SectionHeader title="Gameweek plan" subtitle={`Team #${teamId}`} />
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
           {data?.message ?? "A complete, legal weekly recommendation is not available yet."}
         </div>
       </div>
@@ -119,163 +129,267 @@ export default function DecisionCenterPage() {
   const captain = playersById.get(recommendation.captain_id ?? -1);
   const vice = playersById.get(recommendation.vice_captain_id ?? -1);
   const deadline = formatDate(data.deadline);
+  const pitchPlayers = toPitchPlayers(
+    recommendation.starting_xi,
+    recommendation.bench_order,
+    recommendation.captain_id,
+    recommendation.vice_captain_id,
+  );
 
   return (
-    <div className="space-y-5">
-      <SectionHeader
-        title={`GW${data.gameweek} Decision Center`}
-        subtitle={`Team #${teamId} · one synchronized transfer, lineup, captaincy, and chip decision`}
-      />
-
-      <Panel>
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.13em] text-fpl-green">
-              <CheckCircle2 className="h-4 w-4" /> Complete legal recommendation
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold text-primary">{decisionHeadline(recommendation)}</h2>
-            <p className="mt-3 text-sm leading-6 text-secondary">{recommendation.reason}</p>
-          </div>
-          <div className="space-y-2">
-            <div className={`rounded-xl border px-5 py-4 text-right ${confidenceStyle(recommendation.confidence)}`}>
-              <div className="text-[10px] font-bold uppercase tracking-[0.12em]">Confidence</div>
-              <div className="mt-1 text-xl font-semibold capitalize">{recommendation.confidence}</div>
-              <div className="mt-1 text-[10px] opacity-75">branch margin {recommendation.confidence_basis.search_score_margin.toFixed(2)}</div>
-            </div>
-            <div className="flex rounded-lg border border-fpl-border bg-fpl-raised p-1">
-              {([3, 5, 8] as Horizon[]).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setHorizon(option)}
-                  className={`flex-1 rounded-md px-2 py-1 text-[10px] font-semibold ${horizon === option ? "bg-fpl-green text-fpl-dark" : "text-secondary"}`}
-                >
-                  {option} GW
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Metric label="Expected GW points" value={`${points(recommendation.expected_gameweek_points)} pts`} />
-          <Metric label={`${data.horizon}-GW total`} value={`${points(recommendation.expected_horizon_points)} pts`} />
-          <Metric label="Gain vs do nothing" value={`${signed(recommendation.gain_vs_no_action)} pts`} good={recommendation.gain_vs_no_action > 0} />
-          <Metric label="Decision range" value={`${recommendation.downside_range.low.toFixed(1)}–${recommendation.downside_range.high.toFixed(1)}`} />
-          <Metric label="Future opportunity cost" value={`${points(recommendation.future_opportunity_cost)} pts`} />
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-secondary">
-          <Pill icon={<CalendarClock className="h-3.5 w-3.5" />} text={deadline ? `Deadline ${deadline}` : "Deadline unavailable"} />
-          <Pill icon={<Banknote className="h-3.5 w-3.5" />} text={`Bank £${(data.state_before?.bank ?? 0).toFixed(1)}m`} />
-          <Pill icon={<Sparkles className="h-3.5 w-3.5" />} text={`${data.state_before?.free_transfers ?? 0} free transfer${data.state_before?.free_transfers === 1 ? "" : "s"}`} />
-          <Pill icon={<ShieldCheck className="h-3.5 w-3.5" />} text={`Chip: ${recommendation.chip_action === "save" ? "save" : formatChip(recommendation.chip_action)}`} />
-        </div>
-      </Panel>
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <Panel>
-          <h2 className="text-base font-semibold text-primary">Transfer and hit decision</h2>
-          {recommendation.transfers.length ? (
-            <div className="mt-4 space-y-3">
-              {recommendation.transfers.map((transfer, index) => (
-                <div key={`${transfer.outgoing_id}-${transfer.incoming_id}-${index}`} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-lg border border-fpl-border bg-fpl-raised p-4">
-                  <div><div className="text-[10px] font-bold uppercase tracking-wide text-fpl-red">Out</div><div className="mt-1 font-semibold text-primary">{transfer.outgoing_name}</div></div>
-                  <ArrowRight className="h-5 w-5 text-muted" />
-                  <div className="text-right"><div className="text-[10px] font-bold uppercase tracking-wide text-fpl-green">In</div><div className="mt-1 font-semibold text-primary">{transfer.incoming_name}</div></div>
-                </div>
-              ))}
-              <div className={`rounded-lg border p-3 text-sm ${recommendation.hit_recommended ? "border-fpl-amber/30 bg-fpl-amber/10 text-fpl-amber" : "border-fpl-green/30 bg-fpl-green/10 text-fpl-green"}`}>
-                {recommendation.hit_recommended
-                  ? `The optimizer recommends paying a -${recommendation.hit_cost}; that cost is already included in the decision score.`
-                  : "No points hit is recommended."}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 rounded-lg border border-fpl-green/30 bg-fpl-green/10 p-4 text-sm text-secondary">
-              Roll the free transfer. Waiting for more information is valued above every legal move currently available.
-            </div>
-          )}
-        </Panel>
-
-        <Panel>
-          <div className="flex items-center gap-2"><Crown className="h-5 w-5 text-fpl-gold" /><h2 className="text-base font-semibold text-primary">Captaincy</h2></div>
-          <CaptainRow label="Captain" player={captain} expectedMultiplier={2} />
-          <CaptainRow label="Vice-captain" player={vice} expectedMultiplier={1} />
-          <div className="mt-4 rounded-lg border border-fpl-border bg-fpl-raised p-3 text-xs leading-5 text-muted">
-            Vice-captain fallback is selected from the same legal XI and projection state.
-          </div>
-        </Panel>
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+        <SectionHeader
+          title={`Gameweek ${data.gameweek} plan`}
+          subtitle={`Team #${teamId} · one clear plan for the next deadline`}
+        />
+        <HorizonPicker value={horizon} onChange={setHorizon} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <SquadPanel title="Recommended starting XI" players={recommendation.starting_xi} captainId={recommendation.captain_id} viceCaptainId={recommendation.vice_captain_id} />
-        <SquadPanel title="Autosub bench order" players={recommendation.bench_order} captainId={null} viceCaptainId={null} />
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Panel>
-          <h2 className="text-base font-semibold text-primary">Why not do nothing?</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <Metric label="No-action GW" value={`${points(data.no_action?.expected_gameweek_points ?? 0)} pts`} />
-            <Metric label={`No-action ${data.horizon}-GW`} value={`${points(data.no_action?.expected_horizon_points ?? 0)} pts`} />
-          </div>
-          <p className="mt-4 text-sm leading-6 text-secondary">{data.no_action?.reason}</p>
-        </Panel>
-        <Panel>
-          <h2 className="text-base font-semibold text-primary">Best alternatives considered</h2>
-          <div className="mt-4 space-y-2">
-            {(data.alternatives ?? []).slice(0, 3).map((alternative, index) => (
-              <AlternativeRow key={alternative.branch_id} alternative={alternative} rank={index + 2} />
-            ))}
-          </div>
-        </Panel>
-      </div>
-
-      <Panel>
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-violet-50 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
           <div>
-            <h2 className="text-base font-semibold text-primary">Save your decision</h2>
-            <p className="mt-1 text-sm text-secondary">Record whether you plan to follow this recommendation. SquadMetric never performs the FPL action for you.</p>
+            <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-emerald-700">
+              <Check className="h-4 w-4" /> Ready for the deadline
+            </div>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              {recommendation.transfers.length ? "Make the transfer" : "Bank the transfer"}
+              {recommendation.hit_recommended ? ` and take a -${recommendation.hit_cost}` : ""}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">{primaryExplanation(recommendation, data.horizon)}</p>
+          </div>
+          <span className={`w-fit rounded-full px-3 py-1.5 text-xs font-extrabold ${confidenceStyle(recommendation.confidence)}`}>
+            {confidenceLabel(recommendation.confidence)} confidence
+          </span>
+        </div>
+
+        <div className="grid divide-y divide-slate-200 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+          <PlanAction
+            icon={<RefreshCw className="h-5 w-5" />}
+            eyebrow="Transfer"
+            title={transferTitle(recommendation)}
+            detail={recommendation.hit_recommended ? `Includes a -${recommendation.hit_cost} hit` : "No points hit"}
+            tone="violet"
+          />
+          <PlanAction
+            icon={<Crown className="h-5 w-5" />}
+            eyebrow="Captain"
+            title={captain?.web_name ?? captain?.name ?? "Not available"}
+            detail={`Vice-captain: ${vice?.web_name ?? vice?.name ?? "Not available"}`}
+            tone="amber"
+          />
+          <PlanAction
+            icon={<Sparkles className="h-5 w-5" />}
+            eyebrow="Chip"
+            title={recommendation.chip_action === "save" ? "No chip this week" : formatChip(recommendation.chip_action)}
+            detail="See the Chip Guide for league-wide opportunities"
+            tone="emerald"
+          />
+        </div>
+
+        <div className="grid gap-3 border-t border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 lg:grid-cols-4 lg:px-7">
+          <QuickFact label="GW forecast" value={`${points(recommendation.expected_gameweek_points)} pts`} />
+          <QuickFact label={`Gain over ${data.horizon} GWs`} value={`${signed(recommendation.gain_vs_no_action)} pts`} positive={recommendation.gain_vs_no_action > 0} />
+          <QuickFact label="Available" value={`${data.state_before?.free_transfers ?? 0} free transfer${data.state_before?.free_transfers === 1 ? "" : "s"}`} />
+          <QuickFact label="In the bank" value={`£${(data.state_before?.bank ?? 0).toFixed(1)}m`} />
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+        <InfoPill icon={<CalendarClock className="h-4 w-4" />} text={deadline ? `Deadline ${deadline}` : "Deadline unavailable"} />
+        <InfoPill icon={<Target className="h-4 w-4" />} text={`${data.horizon}-gameweek forecast selected`} />
+        <InfoPill icon={<ShieldCheck className="h-4 w-4" />} text="Squad and budget checked" />
+      </div>
+
+      <SquadPitch players={pitchPlayers} title="Your recommended lineup" />
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <Panel className="p-0 sm:p-0">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-5 sm:px-6">
+              <div>
+                <h2 className="font-extrabold text-slate-950">Why this plan?</h2>
+                <p className="mt-1 text-sm text-slate-500">The useful reasoning, without the model jargon</p>
+              </div>
+              <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-slate-200 px-5 py-5 sm:px-6">
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                {decisionReason(recommendation, data.horizon)}
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <QuickFact label="Do nothing" value={`${points(data.no_action?.expected_horizon_points ?? 0)} pts`} />
+                <QuickFact label="Recommended plan" value={`${points(recommendation.expected_horizon_points)} pts`} />
+                <QuickFact label="Expected difference" value={`${signed(recommendation.gain_vs_no_action)} pts`} positive={recommendation.gain_vs_no_action > 0} />
+              </div>
+              <p className="mt-4 text-xs leading-5 text-slate-500">
+                A free transfer needs at least +2.0 projected points across the selected window. A -4 hit needs +6.0 before the hit. Confirmed injured, suspended or non-playing players are replaced first when a positive free move is available.
+              </p>
+            </div>
+          </details>
+        </Panel>
+
+        <Panel className="p-0 sm:p-0">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-5 sm:px-6">
+              <div>
+                <h2 className="font-extrabold text-slate-950">Other moves considered</h2>
+                <p className="mt-1 text-sm text-slate-500">The next-best legal options</p>
+              </div>
+              <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
+            </summary>
+            <div className="space-y-2 border-t border-slate-200 px-5 py-5 sm:px-6">
+              {(data.alternatives ?? []).slice(0, 3).map((alternative, index) => (
+                <AlternativeRow key={alternative.branch_id} alternative={alternative} rank={index + 2} />
+              ))}
+            </div>
+          </details>
+        </Panel>
+      </div>
+
+      <Panel>
+        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-950">Are you following this plan?</h2>
+            <p className="mt-1 text-sm text-slate-600">Saving only records your choice. SquadMetric never changes your FPL team.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => saveResponse("accepted")} disabled={responseStatus === "saving"} className="fpl-button px-4 py-2 text-sm">
               {responseStatus === "accepted" ? "Plan saved ✓" : "Save as my plan"}
             </button>
             <button type="button" onClick={() => saveResponse("rejected")} disabled={responseStatus === "saving"} className="fpl-secondary-button px-4 py-2 text-sm">
-              {responseStatus === "rejected" ? "Not following ✓" : "I’m not following this"}
+              {responseStatus === "rejected" ? "Not following ✓" : "I’m not following"}
             </button>
           </div>
         </div>
       </Panel>
 
-      <div className="flex flex-wrap justify-between gap-2 text-[11px] text-muted">
-        <span>{data.portfolio_version} · {data.decision_engine_version} · rules {data.rules_version}</span>
-        <span>Data cutoff {formatDate(data.data_cutoff) ?? "unavailable"} · {data.bootstrap_hash?.slice(0, 10)}</span>
+      <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <span>Want chip timing rather than a squad-specific chip call?</span>
+        <Link href="/chips" className="font-extrabold text-violet-700 hover:text-violet-900">Open the Chip Guide →</Link>
       </div>
     </div>
   );
 }
 
-function SquadPanel({ title, players, captainId, viceCaptainId }: { title: string; players: DecisionCenterPlayer[]; captainId: number | null; viceCaptainId: number | null }) {
-  return <Panel><h2 className="text-base font-semibold text-primary">{title}</h2><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{players.map((player, index) => <div key={player.element_id} className="rounded-lg border border-fpl-border bg-fpl-raised p-3"><div className="flex items-start justify-between gap-2"><span className="font-semibold text-primary">{index + 1}. {player.web_name ?? player.name}{player.element_id === captainId ? " (C)" : player.element_id === viceCaptainId ? " (VC)" : ""}</span><span className="font-mono text-xs text-fpl-green">{points(player.expected_points)}</span></div><div className="mt-1 text-[11px] text-muted">{player.team} · {positionCode(player.position)} · {Math.round(player.start_likelihood * 100)}% start{player.blank ? " · blank" : player.double ? " · double" : ""}</div></div>)}</div></Panel>;
+function HorizonPicker({ value, onChange }: { value: Horizon; onChange: (value: Horizon) => void }) {
+  return (
+    <div className="mb-6 w-fit rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+      <div className="px-2 pb-1 pt-0.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-400">Forecast window</div>
+      <div className="flex gap-1">
+        {([3, 5, 8] as Horizon[]).map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            className={`rounded-xl px-4 py-2 text-xs font-extrabold transition ${value === option ? "bg-slate-950 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            {option} GWs
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function CaptainRow({ label, player, expectedMultiplier }: { label: string; player?: DecisionCenterPlayer; expectedMultiplier: number }) {
-  return <div className="mt-4 rounded-lg border border-fpl-border bg-fpl-raised p-4"><div className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</div><div className="mt-2 flex items-end justify-between gap-3"><div><div className="font-semibold text-primary">{player?.web_name ?? player?.name ?? "-"}</div><div className="mt-1 text-xs text-muted">{player?.team ?? ""} · {Math.round((player?.start_likelihood ?? 0) * 100)}% start</div></div><div className="font-mono text-lg font-bold text-fpl-gold">{points((player?.expected_points ?? 0) * expectedMultiplier)}</div></div></div>;
+function PlanAction({ icon, eyebrow, title, detail, tone }: { icon: React.ReactNode; eyebrow: string; title: string; detail: string; tone: "violet" | "amber" | "emerald" }) {
+  const toneClasses = {
+    violet: "bg-violet-100 text-violet-700",
+    amber: "bg-amber-100 text-amber-700",
+    emerald: "bg-emerald-100 text-emerald-700",
+  };
+  return (
+    <div className="flex gap-4 p-5 sm:p-6">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${toneClasses[tone]}`}>{icon}</span>
+      <div className="min-w-0">
+        <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">{eyebrow}</div>
+        <div className="mt-1 text-base font-black text-slate-950">{title}</div>
+        <div className="mt-1 text-xs leading-5 text-slate-500">{detail}</div>
+      </div>
+    </div>
+  );
+}
+
+function QuickFact({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <div className="text-[10px] font-extrabold uppercase tracking-[0.11em] text-slate-400">{label}</div>
+      <div className={`mt-1 text-sm font-black ${positive ? "text-emerald-700" : "text-slate-950"}`}>{value}</div>
+    </div>
+  );
+}
+
+function InfoPill({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-sm">{icon}{text}</span>;
 }
 
 function AlternativeRow({ alternative, rank }: { alternative: DecisionCenterAlternative; rank: number }) {
-  const label = alternative.transfers.length ? alternative.transfers.map((move) => `${move.outgoing_name} → ${move.incoming_name}`).join(", ") : "Roll transfer";
-  return <div className="rounded-lg border border-fpl-border bg-fpl-raised p-3"><div className="flex justify-between gap-3"><div><div className="text-[10px] font-bold uppercase tracking-wide text-muted">#{rank} · {alternative.chip === "save" ? "save chip" : formatChip(alternative.chip)}</div><div className="mt-1 text-sm font-semibold text-primary">{label}</div></div><div className={`font-mono text-sm ${alternative.gain_vs_no_action > 0 ? "text-fpl-green" : "text-secondary"}`}>{signed(alternative.gain_vs_no_action)}</div></div></div>;
+  const label = alternative.transfers.length
+    ? alternative.transfers.map((move) => `${move.outgoing_name} → ${move.incoming_name}`).join(", ")
+    : "Bank the transfer";
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Option {rank}</div>
+          <div className="mt-1 text-sm font-bold text-slate-900">{label}</div>
+        </div>
+        <div className={`shrink-0 text-sm font-black ${alternative.gain_vs_no_action > 0 ? "text-emerald-700" : "text-slate-500"}`}>
+          {signed(alternative.gain_vs_no_action)}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function Metric({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return <div className="rounded-lg border border-fpl-border bg-fpl-raised p-3"><div className="text-[10px] uppercase tracking-[0.08em] text-muted">{label}</div><div className={`mt-1 font-mono text-base font-bold ${good ? "text-fpl-green" : "text-primary"}`}>{value}</div></div>;
+function transferTitle(recommendation: NonNullable<DecisionCenterResponse["recommendation"]>): string {
+  if (!recommendation.transfers.length) return "Save it for next week";
+  return recommendation.transfers
+    .map((transfer) => `${transfer.outgoing_name ?? "Player"} → ${transfer.incoming_name ?? "Player"}`)
+    .join(", ");
 }
 
-function Pill({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return <span className="inline-flex items-center gap-1.5 rounded-full border border-fpl-border bg-fpl-raised px-3 py-1.5">{icon}{text}</span>;
+function primaryExplanation(recommendation: NonNullable<DecisionCenterResponse["recommendation"]>, horizon: number): string {
+  if (recommendation.transfers.length) {
+    return `Projected to gain ${signed(recommendation.gain_vs_no_action)} points across the next ${horizon} gameweeks.`;
+  }
+  return `No available move clears the +2.0-point free-transfer mark across the next ${horizon} gameweeks.`;
+}
+
+function decisionReason(recommendation: NonNullable<DecisionCenterResponse["recommendation"]>, horizon: number): string {
+  if (!recommendation.transfers.length) {
+    return `Keeping the transfer is projected to be more useful than the moves currently available. The model will use a free transfer when the best legal move adds at least 2.0 points across this ${horizon}-gameweek window.`;
+  }
+  const move = transferTitle(recommendation);
+  const hit = recommendation.hit_recommended
+    ? ` Even after the -${recommendation.hit_cost} cost, it remains the strongest legal plan.`
+    : " It uses only your available free transfers, so there is no points deduction.";
+  return `${move} is the strongest legal move and projects ${signed(recommendation.gain_vs_no_action)} points more than doing nothing.${hit}`;
+}
+
+function toPitchPlayers(starters: DecisionCenterPlayer[], bench: DecisionCenterPlayer[], captainId: number | null, viceCaptainId: number | null): VisualSquadPlayer[] {
+  return [
+    ...starters.map((player) => toPitchPlayer(player, true, null, captainId, viceCaptainId)),
+    ...bench.map((player, index) => toPitchPlayer(player, false, index + 1, captainId, viceCaptainId)),
+  ];
+}
+
+function toPitchPlayer(player: DecisionCenterPlayer, starter: boolean, benchOrder: number | null, captainId: number | null, viceCaptainId: number | null): VisualSquadPlayer {
+  return {
+    id: player.element_id,
+    name: player.name,
+    shortName: player.web_name,
+    team: player.team,
+    teamCode: player.team_code,
+    position: player.position,
+    expectedPoints: player.expected_points,
+    startLikelihood: player.start_likelihood,
+    playerPrice: player.price,
+    starter,
+    benchOrder,
+    captain: player.element_id === captainId,
+    viceCaptain: player.element_id === viceCaptainId,
+  };
 }
 
 function signed(value: number): string {
@@ -289,8 +403,14 @@ function formatDate(value?: string | null): string | null {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
+function confidenceLabel(value: "low" | "medium" | "high"): string {
+  if (value === "high") return "High";
+  if (value === "medium") return "Balanced";
+  return "Close call";
+}
+
 function confidenceStyle(value: "low" | "medium" | "high"): string {
-  if (value === "high") return "border-fpl-green/40 bg-fpl-green/10 text-fpl-green";
-  if (value === "medium") return "border-fpl-amber/40 bg-fpl-amber/10 text-fpl-amber";
-  return "border-fpl-red/40 bg-fpl-red/10 text-fpl-red";
+  if (value === "high") return "bg-emerald-100 text-emerald-800";
+  if (value === "medium") return "bg-amber-100 text-amber-800";
+  return "bg-slate-100 text-slate-700";
 }
