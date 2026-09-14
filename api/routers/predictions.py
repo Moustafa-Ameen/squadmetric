@@ -247,7 +247,10 @@ async def overview() -> dict[str, Any]:
     """Return only the decision data required by the overview page."""
     projection_task = live_projection_rows(
         model_name=CAPTAINCY_MODEL,
-        horizon=3,
+        # The dashboard only displays the next gameweek, but the decision
+        # center evaluates 3/5/8-GW windows. Build the superset once at startup
+        # so changing pages never retrains the same projection pipeline.
+        horizon=8,
     )
     fixture_task = ticker(range=5)
     (captain_projected, captain_metadata), fixture_rows = await asyncio.gather(
@@ -260,7 +263,7 @@ async def overview() -> dict[str, Any]:
     else:
         transfer_projected, transfer_metadata = await live_projection_rows(
             model_name=BEST_MODEL,
-            horizon=3,
+            horizon=8,
         )
 
     gameweek = int(captain_metadata["start_gameweek"])

@@ -64,6 +64,43 @@ def test_recent_baseline_uses_finalized_current_season_and_stable_player_id():
     assert baseline["latest_gameweek"] == 2
 
 
+def test_prior_season_id_collision_falls_back_to_player_name():
+    history = pd.DataFrame(
+        [
+            {
+                "season": "2025-26",
+                "gameweek": 38,
+                "player_id": 7,
+                "player_name": "Different Prior Player",
+                "minutes": 270,
+                "total_points": 30,
+                "team": "OLD",
+            },
+            {
+                "season": "2025-26",
+                "gameweek": 38,
+                "player_id": 99,
+                "player_name": "Current Player",
+                "minutes": 90,
+                "total_points": 4,
+                "team": "NEW",
+            },
+        ]
+    )
+
+    baseline = _baseline_for_player(
+        {
+            "element_id": 7,
+            "name": "Current Player",
+            "season": "2026-27",
+        },
+        _recent_baselines(history),
+    )
+
+    assert baseline["points_last_3"] == 4.0
+    assert baseline["prior_team"] == "NEW"
+
+
 def test_live_fdr_is_mapped_to_the_historical_model_strength_scale():
     assert _model_opponent_strength(1) == 1000.0
     assert _model_opponent_strength(3) == 1150.0

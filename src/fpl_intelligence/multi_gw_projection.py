@@ -563,15 +563,26 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, Any]]
 def _baseline_for_player(
     player: dict[str, Any], baselines: dict[Any, dict[str, Any]]
 ) -> dict[str, Any]:
-    """Resolve a current player by stable FPL element ID, then by name."""
+    """Resolve by season-local FPL ID, then by cross-season player name.
+
+    FPL element IDs are stable only within a season. At an opening deadline,
+    current-season history can be empty, so an equal numeric ID from the prior
+    season must never be treated as the same player.
+    """
 
     raw_id = player.get("element_id", player.get("id"))
     try:
         player_id = int(raw_id)
     except (TypeError, ValueError):
         player_id = None
-    if player_id is not None and ("id", player_id) in baselines:
-        return baselines[("id", player_id)]
+    id_baseline = baselines.get(("id", player_id)) if player_id is not None else None
+    player_season = str(player.get("season") or "").strip()
+    if id_baseline is not None and (
+        not player_season
+        or not id_baseline.get("source_season")
+        or str(id_baseline["source_season"]) == player_season
+    ):
+        return id_baseline
     return baselines.get(("name", _normalise(player.get("name"))), {})
 
 
