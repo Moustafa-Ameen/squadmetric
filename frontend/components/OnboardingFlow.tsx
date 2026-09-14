@@ -77,8 +77,8 @@ export function OnboardingFlow() {
           <h2 className="mt-5 text-xl font-black text-slate-950">Connect your FPL team</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">Paste your numeric Team ID or any official team URL. This is public FPL data; SquadMetric never asks for your FPL password.</p>
           <label htmlFor="fpl-team-input" className="mt-6 block text-sm font-bold text-slate-800">FPL Team ID or URL</label>
-          <input id="fpl-team-input" value={teamInput} onChange={(event) => setTeamInput(event.target.value)} placeholder="123456 or fantasy.premierleague.com/entry/123456/history" className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100" aria-describedby="team-input-help" />
-          <p id="team-input-help" className="mt-2 text-xs leading-5 text-slate-500">Find it in the URL after opening your team’s Points or Gameweek History page.</p>
+          <input id="fpl-team-input" value={teamInput} onChange={(event) => setTeamInput(event.target.value)} placeholder="123456 or fantasy.premierleague.com/en/entry/123456/event/4" className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100" aria-describedby="team-input-help" />
+          <p id="team-input-help" className="mt-2 text-xs leading-5 text-slate-500">Points, history, transfers, localized `/en/` links, and the numeric Team ID are all accepted.</p>
           <button type="submit" disabled={!teamInput.trim() || busy} className="sm-primary-button mt-6 w-full justify-center px-5 py-3.5 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">{busy ? "Verifying…" : "Verify team"}<ArrowRight className="h-4 w-4" /></button>
         </form>
       ) : null}

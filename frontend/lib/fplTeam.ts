@@ -30,7 +30,10 @@ export function parseFplTeamInput(input: string): FplTeamParseResult {
 
   let url: URL;
   try {
-    url = new URL(value);
+    const normalizedUrl = /^(?:www\.)?fantasy\.premierleague\.com\//i.test(value)
+      ? `https://${value}`
+      : value;
+    url = new URL(normalizedUrl);
   } catch {
     return { ok: false, error: "Enter a numeric FPL Team ID or a valid fantasy.premierleague.com team URL." };
   }
@@ -40,7 +43,11 @@ export function parseFplTeamInput(input: string): FplTeamParseResult {
     return { ok: false, error: "For your security, use an official fantasy.premierleague.com team URL." };
   }
 
-  const match = url.pathname.match(/^\/entry\/(\d+)(?:\/|$)/);
-  if (!match) return { ok: false, error: "That FPL URL does not contain a team ID." };
+  // Official FPL links can include a locale prefix (for example /en/entry/...)
+  // and may point to points, history, transfers, or an individual Gameweek.
+  const match = url.pathname.match(/(?:^|\/)entry\/(\d+)(?:\/|$)/i);
+  if (!match) {
+    return { ok: false, error: "That FPL URL does not contain /entry/ followed by a Team ID." };
+  }
   return validateTeamId(match[1], "fpl_url");
 }
