@@ -1,7 +1,10 @@
 # SquadMetric operations
 
-SquadMetric is operated manually. The local Windows refresh task is intentionally
-disabled; no scheduled refresh should be assumed.
+SquadMetric does not use an unattended Windows refresh task. The local launcher
+checks for finalized FPL data and transactionally refreshes the prediction bundle
+before starting the website. This updates application data only and never performs
+an FPL action. Pass `-SkipDataRefresh` to `start.cmd` or `start.ps1` only when the
+last validated bundle should be used unchanged.
 
 ## Install dependencies
 
@@ -61,7 +64,38 @@ Safe read-only finalization check:
   --season 2026-27 --gameweek GAMEWEEK
 ```
 
+The live planner reconstructs bank, purchase/selling prices, and free transfers
+from public FPL entry, pick, transfer, chip, and history payloads. The Gameweek
+Plan labels that provenance and lets the manager correct bank or free transfers;
+the confirmed values are stored per Team ID and used consistently by the dashboard
+and planner. Passwords and authenticated FPL sessions are never requested.
+
+Transfer recommendations use a rolling three-, five-, or eight-Gameweek search.
+The search evaluates linked same-deadline packages, net points after hits, a
+time-decayed future, the option value of a saved free transfer, bank remaining,
+and priority replacement of confirmed non-players. A package may therefore include
+a downgrade that releases cash for a second upgrade. Future steps are planning
+directions only and are recalculated at every deadline. Personalized chip calls
+remain disabled; the Chip Guide reports general fixture opportunities instead.
+
+The primary outcome metric is realized net points versus the frozen legal
+no-action branch. Supporting checks are transfer and captain regret, top-player
+ranking quality, minutes/availability calibration, legality and state mismatch
+rates, recommendation churn, stale-state abstentions, runtime, and candidate-set
+coverage. Deadline evidence must freeze the generated root set before the deadline
+and settle only from finalized official results.
+
 ## Run locally
+
+Normal launch checks for new finalized gameweeks before opening the site:
+
+```powershell
+.\start.cmd
+```
+
+The refresh is idempotent, keeps the last validated bundle if publishing fails,
+and never makes transfers or uses chips. For diagnostics that must not update the
+bundle, use `start.cmd -SkipDataRefresh`.
 
 ```powershell
 # Terminal 1

@@ -8,7 +8,9 @@ param(
 
     [switch]$NoBrowser,
 
-    [switch]$Dev
+    [switch]$Dev,
+
+    [switch]$SkipDataRefresh
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,6 +34,17 @@ function Get-CommandPath {
         return $null
     }
     return $command.Source
+}
+
+function Get-ActiveSeason {
+    if (-not [string]::IsNullOrWhiteSpace($env:FPL_ACTIVE_SEASON)) {
+        return $env:FPL_ACTIVE_SEASON
+    }
+
+    $today = Get-Date
+    $startYear = if ($today.Month -ge 6) { $today.Year } else { $today.Year - 1 }
+    $endYear = (($startYear + 1) % 100).ToString("00")
+    return "$startYear-$endYear"
 }
 
 function Test-PortAvailable {
@@ -241,6 +254,41 @@ try {
     $npmExe = Get-CommandPath -Name "npm.cmd"
     if ($null -eq $npmExe) {
         throw "npm was not found. Install Node.js 24, then run .\start.cmd again."
+    }
+
+    if (-not $SkipDataRefresh) {
+        $activeSeason = Get-ActiveSeason
+        $refreshMutex = [System.Threading.Mutex]::new($false, "Local\SquadMetricDataRefresh")
+        $refreshLockAcquired = $false
+        try {
+            try {
+                $refreshLockAcquired = $refreshMutex.WaitOne(0)
+            }
+            catch [System.Threading.AbandonedMutexException] {
+                $refreshLockAcquired = $true
+            }
+
+            if ($refreshLockAcquired) {
+                Write-Host "Checking for finalized FPL data ($activeSeason)..." -ForegroundColor Cyan
+                Write-Host "This refresh updates SquadMetric data only; it cannot change your FPL team." -ForegroundColor DarkGray
+                & $pythonExe -m fpl_intelligence.post_gameweek_refresh --season $activeSeason
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning (
+                        "The prediction refresh did not complete. Starting with the last validated " +
+                        "bundle; recommendation pages may remain unavailable."
+                    )
+                }
+            }
+            else {
+                Write-Host "Another SquadMetric data refresh is already running; using its result when ready." -ForegroundColor Yellow
+            }
+        }
+        finally {
+            if ($refreshLockAcquired) {
+                $refreshMutex.ReleaseMutex()
+            }
+            $refreshMutex.Dispose()
+        }
     }
 
     if (-not (Test-Path -LiteralPath $nextEntry -PathType Leaf)) {
