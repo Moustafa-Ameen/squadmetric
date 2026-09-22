@@ -41,9 +41,22 @@ from fpl_intelligence.squad_optimizer import VALID_FORMATIONS
 HIT_POLICIES = ("current_gw", "horizon_value")
 FREE_TRANSFER_MINIMUM_HORIZON_GAIN = 2.0
 PRIORITY_REPLACEMENT_MAX_START_PROBABILITY = 0.25
-MULTI_TRANSFER_INCREMENTAL_MARGIN = 1.25
-MULTI_TRANSFER_HIT_SAFETY_MARGIN = 0.75
-MULTI_TRANSFER_MIN_GROSS_GAIN_PER_MOVE = 3.0
+DEFAULT_TIME_DECAY = 0.85
+DEFAULT_FREE_TRANSFER_VALUE = 1.5
+DEFAULT_BANK_VALUE_PER_MILLION = 0.1
+
+
+@dataclass(frozen=True)
+class PlannedGameweek:
+    """One step in the selected rolling-horizon path."""
+
+    gameweek: int
+    transfer_plan: TransferPlan
+    expected_points: float
+    bank_before: float
+    bank_after: float
+    free_transfers_before: int
+    free_transfers_after: int
 
 
 @dataclass(frozen=True)
@@ -65,6 +78,11 @@ class DecisionState:
     rules_version: str
     score: float = 0.0
     first_action: BeamAction | None = None
+    path: tuple[PlannedGameweek, ...] = ()
+    gross_expected_points_total: float = 0.0
+    net_expected_points_total: float = 0.0
+    discounted_net_points_total: float = 0.0
+    uncertainty_total: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -83,6 +101,9 @@ class BeamAction:
     transfer_expected_horizon_gain: float = 0.0
     transfer_expected_horizon_net_gain: float = 0.0
     hit_policy: str = "current_gw"
+    path: tuple[PlannedGameweek, ...] = ()
+    discounted_horizon_points: float = 0.0
+    total_hit_cost: int = 0
 
     @property
     def transfer(self) -> TransferDecision:
@@ -106,7 +127,7 @@ class DeterministicBeamPlanner:
     """Search legal transfer/chip branches with stable pruning and tie-breaks."""
 
     name = "deterministic-beam-search"
-    version = "multi-transfer-beam-v1"
+    version = "rolling-package-beam-v2"
 
     def __init__(
         self,
@@ -118,6 +139,9 @@ class DeterministicBeamPlanner:
         hit_policy: str = "current_gw",
         allow_chips: bool = True,
         minimum_transfer_horizon_gain: float = 0.0,
+        time_decay: float = DEFAULT_TIME_DECAY,
+        free_transfer_value: float = DEFAULT_FREE_TRANSFER_VALUE,
+        bank_value_per_million: float = DEFAULT_BANK_VALUE_PER_MILLION,
     ):
         if beam_width < 1 or horizon < 1 or max_transfers < 1:
             raise ValueError("beam_width, horizon, and max_transfers must be positive")
@@ -125,6 +149,8 @@ class DeterministicBeamPlanner:
             raise ValueError(f"hit_policy must be one of {', '.join(HIT_POLICIES)}")
         if not 1 <= max_same_gameweek_transfers <= 5:
             raise ValueError("max_same_gameweek_transfers must be between 1 and 5")
+        if not 0.0 < time_decay <= 1.0:
+            raise ValueError("time_decay must be greater than 0 and at most 1")
         self.beam_width = beam_width
         self.horizon = horizon
         self.max_transfers = max_transfers
@@ -134,9 +160,14 @@ class DeterministicBeamPlanner:
         self.minimum_transfer_horizon_gain = max(
             0.0, float(minimum_transfer_horizon_gain)
         )
+        self.time_decay = float(time_decay)
+        self.free_transfer_value = max(0.0, float(free_transfer_value))
+        self.bank_value_per_million = max(0.0, float(bank_value_per_million))
         self._chip_squad_cache: dict[tuple[Any, ...], pd.DataFrame] = {}
         self._projection_cache: dict[int, dict[int, float]] = {}
         self.last_counterfactuals: tuple[BeamAction, ...] = ()
+        self.last_path_actions: tuple[BeamAction, ...] = ()
+        self.last_evidence_actions: tuple[BeamAction, ...] = ()
         # Read-only evidence surface for live shadow evaluation.  Unlike
         # ``last_counterfactuals`` (one strongest action per chip), this keeps
         # every distinct legal root action generated at the deadline.  It is
@@ -175,6 +206,9 @@ class DeterministicBeamPlanner:
         }
         self.last_counterfactuals = ()
         self.last_root_actions = ()
+        self.last_path_actions = ()
+        self.last_evidence_actions = ()
+        self._start_gameweek = int(gameweek)
         lineup = _fast_lineup(squad, projection)
         root = DecisionState(
             gameweek=gameweek,
@@ -220,7 +254,7 @@ class DeterministicBeamPlanner:
             if not next_beam:
                 break
             next_beam.sort(key=_state_sort_key)
-            beam = next_beam[: self.beam_width]
+            beam = _prune_beam(next_beam, self.beam_width)
 
         if not beam or beam[0].first_action is None:
             return BeamAction(
@@ -231,7 +265,15 @@ class DeterministicBeamPlanner:
                 search_score=0.0,
                 reason="no legal beam branch",
             )
-        selected = beam[0].first_action
+        self.last_path_actions = _best_path_actions(beam)
+        optimized_by_root = {
+            _root_action_signature(action): action for action in self.last_path_actions
+        }
+        self.last_evidence_actions = tuple(
+            optimized_by_root.get(_root_action_signature(action), action)
+            for action in self.last_root_actions
+        )
+        selected = _finalize_path_action(beam[0])
         if (
             self.minimum_transfer_horizon_gain > 0
             and selected.transfer_plan.count > 0
@@ -241,7 +283,7 @@ class DeterministicBeamPlanner:
             no_action = next(
                 (
                     action
-                    for action in self.last_root_actions
+                    for action in self.last_path_actions
                     if (
                         (action.chip.key if action.chip is not None else None)
                         == selected_chip_key
@@ -305,44 +347,38 @@ class DeterministicBeamPlanner:
             if gameweek > state.gameweek
         }
         is_first_action = state.first_action is None
-        ranking_mode = self.hit_policy if is_first_action else "current_gw"
+        ranking_mode = "horizon_value" if future else "current_gw"
         if state.gameweek == 1:
             transfer_options = [TransferPlan(bank_after=state.bank)]
-        elif is_first_action:
-            transfer_options = generate_transfer_plans(
-                state.squad,
-                predictions,
-                bank=state.bank,
-                free_transfers=state.free_transfers,
-                max_plans=self.max_transfers,
-                max_plan_size=self.max_same_gameweek_transfers,
-                future_predictions=future,
-                ranking_mode=ranking_mode,
-            )
         else:
-            future_candidates = _prune_candidates(
-                predictions,
-                state.squad,
-                future_predictions=future,
-                per_position=4,
+            plan_limit = self.max_transfers if is_first_action else min(4, self.max_transfers)
+            plan_size = (
+                self.max_same_gameweek_transfers
+                if is_first_action
+                else 2
             )
-            single_moves = generate_transfer_options(
-                state.squad,
-                future_candidates,
-                bank=state.bank,
-                free_transfers=state.free_transfers,
-                max_options=3,
+            rolling_path = all(
+                step.transfer_plan.count == 0 for step in state.path
             )
-            transfer_options = [TransferPlan(bank_after=state.bank)]
-            for move in single_moves[1:]:
-                bank_after = round(
-                    state.bank
-                    + float(move.outgoing_price or 0.0)
-                    - float(move.incoming_price or 0.0),
-                    1,
+            if is_first_action or (rolling_path and state.free_transfers >= 2):
+                transfer_options = generate_transfer_plans(
+                    state.squad,
+                    predictions,
+                    bank=state.bank,
+                    free_transfers=state.free_transfers,
+                    max_plans=plan_limit,
+                    max_plan_size=plan_size,
+                    future_predictions=future,
+                    ranking_mode=ranking_mode,
                 )
-                transfer_options.append(
-                    TransferPlan.from_decision(move, bank_after=bank_after)
+            else:
+                transfer_options = _single_transfer_plans(
+                    state.squad,
+                    predictions,
+                    bank=state.bank,
+                    free_transfers=state.free_transfers,
+                    future_predictions=future,
+                    ranking_mode=ranking_mode,
                 )
         chips: list[ChipDefinition | None] = [None]
         if self.allow_chips:
@@ -465,9 +501,7 @@ class DeterministicBeamPlanner:
         valuation_future = chip_future if chip is not None else future
         projection = self._projection_for(valuation_predictions)
         base_value, lineup, captain, bench = _fast_gameweek_value(active_squad, projection)
-        before_value = _fast_gameweek_value(before_squad, projection)[0]
         no_chip_value = _fast_gameweek_value(after_transfer, projection)[0]
-        current_transfer_gain = no_chip_value - before_value
         is_first_action = state.first_action is None
         transfer_horizon_gain = (
             _transfer_horizon_gain(
@@ -553,24 +587,6 @@ class DeterministicBeamPlanner:
             else 0.0
         )
         hit_cost = transfer_plan.hit_cost if ordinary_transfer else 0
-        flexibility_value = 0.02 * bank_after + 0.15 * ft_after
-        branch_score = (
-            expected_points
-            - hit_cost
-            - uncertainty
-            - opportunity_cost
-            + flexibility_value
-        )
-        if (
-            self.hit_policy == "horizon_value"
-            and is_first_action
-            and hit_cost > 0
-        ):
-            future_incremental_gain = max(
-                0.0,
-                transfer_horizon_gain - current_transfer_gain,
-            )
-            branch_score += future_incremental_gain
         if chip is not None and chip.name == "freehit":
             next_squad = retained_squad.copy()
         else:
@@ -579,6 +595,42 @@ class DeterministicBeamPlanner:
             ft_after
             if chip is not None and chip.name in {"wildcard", "freehit"}
             else min(int(rules.max_free_transfers or 5), ft_after + 1)
+        )
+        offset = max(0, int(state.gameweek) - int(self._start_gameweek))
+        weight = self.time_decay**offset
+        is_terminal = offset >= self.horizon - 1
+        terminal_flexibility = (
+            self.free_transfer_value * next_ft
+            + self.bank_value_per_million * max(0.0, bank_after)
+            if is_terminal
+            else 0.0
+        )
+        priority_replacement = (
+            ordinary_transfer
+            and hit_cost == 0
+            and _replaces_unavailable_player(transfer_plan, before_squad)
+        )
+        priority_bonus = self.free_transfer_value if priority_replacement else 0.0
+        single_step_horizon_tail = (
+            expected_horizon - expected_points
+            if self.horizon == 1 and self.hit_policy == "horizon_value"
+            else 0.0
+        )
+        branch_score = (
+            weight * (expected_points - hit_cost - uncertainty)
+            - opportunity_cost
+            + terminal_flexibility
+            + priority_bonus
+            + single_step_horizon_tail
+        )
+        path_step = PlannedGameweek(
+            gameweek=int(state.gameweek),
+            transfer_plan=transfer_plan,
+            expected_points=float(expected_points),
+            bank_before=round(float(state.bank), 1),
+            bank_after=round(float(bank_after), 1),
+            free_transfers_before=int(state.free_transfers),
+            free_transfers_after=int(next_ft),
         )
         first_action = state.first_action or BeamAction(
             transfer_plan=transfer_plan,
@@ -595,6 +647,9 @@ class DeterministicBeamPlanner:
             transfer_expected_horizon_gain=transfer_horizon_gain,
             transfer_expected_horizon_net_gain=transfer_horizon_gain - hit_cost,
             hit_policy=self.hit_policy,
+            path=(path_step,),
+            discounted_horizon_points=weight * (expected_points - hit_cost),
+            total_hit_cost=hit_cost,
         )
         return replace(
             state,
@@ -611,6 +666,18 @@ class DeterministicBeamPlanner:
             active_chip=None,
             score=state.score + branch_score,
             first_action=first_action,
+            path=(*state.path, path_step),
+            gross_expected_points_total=(
+                state.gross_expected_points_total + float(expected_points)
+            ),
+            net_expected_points_total=(
+                state.net_expected_points_total + float(expected_points) - hit_cost
+            ),
+            discounted_net_points_total=(
+                state.discounted_net_points_total
+                + weight * (float(expected_points) - hit_cost)
+            ),
+            uncertainty_total=state.uncertainty_total + float(uncertainty),
         )
 
     def _projection_for(self, frame: pd.DataFrame) -> dict[int, float]:
@@ -737,20 +804,15 @@ def generate_transfer_options(
             )
     if ranking_mode == "horizon_value" and future_predictions:
         # Horizon valuation is much more expensive than legal candidate
-        # generation. Keep a deterministic immediate-value shortlist before
-        # evaluating full-XI/captain value across future Gameweeks.
-        options.sort(key=lambda value: value[:3], reverse=True)
-        shortlist = options[: max_options * 3]
+        # generation. Use player-level future value for candidate ordering. The beam then
+        # evaluates full legal lineups and captaincy for the shortlisted moves.
+        future_score = _future_score_by_player(future_predictions)
         rescored: list[tuple[float, int, int, TransferDecision]] = []
-        for _, incoming_key, outgoing_key, decision in shortlist:
-            after_transfer = _apply_transfer(squad, predictions, decision)
+        for _, incoming_key, outgoing_key, decision in options:
             horizon_net_gain = (
-                _transfer_horizon_gain(
-                    squad,
-                    after_transfer,
-                    projection,
-                    future_predictions,
-                )
+                decision.projected_gain
+                + future_score.get(int(decision.incoming_id or 0), 0.0)
+                - future_score.get(int(decision.outgoing_id or 0), 0.0)
                 - hit_cost
             )
             rescored.append((horizon_net_gain, incoming_key, outgoing_key, decision))
@@ -809,19 +871,22 @@ def generate_transfer_plans(
     )
     projection = _projection_map(predictions)
     future_predictions = future_predictions or {}
+    horizon_score = dict(projection)
+    for player_id, future_points in _future_score_by_player(future_predictions).items():
+        horizon_score[player_id] = horizon_score.get(player_id, 0.0) + future_points
     original = initialise_squad_economics(squad)
     transfer_candidates = _prune_candidates(
         predictions,
         original,
         future_predictions=future_predictions,
-        per_position=6,
+        per_position=6 if max_plans > 4 else 4,
     )
     original_current_value = _fast_gameweek_value(original, projection)[0]
     empty = TransferPlan(bank_after=round(float(bank), 1))
     frontier: list[tuple[TransferPlan, pd.DataFrame, float]] = [(empty, original, float(bank))]
     candidates: list[TransferPlan] = []
     plan_squads: dict[tuple[tuple[int, int], ...], pd.DataFrame] = {}
-    search_width = max(6, max_plans)
+    search_width = max(4, max_plans)
 
     for depth in range(1, max_plan_size + 1):
         depth_width = (
@@ -841,8 +906,8 @@ def generate_transfer_plans(
                 transfer_candidates,
                 bank=partial_bank,
                 free_transfers=remaining_free,
-                max_options=8 if depth == 1 else 4,
-                cash_options=4 if depth <= 2 else 1,
+                max_options=(8 if max_plans > 4 else 5) if depth == 1 else 3,
+                cash_options=(4 if max_plans > 4 else 2) if depth <= 2 else 1,
             )
             for move in options[1:]:
                 assert move.outgoing_id is not None and move.incoming_id is not None
@@ -853,7 +918,12 @@ def generate_transfer_plans(
                     or move.incoming_id in used_outgoing
                 ):
                     continue
-                after = _apply_transfer(partial_squad, predictions, move)
+                after = _apply_transfer(
+                    partial_squad,
+                    predictions,
+                    move,
+                    validate=False,
+                )
                 bank_after = round(
                     partial_bank
                     + float(move.outgoing_price or 0.0)
@@ -867,11 +937,10 @@ def generate_transfer_plans(
                     - original_current_value
                 )
                 horizon_gain = (
-                    _transfer_horizon_gain(
-                        original,
-                        after,
-                        projection,
-                        future_predictions,
+                    sum(
+                        horizon_score.get(int(item.incoming_id or 0), 0.0)
+                        - horizon_score.get(int(item.outgoing_id or 0), 0.0)
+                        for item in moves
                     )
                     if ranking_mode == "horizon_value"
                     else current_gain
@@ -935,34 +1004,32 @@ def generate_transfer_plans(
         return value, -plan.count, tuple((-outgoing, -incoming) for outgoing, incoming in signature)
 
     candidates.sort(key=plan_key, reverse=True)
-    single_transfer_control = max(
-        (
-            plan_key(plan)[0]
-            for plan in candidates
-            if plan.count == 1
-        ),
-        default=0.0,
-    )
-    selected: list[TransferPlan] = []
-    seen_final_squads: set[tuple[int, ...]] = set()
+    best_by_count: dict[int, TransferPlan] = {}
     for plan in candidates:
-        if plan.count > 1:
-            gross_gain = (
-                plan.expected_horizon_gain
-                if ranking_mode == "horizon_value"
-                else plan.projected_gain
-            )
-            if gross_gain < MULTI_TRANSFER_MIN_GROSS_GAIN_PER_MOVE * plan.count:
-                continue
-            required_margin = MULTI_TRANSFER_INCREMENTAL_MARGIN * (plan.count - 1)
-            if plan.hit_cost:
-                required_margin += MULTI_TRANSFER_HIT_SAFETY_MARGIN
-            if plan_key(plan)[0] <= single_transfer_control + required_margin:
-                continue
-        after = apply_transfer_plan(original, predictions, plan)
+        best_by_count.setdefault(plan.count, plan)
+    ordered_candidates = [
+        *(
+            best_by_count[count]
+            for count in sorted(best_by_count)
+            if count <= max_plan_size
+        ),
+        *candidates,
+    ]
+    selected: list[TransferPlan] = []
+    seen_plan_signatures: set[tuple[tuple[int, int], ...]] = set()
+    seen_final_squads: set[tuple[int, ...]] = set()
+    for plan in ordered_candidates:
+        plan_signature = tuple(
+            (int(move.outgoing_id or 0), int(move.incoming_id or 0))
+            for move in plan.moves
+        )
+        if plan_signature in seen_plan_signatures:
+            continue
+        after = plan_squads[plan_signature]
         signature = tuple(sorted(int(value) for value in after["player_id"]))
         if signature in seen_final_squads:
             continue
+        seen_plan_signatures.add(plan_signature)
         seen_final_squads.add(signature)
         if ranking_mode != "horizon_value" and future_predictions:
             horizon_gain = _transfer_horizon_gain(
@@ -982,10 +1049,53 @@ def generate_transfer_plans(
     return [empty, *selected]
 
 
+def _single_transfer_plans(
+    squad: pd.DataFrame,
+    predictions: pd.DataFrame,
+    *,
+    bank: float,
+    free_transfers: int,
+    future_predictions: dict[int, pd.DataFrame],
+    ranking_mode: str,
+) -> list[TransferPlan]:
+    """Cheap future-step expansion once the root package decision is fixed."""
+
+    options = generate_transfer_options(
+        squad,
+        _prune_candidates(
+            predictions,
+            squad,
+            future_predictions=future_predictions,
+            per_position=4,
+        ),
+        bank=bank,
+        free_transfers=free_transfers,
+        max_options=3,
+        cash_options=1,
+        future_predictions=future_predictions,
+        ranking_mode=ranking_mode,
+    )
+    plans: list[TransferPlan] = []
+    for decision in options:
+        bank_after = float(bank)
+        if decision.made:
+            bank_after += float(decision.outgoing_price or 0.0)
+            bank_after -= float(decision.incoming_price or 0.0)
+        plans.append(
+            TransferPlan.from_decision(
+                decision,
+                bank_after=round(bank_after, 1),
+            )
+        )
+    return plans
+
+
 def _apply_transfer(
     squad: pd.DataFrame,
     predictions: pd.DataFrame,
     decision: TransferDecision,
+    *,
+    validate: bool = True,
 ) -> pd.DataFrame:
     if not decision.made:
         return squad.copy()
@@ -995,9 +1105,12 @@ def _apply_transfer(
         [squad[squad["player_id"] != decision.outgoing_id], pd.DataFrame([incoming])],
         ignore_index=True,
     )
-    violations = validate_squad(updated, budget=float("inf"))
-    if violations:
-        raise ValueError("Beam transfer produced an invalid squad: " + "; ".join(violations))
+    if validate:
+        violations = validate_squad(updated, budget=float("inf"))
+        if violations:
+            raise ValueError(
+                "Beam transfer produced an invalid squad: " + "; ".join(violations)
+            )
     return updated
 
 
@@ -1155,6 +1268,84 @@ def _state_sort_key(state: DecisionState) -> tuple[Any, ...]:
         else ()
     )
     return (-round(state.score, 8), squad_signature, first_chip, first_transfers)
+
+
+def _root_action_signature(action: BeamAction | None) -> tuple[Any, ...]:
+    if action is None:
+        return ("none", (), ())
+    return (
+        action.chip.key if action.chip is not None else "none",
+        tuple(
+            (int(move.outgoing_id or 0), int(move.incoming_id or 0))
+            for move in action.transfers
+        ),
+        (
+            tuple(sorted(int(value) for value in action.chip_squad["player_id"]))
+            if action.chip_squad is not None
+            else ()
+        ),
+    )
+
+
+def _is_no_action_root(state: DecisionState) -> bool:
+    action = state.first_action
+    return bool(
+        action is not None
+        and action.chip is None
+        and action.transfer_plan.count == 0
+    )
+
+
+def _prune_beam(states: list[DecisionState], width: int) -> list[DecisionState]:
+    """Keep strong paths while retaining root diversity and the roll control."""
+
+    ordered = sorted(states, key=_state_sort_key)
+    if len(ordered) <= width:
+        return ordered
+
+    best_by_root: dict[tuple[Any, ...], DecisionState] = {}
+    for state in ordered:
+        best_by_root.setdefault(_root_action_signature(state.first_action), state)
+    representatives = sorted(best_by_root.values(), key=_state_sort_key)
+    selected = representatives[: max(1, width // 2)]
+    selected_ids = {id(state) for state in selected}
+    for state in ordered:
+        if id(state) in selected_ids:
+            continue
+        selected.append(state)
+        selected_ids.add(id(state))
+        if len(selected) >= width:
+            break
+
+    if not any(_is_no_action_root(state) for state in selected):
+        control = next((state for state in ordered if _is_no_action_root(state)), None)
+        if control is not None:
+            selected[-1] = control
+    return sorted(selected, key=_state_sort_key)
+
+
+def _finalize_path_action(state: DecisionState) -> BeamAction:
+    if state.first_action is None:
+        raise ValueError("A completed beam path must have a first action")
+    return replace(
+        state.first_action,
+        expected_horizon_points=float(state.net_expected_points_total),
+        search_score=float(state.score),
+        uncertainty_penalty=float(state.uncertainty_total),
+        path=state.path,
+        discounted_horizon_points=float(state.discounted_net_points_total),
+        total_hit_cost=int(state.transfer_hits),
+    )
+
+
+def _best_path_actions(states: list[DecisionState]) -> tuple[BeamAction, ...]:
+    best: dict[tuple[Any, ...], DecisionState] = {}
+    for state in sorted(states, key=_state_sort_key):
+        best.setdefault(_root_action_signature(state.first_action), state)
+    return tuple(
+        _finalize_path_action(state)
+        for state in sorted(best.values(), key=_state_sort_key)
+    )
 
 
 def _deduplicate_actions(actions: list[BeamAction]) -> tuple[BeamAction, ...]:

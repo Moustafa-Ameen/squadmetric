@@ -1,5 +1,12 @@
+import asyncio
+
 import pandas as pd
-from api.routers.planner import _decision_center_payload, _decision_payload
+from api.routers import planner as planner_router
+from api.routers.planner import (
+    _decision_center_payload,
+    _decision_payload,
+    _transfer_finance,
+)
 
 from fpl_intelligence.backtest_transfer_strategy import TransferDecision, TransferPlan
 from fpl_intelligence.beam_search import BeamAction
@@ -155,6 +162,9 @@ def test_decision_center_compares_selected_branch_with_exact_no_action_control()
     assert result["recommendation"]["confidence"] == "high"
     assert len(result["recommendation"]["starting_xi"]) == 11
     assert len(result["recommendation"]["bench_order"]) == 4
+    assert len(result["current_lineup"]["starting_xi"]) == 11
+    assert len(result["current_lineup"]["bench_order"]) == 4
+    assert result["current_lineup"]["captain_id"] == 11
     assert result["no_action"]["expected_horizon_points"] == 184.0
 
 
@@ -164,3 +174,54 @@ def test_decision_center_fails_closed_without_no_action_control():
     assert result["status"] == "unavailable"
     assert "no-action branch" in result["message"]
     assert "recommendation" not in result
+
+
+def test_linked_transfer_finance_explains_downgrade_funding_upgrade():
+    plan = TransferPlan(
+        moves=(
+            TransferDecision(1, 16, "Premium", "Value", -1.0, -1.0, 0, 10.0, 6.0),
+            TransferDecision(2, 17, "Budget", "Star", 5.0, 5.0, 0, 5.0, 9.0),
+        ),
+        bank_after=0.0,
+    )
+
+    finance = _transfer_finance(plan)
+
+    assert finance["funds_released"] == 4.0
+    assert finance["funds_spent"] == 4.0
+    assert "Premium to Value releases £4.0m" in finance["funding_explanation"]
+    assert "Budget to Star" in finance["funding_explanation"]
+
+
+def test_decision_center_passes_manager_state_overrides_and_caches_them_separately(
+    monkeypatch,
+):
+    calls = []
+
+    async def fake_planner(**kwargs):
+        calls.append(kwargs)
+        return _decision_center_fixture()
+
+    monkeypatch.setattr(planner_router, "planner", fake_planner)
+    planner_router.clear_decision_center_cache()
+
+    asyncio.run(
+        planner_router.decision_center(
+            team_id=123,
+            horizon=3,
+            bank_override=1.2,
+            free_transfers_override=2,
+        )
+    )
+    asyncio.run(
+        planner_router.decision_center(
+            team_id=123,
+            horizon=3,
+            bank_override=1.3,
+            free_transfers_override=2,
+        )
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["bank_override"] == 1.2
+    assert calls[0]["free_transfers_override"] == 2

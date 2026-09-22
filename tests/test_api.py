@@ -486,6 +486,54 @@ def test_players_form_falls_back_to_recent_history_when_snapshot_is_zero(monkeyp
     assert payload[0]["form"] == 8.0
 
 
+def test_player_history_uses_latest_season_and_predeadline_price(monkeypatch):
+    history = pd.DataFrame(
+        [
+            {
+                "season": "2025-26",
+                "player_id": 1,
+                "player_name": "David Raya Martín",
+                "gameweek": 38,
+                "price": 6.2,
+                "price_before_deadline": 6.2,
+                "total_points": 0,
+                "minutes": 0,
+                "selected_by_percent": 18.0,
+            },
+            {
+                "season": "2026-27",
+                "player_id": 1,
+                "player_name": "David Raya Martín",
+                "gameweek": 1,
+                "price": None,
+                "price_before_deadline": 6.0,
+                "total_points": 6,
+                "minutes": 90,
+                "selected_by_percent": None,
+            },
+            {
+                "season": "2026-27",
+                "player_id": 1,
+                "player_name": "David Raya Martín",
+                "gameweek": 2,
+                "price": None,
+                "price_before_deadline": 6.1,
+                "total_points": 8,
+                "minutes": 90,
+                "selected_by_percent": 20.0,
+            },
+        ]
+    )
+    monkeypatch.setattr(players_router.data_service, "serving_player_gw", lambda: history.copy())
+
+    response = asyncio.run(_get("/api/players/David%20Raya%20Martin/history"))
+
+    assert response.status_code == 200
+    assert [row["gw"] for row in response.json()] == [1, 2]
+    assert [row["price"] for row in response.json()] == [6.0, 6.1]
+    assert response.json()[0]["selected_by_percent"] == 0
+
+
 def test_form_fallback_diverges_from_season_ppg_in_both_directions(monkeypatch):
     ranked_players = pd.DataFrame(
         [
@@ -983,6 +1031,65 @@ def test_squad_endpoint_distinguishes_unavailable_public_picks(monkeypatch):
 
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "squad_unavailable"
+
+
+def test_roster_endpoint_keeps_public_team_available_without_predictions(monkeypatch):
+    async def fake_bootstrap():
+        return {
+            "elements": [{
+                "id": 10,
+                "first_name": "Example",
+                "second_name": "Player",
+                "web_name": "Example",
+                "team": 1,
+                "element_type": 3,
+                "now_cost": 75,
+                "form": "4.2",
+            }],
+            "teams": [{"id": 1, "name": "Example FC", "short_name": "EXM", "code": 1}],
+            "element_types": [{"id": 3, "singular_name_short": "MID"}],
+        }
+
+    async def fake_picks(_team_id, _gw):
+        return {
+            "picks": [{
+                "element": 10,
+                "purchase_price": 75,
+                "selling_price": 75,
+                "is_captain": True,
+                "is_vice_captain": False,
+            }]
+        }
+
+    async def projections_must_not_run(**_kwargs):
+        raise AssertionError("the live roster must not load prediction artifacts")
+
+    monkeypatch.setattr(fpl_live.fpl_client, "get_bootstrap", fake_bootstrap)
+    monkeypatch.setattr(fpl_live.fpl_client, "get_team_picks", fake_picks)
+    monkeypatch.setattr(fpl_live, "live_projection_rows", projections_must_not_run)
+
+    response = asyncio.run(_get("/api/fpl/team/123/roster?gw=4"))
+
+    assert response.status_code == 200
+    assert response.json() == [{
+        "element_id": 10,
+        "name": "Example Player",
+        "web_name": "Example",
+        "position": "MID",
+        "team": "EXM",
+        "team_code": 1,
+        "price": 7.5,
+        "purchase_price": 7.5,
+        "current_price": 7.5,
+        "selling_price": 7.5,
+        "is_captain": True,
+        "is_vice_captain": False,
+        "raw_xp": 0.0,
+        "expected_points": None,
+        "start_adjusted_xp": None,
+        "start_likelihood": None,
+        "form": 4.2,
+    }]
 
 
 def test_planner_requires_connected_team():

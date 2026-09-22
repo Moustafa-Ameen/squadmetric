@@ -166,7 +166,7 @@ def test_multi_transfer_action_space_reaches_five_moves():
     assert all(plan.hit_cost == 0 for plan in five_move_plans)
 
 
-def test_marginal_extra_transfer_is_rejected_against_single_move_control():
+def test_marginal_extra_transfer_is_generated_but_saved_ft_value_can_reject_it():
     squad = _squad()
     upgrades = []
     for player_id, projected_points in ((3, 4.0), (8, 2.1)):
@@ -188,7 +188,81 @@ def test_marginal_extra_transfer_is_rejected_against_single_move_control():
     )
 
     assert any(plan.count == 1 for plan in plans)
-    assert not any(plan.count == 2 for plan in plans)
+    assert any(plan.count == 2 for plan in plans)
+
+    rules = build_historical_season_rules("2025-26")
+    action = DeterministicBeamPlanner(
+        beam_width=8,
+        horizon=1,
+        max_transfers=10,
+        max_same_gameweek_transfers=2,
+        allow_chips=False,
+    ).decide(
+        gameweek=2,
+        squad=squad,
+        bank=0.0,
+        free_transfers=2,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=(),
+        ),
+        predictions=predictions,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert action.transfer_plan.count == 1
+
+
+def test_rolling_planner_can_bank_then_spend_two_free_transfers_as_a_package():
+    squad = _squad()
+    squad["expected_points_adjusted"] = 0.0
+    squad.loc[squad["position"] == "DEF", "expected_points_adjusted"] = 10.0
+    upgrades = []
+    for player_id in (3, 4):
+        upgrade = squad.loc[squad["player_id"] == player_id].copy()
+        upgrade["player_id"] = 400 + player_id
+        upgrade["player_name"] = f"Future upgrade {player_id}"
+        upgrade["team"] = f"Future club {player_id}"
+        upgrade["expected_points_adjusted"] = 0.0
+        upgrades.append(upgrade)
+    current = pd.concat([squad, *upgrades], ignore_index=True)
+    future = current.copy()
+    future.loc[future["player_id"].isin([403, 404]), "expected_points_adjusted"] = 20.0
+    rules = build_historical_season_rules("2025-26")
+
+    action = DeterministicBeamPlanner(
+        beam_width=12,
+        horizon=2,
+        max_transfers=16,
+        max_same_gameweek_transfers=2,
+        hit_policy="horizon_value",
+        allow_chips=False,
+    ).decide(
+        gameweek=2,
+        squad=squad,
+        bank=0.0,
+        free_transfers=1,
+        chip_state=ChipState(
+            season=rules.season,
+            rules_version=rules.rules_version,
+            remaining=(),
+        ),
+        predictions=current,
+        future_predictions={3: future},
+        rules=rules,
+    )
+
+    assert action.transfer_plan.count == 0
+    assert len(action.path) == 2
+    assert action.path[0].free_transfers_after == 2
+    assert action.path[1].transfer_plan.count == 2
+    assert action.path[1].transfer_plan.hit_cost == 0
+    assert action.total_hit_cost == 0
+    assert action.expected_horizon_points == sum(
+        step.expected_points - step.transfer_plan.hit_cost for step in action.path
+    )
 
 
 def test_transfer_branch_generation_is_legal_and_includes_control():
