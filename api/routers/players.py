@@ -454,18 +454,34 @@ def player_history(name: str) -> list[dict[str, Any]]:
     if history.empty:
         return []
 
-    needle = name.casefold()
-    filtered = history[
-        (history["season"] == "2025-26")
-        & (history["player_name"].astype(str).str.casefold().str.contains(needle, na=False))
-    ].copy()
+    needle = _normalize(name)
+    player_keys = history["player_name"].map(_normalize)
+    filtered = history[player_keys == needle].copy()
+    if filtered.empty:
+        filtered = history[player_keys.str.contains(needle, regex=False, na=False)].copy()
     if filtered.empty:
         return []
+
+    # The serving dataset contains prior seasons for training as well as the live
+    # season. A player drawer must never leak last season's closing gameweeks into
+    # the current-season chart.
+    seasons = filtered["season"].dropna().astype(str)
+    if seasons.empty:
+        return []
+    current_season = max(seasons.unique())
+    filtered = filtered[filtered["season"].astype(str) == current_season].copy()
+
+    price = pd.to_numeric(filtered.get("price"), errors="coerce")
+    if "price_before_deadline" in filtered.columns:
+        price = price.fillna(pd.to_numeric(filtered["price_before_deadline"], errors="coerce"))
+    filtered["price"] = price
 
     filtered = filtered.sort_values("gameweek").tail(10)
     output = filtered.rename(columns={"gameweek": "gw"})
     output = output.rename(columns={"player_id": "element_id"})
     columns = ["element_id", "gw", "price", "total_points", "minutes", "selected_by_percent"]
+    for column in columns:
+        output[column] = pd.to_numeric(output[column], errors="coerce").fillna(0)
     return data_service.to_records(output[columns])
 
 
