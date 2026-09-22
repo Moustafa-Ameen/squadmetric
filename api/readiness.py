@@ -205,9 +205,8 @@ def evaluate_live_decision_readiness(
             {
                 "code": "finalized_gameweek_missing",
                 "message": (
-                    f"Official GW{latest_official} is finalized, but the current model "
-                    f"bundle covers finalized gameweeks only through {latest_artifact}. "
-                    "Run the manual season refresh before serving recommendations."
+                    f"GW{latest_official} is finalized, but SquadMetric predictions "
+                    f"currently use results only through GW{latest_artifact}."
                 ),
             }
         )

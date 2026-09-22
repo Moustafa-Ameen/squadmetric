@@ -194,6 +194,25 @@ async def squad(
     gw: int = Query(..., ge=1, le=38),
     _readiness=_LIVE_ARTIFACTS_DEPENDENCY,
 ) -> list[dict[str, Any]]:
+    return await _squad_rows(team_id=team_id, gw=gw, include_projections=True)
+
+
+@router.get("/team/{team_id}/roster")
+async def roster(
+    team_id: int,
+    gw: int = Query(..., ge=1, le=38),
+) -> list[dict[str, Any]]:
+    """Return public picks without depending on the prediction bundle."""
+
+    return await _squad_rows(team_id=team_id, gw=gw, include_projections=False)
+
+
+async def _squad_rows(
+    *,
+    team_id: int,
+    gw: int,
+    include_projections: bool,
+) -> list[dict[str, Any]]:
     bootstrap = await fpl_client.get_bootstrap()
     try:
         picks = await fpl_client.get_team_picks(team_id, gw)
@@ -212,11 +231,13 @@ async def squad(
                 },
             ) from exc
         raise
-    projected, _ = await live_projection_rows(
-        model_name=BEST_MODEL,
-        start_gameweek=gw,
-        horizon=3,
-    )
+    projected: list[dict[str, Any]] = []
+    if include_projections:
+        projected, _ = await live_projection_rows(
+            model_name=BEST_MODEL,
+            start_gameweek=gw,
+            horizon=3,
+        )
 
     players_by_id = {player["id"]: player for player in bootstrap.get("elements", [])}
     teams_by_id = {team["id"]: team for team in bootstrap.get("teams", [])}
