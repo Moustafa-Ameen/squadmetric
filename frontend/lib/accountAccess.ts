@@ -3,12 +3,12 @@ export type AccountProfileState = {
   terms_accepted_at?: string | null;
 } | null;
 
-export function deriveAccountAccess(profile: AccountProfileState, teamId: number | string | null | undefined) {
+export function deriveAccountAccess(profile: AccountProfileState, teamId: number | string | null | undefined, hasProvisionalSquad = false) {
   const normalizedTeamId = Number(teamId);
   const hasTeam = Number.isInteger(normalizedTeamId) && normalizedTeamId > 0;
   return {
     requiresConsent: !profile?.terms_accepted_at,
-    requiresOnboarding: !profile?.onboarding_completed || !hasTeam,
+    requiresOnboarding: !profile?.onboarding_completed || (!hasTeam && !hasProvisionalSquad),
     teamId: hasTeam ? normalizedTeamId : null,
   };
 }

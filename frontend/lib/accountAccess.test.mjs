@@ -16,6 +16,12 @@ test("an authenticated account cannot skip onboarding without a verified team", 
   assert.equal(deriveAccountAccess(profile, 123456).requiresOnboarding, false);
 });
 
+test("a reviewed screenshot squad can complete provisional onboarding", () => {
+  const profile = { terms_accepted_at: "2026-08-22T00:00:00Z", onboarding_completed: true };
+  assert.equal(deriveAccountAccess(profile, null, true).requiresOnboarding, false);
+  assert.equal(deriveAccountAccess(profile, null, true).teamId, null);
+});
+
 test("account team state clears a stale browser team when the account has no team", () => {
   const actions = [];
   const storage = {
