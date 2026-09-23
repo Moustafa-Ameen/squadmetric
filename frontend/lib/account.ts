@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { TeamData } from "@/lib/types";
+import type { ScreenshotAnalysis, TeamData } from "@/lib/types";
+import { ACCOUNT_STORAGE_KEYS } from "@/lib/accountStorage";
 
 export type RiskStyle = "safe" | "balanced" | "aggressive";
 export type AlternativeStyle = "popular" | "differential" | "both";
@@ -32,6 +33,7 @@ export async function persistOnboarding({
   preferences: OnboardingPreferences;
 }) {
   window.localStorage.setItem("fpl_team_id", teamId);
+  window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.provisionalSquad);
   window.localStorage.setItem("squadmetric_preferences", JSON.stringify(preferences));
 
   if (!supabase) return { storage: "local" as const };
@@ -60,4 +62,34 @@ export async function persistOnboarding({
   const failure = profileResult.error ?? linkResult.error ?? preferenceResult.error;
   if (failure) throw failure;
   return { storage: "account" as const };
+}
+
+export async function persistProvisionalOnboarding({
+  supabase,
+  analysis,
+  preferences,
+}: {
+  supabase: SupabaseClient | null;
+  analysis: ScreenshotAnalysis;
+  preferences: OnboardingPreferences;
+}) {
+  window.localStorage.removeItem("fpl_team_id");
+  window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.provisionalSquad, JSON.stringify(analysis));
+  window.localStorage.setItem("squadmetric_preferences", JSON.stringify(preferences));
+  if (!supabase) return { storage: "local" as const };
+  const { data, error: userError } = await supabase.auth.getUser();
+  if (userError || !data.user) throw userError ?? new Error("Your session has expired. Sign in again.");
+  const [profileResult, preferenceResult] = await Promise.all([
+    supabase.from("profiles").upsert({ user_id: data.user.id, onboarding_completed: true }),
+    supabase.from("user_preferences").upsert({
+      user_id: data.user.id,
+      risk_style: preferences.riskStyle,
+      alternative_style: preferences.alternativeStyle,
+      deadline_reminders: preferences.deadlineReminders,
+      email_notifications: preferences.emailNotifications,
+    }),
+  ]);
+  const failure = profileResult.error ?? preferenceResult.error;
+  if (failure) throw failure;
+  return { storage: "browser" as const };
 }

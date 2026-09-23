@@ -3,17 +3,18 @@ import { parseSavedDrafts, type SavedDraft } from "./draftWorkspace";
 import type { DecisionCenterResponse } from "./types";
 import { createSupabaseBrowserClient } from "./supabase/client";
 import { applyAuthoritativeTeamId, deriveAccountAccess } from "./accountAccess";
+import { clearManagerStateOverride } from "./managerState";
 
 export const ACCOUNT_STORAGE_KEYS = {
   drafts: "fpl_intelligence_drafts_v1",
   watchlist: "watchlist",
   onboardingPreferences: "squadmetric_preferences",
   teamId: "fpl_team_id",
-  showFixtureBar: "show_match_bar",
   showBenchPlayers: "show_bench_players",
   compactTableRows: "compact_table_rows",
   objectiveMode: "fpl_decision_objective_mode",
   decisionHistory: "squadmetric_decision_history_v1",
+  provisionalSquad: "squadmetric_provisional_squad_v1",
 } as const;
 
 type PreferencePatch = {
@@ -21,7 +22,6 @@ type PreferencePatch = {
   alternativeStyle?: "popular" | "differential" | "both";
   deadlineReminders?: boolean;
   emailNotifications?: boolean;
-  showFixtureBar?: boolean;
   showBenchPlayers?: boolean;
   compactTableRows?: boolean;
   objectiveMode?: "points" | "rank";
@@ -53,7 +53,7 @@ export async function hydrateAccountStorage(): Promise<AccountHydrationResult> {
   const [profileResult, teamResult, preferencesResult, draftsResult, favoritesResult] = await Promise.all([
     supabase.from("profiles").select("onboarding_completed, terms_accepted_at, terms_version, privacy_version").eq("user_id", userId).maybeSingle(),
     supabase.from("fpl_team_links").select("team_id").eq("user_id", userId).maybeSingle(),
-    supabase.from("user_preferences").select("risk_style, alternative_style, deadline_reminders, email_notifications, show_fixture_bar, show_bench_players, compact_table_rows, objective_mode").eq("user_id", userId).maybeSingle(),
+    supabase.from("user_preferences").select("risk_style, alternative_style, deadline_reminders, email_notifications, show_bench_players, compact_table_rows, objective_mode").eq("user_id", userId).maybeSingle(),
     supabase.from("saved_drafts").select("id, payload, updated_at").eq("user_id", userId),
     supabase.from("favorite_players").select("player_id, player_name").eq("user_id", userId),
   ]);
@@ -89,7 +89,8 @@ export async function hydrateAccountStorage(): Promise<AccountHydrationResult> {
   if (firstHydration) applyPreferencePatchLocally(localPreferences);
   window.localStorage.setItem(markerKey, "true");
 
-  const access = deriveAccountAccess(profileResult.data, teamResult.data?.team_id);
+  const hasProvisionalSquad = Boolean(window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.provisionalSquad));
+  const access = deriveAccountAccess(profileResult.data, teamResult.data?.team_id, hasProvisionalSquad);
   return {
     authenticated: true,
     ...access,
@@ -147,7 +148,11 @@ export function savePreferencePatch(patch: PreferencePatch) {
 }
 
 export async function disconnectAccountTeam() {
-  if (typeof window !== "undefined") window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.teamId);
+  if (typeof window !== "undefined") {
+    const teamId = window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.teamId);
+    if (teamId) clearManagerStateOverride(teamId);
+    window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.teamId);
+  }
   await withUser(async (supabase, userId) => {
     const { error } = await supabase.from("fpl_team_links").delete().eq("user_id", userId);
     if (error) throw error;
@@ -265,7 +270,6 @@ function readLocalPreferencePatch(): PreferencePatch {
   if (["popular", "differential", "both"].includes(String(onboarding.alternativeStyle))) patch.alternativeStyle = onboarding.alternativeStyle as PreferencePatch["alternativeStyle"];
   if (typeof onboarding.deadlineReminders === "boolean") patch.deadlineReminders = onboarding.deadlineReminders;
   if (typeof onboarding.emailNotifications === "boolean") patch.emailNotifications = onboarding.emailNotifications;
-  if (window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.showFixtureBar) !== null) patch.showFixtureBar = localBoolean(ACCOUNT_STORAGE_KEYS.showFixtureBar, true);
   if (window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.showBenchPlayers) !== null) patch.showBenchPlayers = localBoolean(ACCOUNT_STORAGE_KEYS.showBenchPlayers, true);
   if (window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.compactTableRows) !== null) patch.compactTableRows = localBoolean(ACCOUNT_STORAGE_KEYS.compactTableRows, false);
   const objective = window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.objectiveMode);
@@ -280,7 +284,6 @@ function hydratePreferences(row: Record<string, unknown>) {
     deadlineReminders: row.deadline_reminders,
     emailNotifications: row.email_notifications,
   }));
-  window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.showFixtureBar, String(row.show_fixture_bar));
   window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.showBenchPlayers, String(row.show_bench_players));
   window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.compactTableRows, String(row.compact_table_rows));
   window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.objectiveMode, row.objective_mode === "rank" ? "rank" : "points");
@@ -296,7 +299,6 @@ function applyPreferencePatchLocally(patch: PreferencePatch) {
     ...(patch.emailNotifications !== undefined ? { emailNotifications: patch.emailNotifications } : {}),
   };
   window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.onboardingPreferences, JSON.stringify(next));
-  if (patch.showFixtureBar !== undefined) window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.showFixtureBar, String(patch.showFixtureBar));
   if (patch.showBenchPlayers !== undefined) window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.showBenchPlayers, String(patch.showBenchPlayers));
   if (patch.compactTableRows !== undefined) window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.compactTableRows, String(patch.compactTableRows));
   if (patch.objectiveMode) window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.objectiveMode, patch.objectiveMode);
@@ -309,7 +311,6 @@ function preferenceRow(userId: string, patch: PreferencePatch) {
     ...(patch.alternativeStyle ? { alternative_style: patch.alternativeStyle } : {}),
     ...(patch.deadlineReminders !== undefined ? { deadline_reminders: patch.deadlineReminders } : {}),
     ...(patch.emailNotifications !== undefined ? { email_notifications: patch.emailNotifications } : {}),
-    ...(patch.showFixtureBar !== undefined ? { show_fixture_bar: patch.showFixtureBar } : {}),
     ...(patch.showBenchPlayers !== undefined ? { show_bench_players: patch.showBenchPlayers } : {}),
     ...(patch.compactTableRows !== undefined ? { compact_table_rows: patch.compactTableRows } : {}),
     ...(patch.objectiveMode ? { objective_mode: patch.objectiveMode } : {}),
