@@ -8,7 +8,6 @@ import type {
   DraftWorkspaceResponse,
   DecisionCenterResponse,
   DeadlineReadinessResponse,
-  Fixture,
   FixtureTick,
   InitialSquadResponse,
   OverviewResponse,
@@ -167,10 +166,6 @@ export async function getFixtureTicker(range?: number): Promise<FixtureTick[]> {
   return fetchJson(`/api/fixtures/ticker${suffix}`);
 }
 
-export async function getFixtures(): Promise<Fixture[]> {
-  return fetchJson("/api/fixtures");
-}
-
 export async function getHealth(): Promise<{ status: string }> {
   return fetchJson("/api/health");
 }
@@ -210,6 +205,10 @@ export async function getSquad(teamId: string, gw: number): Promise<SquadPlayer[
   return fetchJson(`/api/fpl/team/${teamId}/squad?gw=${gw}`);
 }
 
+export async function getSquadRoster(teamId: string, gw: number): Promise<SquadPlayer[]> {
+  return fetchJson(`/api/fpl/team/${teamId}/roster?gw=${gw}`, { cache: "no-store" });
+}
+
 export async function getTeamHistory(teamId: string): Promise<unknown> {
   return fetchJson(`/api/fpl/team/${teamId}/history`);
 }
@@ -225,11 +224,30 @@ export async function getPlanner(teamId: string, horizon: number): Promise<Plann
 export async function getDecisionCenter(
   teamId: string,
   horizon: 3 | 5 | 8 = 3,
+  managerState?: { bank?: number; freeTransfers?: number },
 ): Promise<DecisionCenterResponse> {
+  const query = new URLSearchParams({ team_id: teamId, horizon: String(horizon) });
+  if (managerState?.bank !== undefined) query.set("bank_override", String(managerState.bank));
+  if (managerState?.freeTransfers !== undefined) {
+    query.set("free_transfers_override", String(managerState.freeTransfers));
+  }
   return fetchJson(
-    `/api/predictions/decision-center?team_id=${encodeURIComponent(teamId)}&horizon=${horizon}`,
+    `/api/predictions/decision-center?${query.toString()}`,
     { cache: "no-store", clientCacheMs: 60_000 },
   );
+}
+
+export async function getProvisionalTeamRating(input: {
+  element_ids: number[];
+  bank: number;
+  free_transfers: number;
+}): Promise<DecisionCenterResponse> {
+  return fetchJson("/api/predictions/provisional-team-rating", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
 }
 
 export async function getInitialSquad(

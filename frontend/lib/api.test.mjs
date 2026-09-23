@@ -51,3 +51,25 @@ test("keeps a completed decision response warm for repeated page visits", async 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("sends confirmed bank and free transfers as separate decision inputs", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify({ status: "ready" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await getDecisionCenter("123456", 3, { bank: 1.7, freeTransfers: 2 });
+    const query = new URL(requestedUrl, "http://local.test").searchParams;
+    assert.equal(query.get("team_id"), "123456");
+    assert.equal(query.get("bank_override"), "1.7");
+    assert.equal(query.get("free_transfers_override"), "2");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
