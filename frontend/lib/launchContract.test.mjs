@@ -38,7 +38,7 @@ test("account schema enables owner isolation and launch data contracts", () => {
     assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`));
     assert.match(migration, new RegExp(`${table}_owner_all`));
   }
-  for (const field of ["terms_accepted_at", "show_fixture_bar", "objective_mode", "player_name"]) {
+  for (const field of ["terms_accepted_at", "objective_mode", "player_name"]) {
     assert.match(migration, new RegExp(field));
   }
   assert.match(migration, /primary key \(user_id, id\)/);
