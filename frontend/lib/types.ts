@@ -394,6 +394,25 @@ export interface DecisionCenterTransfer {
   incoming_name: string | null;
   projected_gain: number;
   hit_cost: number;
+  outgoing_price?: number | null;
+  incoming_price?: number | null;
+  bank_effect?: number;
+}
+
+export interface DecisionPathStep {
+  gameweek: number;
+  transfers: DecisionCenterTransfer[];
+  transfer_count: number;
+  hit_cost: number;
+  expected_points: number;
+  net_expected_points: number;
+  bank_before: number;
+  bank_after: number;
+  free_transfers_before: number;
+  free_transfers_after: number;
+  funds_released: number;
+  funds_spent: number;
+  funding_explanation?: string | null;
 }
 
 export interface DecisionCenterRecommendation {
@@ -402,6 +421,13 @@ export interface DecisionCenterRecommendation {
   transfer_count: number;
   hit_recommended: boolean;
   hit_cost: number;
+  bank_before: number;
+  bank_after: number;
+  free_transfers_after: number;
+  funds_released: number;
+  funds_spent: number;
+  funding_explanation?: string | null;
+  future_plan: DecisionPathStep[];
   chip_action: string;
   chip_key: string | null;
   starting_xi: DecisionCenterPlayer[];
@@ -433,10 +459,41 @@ export interface DecisionCenterAlternative {
   reason: string;
 }
 
+export interface TeamRatingFactor {
+  label: string;
+  status: "strong" | "improvable" | "warning" | "neutral";
+  detail: string;
+}
+
+export interface TeamRating {
+  grade: string;
+  score: number;
+  after_grade: string;
+  after_score: number;
+  horizon: number;
+  projected_points: number;
+  recommended_projected_points: number;
+  benchmark_points: number;
+  gap_to_best: number;
+  budget: number;
+  provisional: boolean;
+  summary: string;
+  factors: TeamRatingFactor[];
+  method: string;
+}
+
+export interface ScreenshotAnalysis {
+  decision: DecisionCenterResponse;
+  elementIds: number[];
+  bank: number;
+  freeTransfers: number;
+}
+
 export interface DecisionCenterResponse {
   status: "ready" | "unavailable";
   message: string;
-  team_id: number;
+  team_id: number | null;
+  provisional?: boolean;
   season_state: SeasonStateCode;
   gameweek: number;
   horizon: number;
@@ -450,11 +507,23 @@ export interface DecisionCenterResponse {
   transfer_model?: string | null;
   captain_model?: string | null;
   chip_model?: string | null;
+  rating?: TeamRating | null;
+  manager_state_confirmation?: {
+    bank_source: "public_history" | "user_override";
+    free_transfers_source: "public_history_inference" | "user_override";
+    can_override: boolean;
+  } | null;
   state_before?: {
     bank: number;
     free_transfers: number;
     remaining_chips: string[];
     used_chips: string[];
+  };
+  current_lineup?: {
+    starting_xi: DecisionCenterPlayer[];
+    bench_order: DecisionCenterPlayer[];
+    captain_id: number | null;
+    vice_captain_id: number | null;
   };
   recommendation?: DecisionCenterRecommendation;
   no_action?: {
