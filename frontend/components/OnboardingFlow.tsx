@@ -4,11 +4,12 @@ import { ArrowLeft, ArrowRight, Bell, CheckCircle2, ShieldCheck, Trophy } from "
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getTeam } from "@/lib/api";
-import { DEFAULT_ONBOARDING_PREFERENCES, persistOnboarding, type OnboardingPreferences } from "@/lib/account";
+import { DEFAULT_ONBOARDING_PREFERENCES, persistOnboarding, persistProvisionalOnboarding, type OnboardingPreferences } from "@/lib/account";
 import { parseFplTeamInput, type ParsedFplTeam } from "@/lib/fplTeam";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { TeamData } from "@/lib/types";
+import type { ScreenshotAnalysis, TeamData } from "@/lib/types";
+import { ScreenshotTeamImport } from "./ScreenshotTeamImport";
 
 export function OnboardingFlow() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export function OnboardingFlow() {
   const [teamInput, setTeamInput] = useState("");
   const [parsedTeam, setParsedTeam] = useState<ParsedFplTeam | null>(null);
   const [team, setTeam] = useState<TeamData | null>(null);
+  const [screenshotAnalysis, setScreenshotAnalysis] = useState<ScreenshotAnalysis | null>(null);
   const [preferences, setPreferences] = useState<OnboardingPreferences>(DEFAULT_ONBOARDING_PREFERENCES);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,17 +46,21 @@ export function OnboardingFlow() {
   }
 
   async function finish() {
-    if (!parsedTeam || !team || busy) return;
+    if ((!screenshotAnalysis && (!parsedTeam || !team)) || busy) return;
     setBusy(true);
     setError("");
     try {
-      await persistOnboarding({
-        supabase: createSupabaseBrowserClient(),
-        teamId: parsedTeam.teamId,
-        sourceInput: teamInput.trim(),
-        team,
-        preferences,
-      });
+      if (screenshotAnalysis) {
+        await persistProvisionalOnboarding({ supabase: createSupabaseBrowserClient(), analysis: screenshotAnalysis, preferences });
+      } else if (parsedTeam && team) {
+        await persistOnboarding({
+          supabase: createSupabaseBrowserClient(),
+          teamId: parsedTeam.teamId,
+          sourceInput: teamInput.trim(),
+          team,
+          preferences,
+        });
+      }
       router.replace("/dashboard");
       router.refresh();
     } catch {
@@ -80,12 +86,14 @@ export function OnboardingFlow() {
           <input id="fpl-team-input" value={teamInput} onChange={(event) => setTeamInput(event.target.value)} placeholder="123456 or fantasy.premierleague.com/en/entry/123456/event/4" className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100" aria-describedby="team-input-help" />
           <p id="team-input-help" className="mt-2 text-xs leading-5 text-slate-500">Points, history, transfers, localized `/en/` links, and the numeric Team ID are all accepted.</p>
           <button type="submit" disabled={!teamInput.trim() || busy} className="sm-primary-button mt-6 w-full justify-center px-5 py-3.5 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">{busy ? "Verifying…" : "Verify team"}<ArrowRight className="h-4 w-4" /></button>
+          <div className="my-6 flex items-center gap-3"><span className="h-px flex-1 bg-slate-200" /><span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">or</span><span className="h-px flex-1 bg-slate-200" /></div>
+          <ScreenshotTeamImport onAnalyzed={(analysis) => { setScreenshotAnalysis(analysis); setParsedTeam(null); setTeam(null); setStep(2); }} />
         </form>
       ) : null}
 
       {step === 2 ? (
         <div className="mt-8">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-emerald-700" /><div><div className="font-bold text-emerald-950">{team?.team_name}</div><div className="mt-0.5 text-xs text-emerald-800">Team {parsedTeam?.teamId} verified</div></div></div></div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-emerald-700" /><div><div className="font-bold text-emerald-950">{screenshotAnalysis ? `Squad rated ${screenshotAnalysis.decision.rating?.grade ?? "provisionally"}` : team?.team_name}</div><div className="mt-0.5 text-xs text-emerald-800">{screenshotAnalysis ? "Screenshot squad detected · exact selling prices remain unavailable" : `Team ${parsedTeam?.teamId} verified`}</div></div></div></div>
           <h2 className="mt-6 text-xl font-black text-slate-950">How should recommendations feel?</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">Points maximization remains the core objective. These preferences control how the safe and aggressive alternatives are presented.</p>
           <ChoiceGroup label="Risk style" value={preferences.riskStyle} onChange={(riskStyle) => setPreferences((current) => ({ ...current, riskStyle }))} options={[{ value: "safe", title: "Safe", body: "Minutes security and lower downside." }, { value: "balanced", title: "Balanced", body: "Best default blend of points and risk." }, { value: "aggressive", title: "Aggressive", body: "More upside and variance." }]} />
