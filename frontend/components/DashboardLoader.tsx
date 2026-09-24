@@ -5,6 +5,8 @@ import { ArrowRight, CalendarClock, RefreshCw, ShieldCheck, Users, UserRoundSear
 import { useCallback, useEffect, useState } from "react";
 import { getDecisionCenter, getOverview, getSeasonState } from "@/lib/api";
 import type { DecisionCenterResponse, OverviewResponse, SeasonState } from "@/lib/types";
+import { ACCOUNT_STORAGE_KEYS } from "@/lib/accountStorage";
+import { readManagerStateOverride } from "@/lib/managerState";
 import { DashboardClient } from "./DashboardClient";
 import { DashboardSkeleton } from "./LoadingState";
 
@@ -20,11 +22,14 @@ export function DashboardLoader() {
   const load = useCallback(async () => {
     setLoading(true);
     const linkedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
+    const provisionalDecision = readProvisionalDecision();
     setTeamId(linkedTeamId);
     const [overviewResult, seasonResult, decisionResult] = await Promise.allSettled([
       getOverview(),
       getSeasonState(),
-      linkedTeamId ? getDecisionCenter(linkedTeamId, 3) : Promise.resolve(null),
+      linkedTeamId
+        ? getDecisionCenter(linkedTeamId, 3, readManagerStateOverride(linkedTeamId))
+        : Promise.resolve(provisionalDecision),
     ]);
     if (overviewResult.status === "fulfilled") {
       setOverview(overviewResult.value);
@@ -54,6 +59,15 @@ export function DashboardLoader() {
   return <DashboardClient overview={overview} seasonState={seasonState} seasonStateUnavailable={seasonError} decisionCenter={decisionCenter} teamId={teamId} />;
 }
 
+function readProvisionalDecision(): DecisionCenterResponse | null {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.provisionalSquad) ?? "null") as { decision?: DecisionCenterResponse } | null;
+    return saved?.decision?.rating ? saved.decision : null;
+  } catch {
+    return null;
+  }
+}
+
 function DashboardRefreshState({
   seasonState,
   loading,
@@ -71,7 +85,7 @@ function DashboardRefreshState({
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Gameweek {gameweek}</div>
-          <h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Your decision dashboard</h1>
+          <h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">My Team</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Your team and planning tools remain available while recommendations are paused.</p>
         </div>
         <button type="button" onClick={() => void onRefresh()} disabled={loading} className="sm-secondary-button self-start px-4 py-2.5 sm:self-auto">
@@ -83,9 +97,9 @@ function DashboardRefreshState({
       <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 p-6 text-white shadow-[0_22px_60px_rgba(15,23,42,0.18)] sm:p-8" role="status">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-amber-300"><RefreshCw className="h-4 w-4" />Manual refresh required</div>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-amber-300"><RefreshCw className="h-4 w-4" />Prediction refresh required</div>
             <h2 className="mt-3 text-2xl font-black tracking-[-0.035em] sm:text-3xl">Recommendations are paused until the data bundle is refreshed.</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-300">SquadMetric withholds transfer, captain and chip calls when a finalized gameweek is missing. It will not update data automatically; run the manual refresh, then use “Check again”.</p>
+            <p className="mt-3 text-sm leading-6 text-slate-300">SquadMetric withholds transfer, captain and chip calls when a finalized gameweek is missing. Your team and official FPL information remain available until the prediction data is refreshed.</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 lg:min-w-64">
             <div className="flex items-center gap-2 text-sm font-bold text-emerald-300"><ShieldCheck className="h-5 w-5" />Your account is safe</div>
@@ -99,10 +113,10 @@ function DashboardRefreshState({
         <div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Available now</div>
         <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Keep planning while recommendations are paused</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <RefreshLink href="/squad" title="My Team" detail="Review your current XI and bench." icon={<Users className="h-5 w-5" />} />
+          <RefreshLink href="/dashboard" title="My Team" detail="Review your current XI and bench." icon={<Users className="h-5 w-5" />} />
           <RefreshLink href="/stats" title="Players" detail="Browse current official players and prices." icon={<UserRoundSearch className="h-5 w-5" />} />
           <RefreshLink href="/fixtures" title="Fixtures" detail="Check upcoming opponents and schedules." icon={<CalendarClock className="h-5 w-5" />} />
-          <RefreshLink href="/deadline" title="Deadline center" detail="Follow final checks and team-news timing." icon={<ShieldCheck className="h-5 w-5" />} />
+          <RefreshLink href="/decisions" title="This Week" detail="See the latest saved weekly plan." icon={<ShieldCheck className="h-5 w-5" />} />
         </div>
       </section>
     </div>
