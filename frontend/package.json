@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/prepare-tesseract.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -17,18 +18,20 @@
     "test:deadline": "node --experimental-strip-types --test lib/deadlineIntelligence.test.mjs",
     "test:review": "node --experimental-strip-types --test lib/reviewMode.test.mjs",
     "test:auth": "node --experimental-strip-types --test lib/auth.test.mjs lib/fplTeam.test.mjs lib/accountAccess.test.mjs",
-    "test:unit": "node --experimental-strip-types --test lib/search.test.mjs lib/decisionState.test.mjs lib/draftWorkspace.test.mjs lib/decisionCenter.test.mjs lib/deadlineIntelligence.test.mjs lib/reviewMode.test.mjs lib/auth.test.mjs lib/fplTeam.test.mjs lib/accountAccess.test.mjs lib/api.test.mjs lib/launchContract.test.mjs",
+    "test:unit": "node --experimental-strip-types --test lib/search.test.mjs lib/screenshotTeam.test.mjs lib/squadMetrics.test.mjs lib/decisionState.test.mjs lib/draftWorkspace.test.mjs lib/decisionCenter.test.mjs lib/deadlineIntelligence.test.mjs lib/reviewMode.test.mjs lib/auth.test.mjs lib/fplTeam.test.mjs lib/accountAccess.test.mjs lib/managerState.test.mjs lib/api.test.mjs lib/launchContract.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
+    "@tesseract.js-data/eng": "^1.0.0",
     "lucide-react": "^1.23.0",
     "next": "^16.3.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.9.1"
+    "recharts": "^3.9.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
