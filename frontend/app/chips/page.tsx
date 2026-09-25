@@ -94,9 +94,9 @@ function chipStatusLabel(chip: ChipCard): string {
 }
 
 function confidenceClass(confidence: ChipOpportunity["confidence"]): string {
-  if (confidence === "high") return "border-fpl-green/35 bg-fpl-green/10 text-fpl-green";
-  if (confidence === "medium") return "border-fpl-gold/35 bg-fpl-gold/10 text-fpl-gold";
-  return "border-fpl-border bg-fpl-raised text-muted";
+  if (confidence === "high") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (confidence === "medium") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
 function alternativeLabel(opportunity: ChipOpportunity, index: number): string {
@@ -161,42 +161,42 @@ export default function ChipsPage() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Chip opportunity radar"
-        subtitle="League-wide windows worth considering—never an instruction to spend your chip."
+        title="Chip Guide"
+        subtitle="The strongest upcoming windows for each chip, based on public fixtures and form."
       />
 
       <Panel>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-fpl-gold/30 bg-fpl-gold/10 text-fpl-gold">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
               <Target className="h-5 w-5" />
             </div>
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-fpl-gold">
-                Public fixture intelligence
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-700">
+                Upcoming opportunities
               </div>
               <h2 className="mt-1 text-[18px] font-semibold text-primary">
                 Strongest currently visible opportunities
               </h2>
-              <p className="mt-1 max-w-3xl text-[13px] leading-6 text-secondary">
-                These cards use public fixtures, player form, expected involvement, defensive weakness and minutes confidence. They do not inspect your squad and cannot activate a chip.
+              <p className="mt-1 max-w-3xl text-[13px] leading-6 text-slate-600">
+                These are league-wide suggestions, not personalized instructions. You remain in control of every chip.
               </p>
             </div>
           </div>
           {opportunities?.status === "ready" ? (
-            <div className="rounded-full border border-fpl-border bg-fpl-raised px-3 py-1 text-xs text-muted">
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-500">
               GW{opportunities.target_gameweek}–GW{opportunities.horizon_end_gameweek}
             </div>
           ) : null}
         </div>
 
         {!opportunities ? (
-          <div className="mt-5 rounded-lg border border-fpl-border bg-[#161616] p-4 text-sm text-secondary">
+          <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
             Ranking upcoming chip opportunities…
           </div>
         ) : opportunities.status === "unavailable" ? (
-          <div className="mt-5 flex items-start gap-3 rounded-lg border border-fpl-amber/30 bg-fpl-amber/10 p-4 text-sm text-secondary">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-fpl-amber" />
+          <div className="mt-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
             <div>{opportunities.message}</div>
           </div>
         ) : (
@@ -205,17 +205,17 @@ export default function ChipsPage() {
               {opportunities.opportunities.map((opportunity) => {
                 const Icon = iconForChip(opportunity.chip_type);
                 return (
-                  <article key={opportunity.chip_type} className="rounded-xl border border-fpl-border bg-[#161616] p-5">
+                  <article key={opportunity.chip_type} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-fpl-green/25 bg-fpl-green/10 text-fpl-green">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
                           <Icon className="h-5 w-5" />
                         </div>
                         <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.13em] text-muted">
+                          <div className="text-xs font-semibold uppercase tracking-[0.13em] text-slate-500">
                             {opportunity.chip}
                           </div>
-                          <div className="mt-1 font-mono text-sm text-fpl-green">
+                          <div className="mt-1 text-sm font-bold text-emerald-700">
                             {opportunity.recommended_gameweek
                               ? `Best visible window · GW${opportunity.recommended_gameweek}`
                               : "No strong window yet"}
@@ -227,16 +227,16 @@ export default function ChipsPage() {
                       </div>
                     </div>
 
-                    <h3 className="mt-5 text-lg font-semibold leading-7 text-primary">{opportunity.headline}</h3>
-                    <p className="mt-2 text-sm leading-6 text-secondary">{opportunity.summary}</p>
+                    <h3 className="mt-5 text-lg font-semibold leading-7 text-slate-950">{opportunity.headline}</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{opportunity.summary}</p>
 
                     {opportunity.why_now.length ? (
-                      <div className="mt-4 rounded-lg border border-fpl-green/20 bg-fpl-green/[0.04] p-4">
-                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fpl-green">Why this window</div>
-                        <ul className="mt-3 space-y-2 text-xs leading-5 text-secondary">
+                      <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Why this window</div>
+                        <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
                           {opportunity.why_now.map((reason) => (
                             <li key={reason} className="flex gap-2">
-                              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fpl-green" />
+                              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700" />
                               <span>{reason}</span>
                             </li>
                           ))}
@@ -244,17 +244,17 @@ export default function ChipsPage() {
                       </div>
                     ) : null}
 
-                    <div className="mt-4 text-xs leading-5 text-muted">
-                      <span className="font-semibold text-secondary">Why you might wait: </span>
+                    <div className="mt-4 text-xs leading-5 text-slate-500">
+                      <span className="font-semibold text-slate-700">Why you might wait: </span>
                       {opportunity.why_wait}
                     </div>
 
                     {opportunity.alternatives.length ? (
-                      <div className="mt-4 border-t border-fpl-border pt-4">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Alternatives</div>
+                      <div className="mt-4 border-t border-slate-200 pt-4">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Alternatives</div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {opportunity.alternatives.slice(0, 3).map((_, index) => (
-                            <span key={alternativeLabel(opportunity, index)} className="rounded-full border border-fpl-border bg-fpl-raised px-3 py-1 text-xs text-secondary">
+                            <span key={alternativeLabel(opportunity, index)} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600">
                               {alternativeLabel(opportunity, index)}
                             </span>
                           ))}
@@ -265,8 +265,8 @@ export default function ChipsPage() {
                 );
               })}
             </div>
-            <div className="mt-4 text-xs text-muted">
-              {opportunities.model} · data retrieved {opportunities.data_cutoff ?? "live"} · non-personalized · no automatic chip actions
+            <div className="mt-4 text-xs text-slate-500">
+              Updated {opportunities.data_cutoff ?? "live"} · recommendations are not personalized
             </div>
           </>
         )}
@@ -274,8 +274,8 @@ export default function ChipsPage() {
 
       <Panel>
         <div className="mb-4">
-          <h2 className="text-[18px] font-semibold text-primary">Your chip inventory</h2>
-          <p className="mt-1 text-[13px] text-secondary">
+          <h2 className="text-[18px] font-semibold text-slate-950">Your chips</h2>
+          <p className="mt-1 text-[13px] text-slate-600">
             Connecting a team is used only to show availability and usage—not to generate the recommendations above.
           </p>
         </div>
@@ -284,15 +284,15 @@ export default function ChipsPage() {
             const Icon = chip.icon;
             const available = chip.status === "available";
             return (
-              <div key={chip.key} className="rounded-lg border border-fpl-border bg-[#161616] p-4">
+              <div key={chip.key} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="font-semibold text-primary">{chip.name}</div>
-                    <div className="mt-1 text-xs text-muted">{chip.subtitle}</div>
+                    <div className="font-semibold text-slate-950">{chip.name}</div>
+                    <div className="mt-1 text-xs text-slate-500">{chip.subtitle}</div>
                   </div>
-                  <Icon className="h-5 w-5 text-fpl-green" />
+                  <Icon className="h-5 w-5 text-violet-700" />
                 </div>
-                <div className={`mt-4 rounded-full border px-3 py-1 text-[11px] ${available ? "border-fpl-green/30 bg-fpl-green/10 text-fpl-green" : "border-fpl-border bg-fpl-raised text-muted"}`}>
+                <div className={`mt-4 rounded-full border px-3 py-1 text-[11px] ${available ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-500"}`}>
                   {chipStatusLabel(chip)}
                 </div>
               </div>
@@ -303,8 +303,8 @@ export default function ChipsPage() {
 
       <Panel>
         <div className="mb-4">
-          <h2 className="text-[18px] font-semibold text-primary">How each opportunity is identified</h2>
-          <p className="mt-1 text-[13px] text-secondary">
+          <h2 className="text-[18px] font-semibold text-slate-950">How opportunities are found</h2>
+          <p className="mt-1 text-[13px] text-slate-600">
             Each chip has different evidence. There is no universal chip threshold.
           </p>
         </div>
@@ -312,12 +312,12 @@ export default function ChipsPage() {
           {methodology.map((item) => {
             const Icon = item.icon;
             return (
-              <div key={item.name} className="rounded-lg border border-fpl-border bg-[#161616] p-4">
-                <div className="flex items-center gap-2 font-semibold text-primary">
-                  <Icon className="h-4 w-4 text-fpl-green" />
+              <div key={item.name} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 font-semibold text-slate-950">
+                  <Icon className="h-4 w-4 text-violet-700" />
                   {item.name}
                 </div>
-                <p className="mt-2 text-sm leading-6 text-secondary">{item.text}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.text}</p>
               </div>
             );
           })}
@@ -326,10 +326,10 @@ export default function ChipsPage() {
 
       <Panel>
         <div className="flex items-start gap-3">
-          <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-fpl-gold" />
+          <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
           <div>
-            <h2 className="text-[18px] font-semibold text-primary">Timing still changes</h2>
-            <p className="mt-2 text-sm leading-6 text-secondary">
+            <h2 className="text-[18px] font-semibold text-slate-950">Timing can still change</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
               Fixture postponements, doubles, injuries and role changes can move these rankings. Treat the cards as evidence-backed windows to consider, then recheck near the deadline.
             </p>
           </div>
