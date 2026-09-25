@@ -1,6 +1,7 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
+import type { ReactNode } from "react";
 import { positionCode, points, price } from "@/lib/format";
 
 export type VisualSquadPlayer = {
@@ -19,7 +20,7 @@ export type VisualSquadPlayer = {
   viceCaptain?: boolean;
 };
 
-export function SquadPitch({ players, title = "Recommended XI", showBench = true }: { players: VisualSquadPlayer[]; title?: string; showBench?: boolean }) {
+export function SquadPitch({ players, title = "Recommended XI", showBench = true, showExpectedPoints = true, onPlayerClick }: { players: VisualSquadPlayer[]; title?: string; showBench?: boolean; showExpectedPoints?: boolean; onPlayerClick?: (player: VisualSquadPlayer) => void }) {
   const starters = players.filter((player) => player.starter);
   const bench = players
     .filter((player) => !player.starter)
@@ -50,7 +51,7 @@ export function SquadPitch({ players, title = "Recommended XI", showBench = true
         <div className="relative z-10 space-y-5 sm:space-y-6">
           {rows.map((row, index) => (
             <div key={index} className="flex min-h-[88px] items-center justify-center gap-1.5 sm:gap-4">
-              {row.map((player) => <PitchPlayer key={player.id} player={player} />)}
+              {row.map((player) => <PitchPlayer key={player.id} player={player} showExpectedPoints={showExpectedPoints} onPlayerClick={onPlayerClick} />)}
             </div>
           ))}
         </div>
@@ -63,7 +64,7 @@ export function SquadPitch({ players, title = "Recommended XI", showBench = true
             <div className="text-xs text-slate-500">Order matters for autosubs</div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {bench.map((player) => <BenchPlayer key={player.id} player={player} order={outfieldBenchOrder.get(player.id) ?? 0} />)}
+            {bench.map((player) => <BenchPlayer key={player.id} player={player} order={outfieldBenchOrder.get(player.id) ?? 0} showExpectedPoints={showExpectedPoints} onPlayerClick={onPlayerClick} />)}
           </div>
         </div>
       ) : null}
@@ -75,21 +76,31 @@ function PitchMarkings() {
   return <div aria-hidden="true" className="pointer-events-none absolute inset-4 rounded-2xl border border-white/20"><div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" /><div className="absolute left-0 right-0 top-1/2 border-t border-white/20" /><div className="absolute left-1/2 top-0 h-16 w-40 -translate-x-1/2 border-x border-b border-white/20" /><div className="absolute bottom-0 left-1/2 h-16 w-40 -translate-x-1/2 border-x border-t border-white/20" /></div>;
 }
 
-function PitchPlayer({ player }: { player: VisualSquadPlayer }) {
+function PitchPlayer({ player, showExpectedPoints, onPlayerClick }: { player: VisualSquadPlayer; showExpectedPoints: boolean; onPlayerClick?: (player: VisualSquadPlayer) => void }) {
   return (
-    <div className="relative flex w-[66px] flex-col items-center text-center sm:w-[104px]">
+    <PlayerInteraction player={player} onPlayerClick={onPlayerClick} className="relative flex w-[66px] flex-col items-center rounded-lg text-center sm:w-[104px]">
       <div className="relative flex h-10 w-12 items-center justify-center sm:h-12 sm:w-14">
         <TeamKit player={player} className="max-h-full max-w-full object-contain drop-shadow-md" />
         {player.captain || player.viceCaptain ? <span className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black shadow ${player.captain ? "bg-amber-300 text-slate-950" : "bg-white text-violet-700"}`}>{player.captain ? "C" : "V"}</span> : null}
       </div>
       <div className="mt-1 w-full truncate rounded-t-md bg-white px-1.5 py-1 text-[10px] font-extrabold text-slate-950 shadow sm:text-xs">{label(player)}</div>
-      <div className="w-full rounded-b-md bg-slate-950/90 px-1 py-0.5 text-[9px] font-bold text-white sm:text-[10px]">{points(player.expectedPoints)} xP</div>
-    </div>
+      <div className="w-full rounded-b-md bg-slate-950/90 px-1 py-0.5 text-[9px] font-bold text-white sm:text-[10px]">{showExpectedPoints ? `${points(player.expectedPoints)} xP` : player.team}</div>
+    </PlayerInteraction>
   );
 }
 
-function BenchPlayer({ player, order }: { player: VisualSquadPlayer; order: number }) {
-  return <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2.5"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-extrabold text-slate-600">{positionCode(player.position) === "GK" ? "GK" : order}</span><TeamKit player={player} className="h-8 w-8 object-contain" /><div className="min-w-0"><div className="truncate text-xs font-extrabold text-slate-900">{label(player)}</div><div className="mt-0.5 text-[10px] text-slate-500">{player.playerPrice == null ? player.team : `${price(player.playerPrice)} · ${points(player.expectedPoints)} xP`}</div></div></div>;
+function BenchPlayer({ player, order, showExpectedPoints, onPlayerClick }: { player: VisualSquadPlayer; order: number; showExpectedPoints: boolean; onPlayerClick?: (player: VisualSquadPlayer) => void }) {
+  const detail = player.playerPrice == null
+    ? player.team
+    : showExpectedPoints
+      ? `${price(player.playerPrice)} · ${points(player.expectedPoints)} xP`
+      : `${price(player.playerPrice)} · ${player.team}`;
+  return <PlayerInteraction player={player} onPlayerClick={onPlayerClick} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2.5 text-left"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-extrabold text-slate-600">{positionCode(player.position) === "GK" ? "GK" : order}</span><TeamKit player={player} className="h-8 w-8 object-contain" /><div className="min-w-0"><div className="truncate text-xs font-extrabold text-slate-900">{label(player)}</div><div className="mt-0.5 text-[10px] text-slate-500">{detail}</div></div></PlayerInteraction>;
+}
+
+function PlayerInteraction({ player, onPlayerClick, className, children }: { player: VisualSquadPlayer; onPlayerClick?: (player: VisualSquadPlayer) => void; className: string; children: ReactNode }) {
+  if (!onPlayerClick) return <div className={className}>{children}</div>;
+  return <button type="button" onClick={() => onPlayerClick(player)} aria-label={`Open ${label(player)} details`} className={`${className} cursor-pointer transition hover:-translate-y-0.5 hover:ring-2 hover:ring-violet-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300`}>{children}</button>;
 }
 
 function label(player: VisualSquadPlayer) {
