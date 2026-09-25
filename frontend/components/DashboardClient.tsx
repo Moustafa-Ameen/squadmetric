@@ -1,133 +1,101 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ArrowRight,
-  CalendarClock,
-  CheckCircle2,
-  ChevronDown,
-  CircleAlert,
-  Crown,
-  RefreshCw,
-  Shield,
-  Sparkles,
-  Target,
-  TrendingUp,
-  Users,
-  Zap,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { DecisionCenterResponse, OverviewResponse, SeasonState } from "@/lib/types";
+import { ArrowRight, Check, CircleAlert, Clock3, Coins, Info, RefreshCw, Repeat2, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { useDrawer } from "@/context/DrawerContext";
+import type { DecisionCenterPlayer, DecisionCenterResponse, OverviewResponse, SeasonState, TeamRatingFactor } from "@/lib/types";
+import { SquadPitch, type VisualSquadPlayer } from "./SquadPitch";
 
 export function DashboardClient({ overview, seasonState, seasonStateUnavailable, decisionCenter, teamId }: { overview: OverviewResponse; seasonState: SeasonState | null; seasonStateUnavailable: boolean; decisionCenter: DecisionCenterResponse | null; teamId: string }) {
-  const [now, setNow] = useState(() => Date.now());
+  const { openDrawer } = useDrawer();
+  const [lineupView, setLineupView] = useState<"current" | "recommended">("current");
+  const rating = decisionCenter?.rating;
+  const recommendation = decisionCenter?.status === "ready" ? decisionCenter.recommendation : undefined;
+  const gameweek = decisionCenter?.gameweek ?? seasonState?.next_gw ?? seasonState?.current_gw ?? 1;
+  if (!rating) return <EmptyRating teamId={teamId} message={decisionCenter?.message} gameweek={gameweek} />;
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const personalized = teamId && decisionCenter?.status === "ready" ? decisionCenter.recommendation : undefined;
-  const genericCaptain = overview.captains[0] ?? overview.predictions[0];
-  const topCaptain = personalized?.starting_xi.find((player) => player.element_id === personalized.captain_id) ?? (!teamId ? genericCaptain : undefined);
-  const popularAlternative = personalized?.starting_xi.find((player) => player.element_id === personalized.vice_captain_id) ?? (!teamId ? overview.captains[1] ?? overview.predictions[1] : undefined);
-  const differential = overview.gems[0];
-  const transfer = personalized?.transfers[0];
-  const gameweek = seasonState?.next_gw ?? seasonState?.current_gw ?? 1;
-  const deadline = formatDeadline(seasonState?.next_season_start, now);
-  const projectedPoints = useMemo(() => personalized?.expected_gameweek_points ?? overview.predictions.slice(0, 11).reduce((total, player) => total + (player.expected_points ?? 0), 0), [overview.predictions, personalized]);
-
-  if (seasonState && !seasonState.recommendations_ready) {
-    return (
-      <div className="space-y-5">
-        <PageIntro gameweek={gameweek} />
-        <TeamConnection teamId={teamId} />
-      </div>
-    );
-  }
+  const firstTransfer = recommendation?.transfers[0];
+  const current = decisionCenter?.current_lineup;
+  const selectedLineup = lineupView === "current" && current ? current : recommendation;
+  const pitchPlayers = selectedLineup
+    ? visualPlayers(selectedLineup.starting_xi, selectedLineup.bench_order, selectedLineup.captain_id, selectedLineup.vice_captain_id)
+    : [];
+  const changed = rating.after_grade !== rating.grade;
+  const bank = decisionCenter?.state_before?.bank;
+  const freeTransfers = decisionCenter?.state_before?.free_transfers;
 
   return (
     <div className="space-y-6">
-      <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <PageIntro gameweek={gameweek} />
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Recommendations current</span>
-          <Link href="/deadline" className="sm-secondary-button px-4 py-2.5"><CalendarClock className="h-4 w-4" />Deadline center</Link>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">Gameweek {gameweek}</div>
+          <h1 className="mt-2 text-3xl font-black tracking-[-0.045em] text-slate-950 sm:text-4xl">My Team</h1>
+          <p className="mt-2 text-sm text-slate-600">Your squad quality, key account details, and clearest improvement.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={"rounded-full px-3 py-2 text-xs font-bold " + (rating.provisional ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{rating.provisional ? "Provisional screenshot" : "Team #" + teamId + " linked"}</span>
+          <Link href="/onboarding" className="sm-secondary-button px-3 py-2 text-xs">Change team</Link>
+        </div>
+      </header>
+
+      {seasonStateUnavailable ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status"><strong>Freshness check unavailable.</strong> Confirm the deadline before acting.</div> : null}
+      {rating.provisional ? <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"><Info className="mt-0.5 h-4 w-4 shrink-0" /><span>This grade uses current list prices. Add your Team ID for exact selling prices and transfer history.</span></div> : null}
+
+      <section className="grid overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)] lg:grid-cols-[260px_minmax(0,1fr)_minmax(300px,0.72fr)]">
+        <div className="flex flex-col items-center justify-center border-b border-slate-200 bg-slate-50/70 px-6 py-8 text-center lg:border-b-0 lg:border-r">
+          <GradeCircle grade={rating.grade} />
+          <div className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Three-gameweek grade</div>
+          <div className="mt-2 text-sm font-semibold text-slate-700">{rating.gap_to_best.toFixed(1)} points behind the best same-budget squad found</div>
+        </div>
+        <div className="border-b border-slate-200 p-6 sm:p-8 lg:border-b-0 lg:border-r">
+          <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">Squad assessment</div>
+          <h2 className="mt-3 text-2xl font-black tracking-[-0.035em] text-slate-950">Your squad is {rating.grade}</h2>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">{rating.summary}</p>
+          <div className="mt-6 space-y-3">{rating.factors.map((factor) => <RatingFactor key={factor.label} factor={factor} />)}</div>
+          <details className="mt-5 text-xs text-slate-500"><summary className="cursor-pointer font-bold text-slate-600">How the grade works</summary><p className="mt-2 max-w-xl leading-5">{rating.method}</p></details>
+        </div>
+        <div className="bg-gradient-to-br from-violet-50 to-white p-6 sm:p-8">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-violet-700"><Sparkles className="h-4 w-4" />Best improvement</div>
+          {firstTransfer ? <>
+            <h2 className="mt-4 text-xl font-black tracking-[-0.025em] text-slate-950">{firstTransfer.outgoing_name} <span className="text-slate-400">→</span> {firstTransfer.incoming_name}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{recommendation?.transfer_count === 1 ? "One transfer" : String(recommendation?.transfer_count) + " linked transfers"} worth <strong className="text-emerald-700">+{recommendation?.gain_vs_no_action.toFixed(1)} projected points</strong> over three gameweeks{recommendation?.hit_cost ? " after a " + recommendation.hit_cost + "-point hit" : ""}.</p>
+          </> : <>
+            <h2 className="mt-4 text-xl font-black text-slate-950">Keep the free transfer</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">No legal move adds enough value right now. Keeping the transfer gives you more options next week.</p>
+          </>}
+          <div className="mt-6 flex items-center gap-3 rounded-2xl border border-violet-100 bg-white p-4"><GradeMini grade={rating.grade} label="Now" /><ArrowRight className="h-5 w-5 shrink-0 text-slate-300" /><GradeMini grade={rating.after_grade} label={changed ? "After move" : "Best action"} highlighted={changed} /></div>
+          <Link href="/decisions" className="sm-primary-button mt-5 w-full justify-center px-4 py-3">View this week’s plan<ArrowRight className="h-4 w-4" /></Link>
         </div>
       </section>
 
-      <section className="deadline-banner" aria-label={`Gameweek ${gameweek} deadline`}>
-        <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15"><CalendarClock className="h-5 w-5" /></span><div><div className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">GW{gameweek} deadline</div><div className="mt-1 text-lg font-bold text-white">{deadline}</div></div></div>
-        <div className="text-sm text-slate-300">Final checks: transfers · captain · bench · chips</div>
+      <section className="grid gap-3 sm:grid-cols-3">
+        <QuickFact icon={<Coins className="h-4 w-4" />} label="Bank" value={typeof bank === "number" ? "£" + bank.toFixed(1) + "m" : "—"} />
+        <QuickFact icon={<Repeat2 className="h-4 w-4" />} label="Free transfers" value={typeof freeTransfers === "number" ? String(freeTransfers) : "—"} />
+        <QuickFact icon={<Clock3 className="h-4 w-4" />} label="Deadline" value={formatDeadline(decisionCenter?.deadline)} />
       </section>
 
-      {seasonStateUnavailable ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status"><strong>Freshness status unavailable.</strong> The recommendation data loaded, but confirm the deadline center before acting.</div> : null}
-      <TeamConnection teamId={teamId} />
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)]">
-        <article className="overflow-hidden rounded-3xl bg-slate-950 text-white shadow-[0_22px_60px_rgba(15,23,42,0.18)]">
-          <div className="border-b border-white/10 px-6 py-5 sm:px-7">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-emerald-300"><Sparkles className="h-4 w-4" />Primary recommendation</div>
-              <span className="rounded-full bg-emerald-400/15 px-3 py-1.5 text-xs font-bold capitalize text-emerald-200">{personalized ? `${personalized.confidence} confidence` : teamId ? "Personal plan unavailable" : "Generic scouting view"}</span>
-            </div>
-          </div>
-          <div className="px-6 py-7 sm:px-7 sm:py-8">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-slate-400">Captain for Gameweek {gameweek}</div>
-                <h2 className="mt-2 text-3xl font-black tracking-[-0.035em] sm:text-4xl">{topCaptain ? displayName(topCaptain) : "Recommendation pending"}</h2>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">{personalized?.reason ?? (teamId ? decisionCenter?.message ?? "Open the decision center to retry your personalized plan." : genericCaptain?.reasoning ?? "Generic scouting leader until you link a team.")}</p>
-              </div>
-              {topCaptain ? <div className="min-w-36 rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-center"><div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Expected points</div><div className="mt-2 text-3xl font-black text-emerald-300">{topCaptain.expected_points.toFixed(1)}</div><div className="mt-1 text-xs text-slate-400">{Math.round(topCaptain.start_likelihood * 100)}% start chance</div></div> : null}
-            </div>
-            <Link href="/captain" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-emerald-300 hover:text-emerald-200">Review captaincy evidence<ArrowRight className="h-4 w-4" /></Link>
-          </div>
-        </article>
-
-        <aside className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <AlternativeCard eyebrow={personalized ? "Vice-captain" : "Scouting alternative"} name={popularAlternative ? displayName(popularAlternative) : "Not available"} detail={popularAlternative ? `${popularAlternative.expected_points.toFixed(1)} xP · ${Math.round(popularAlternative.start_likelihood * 100)}% start chance` : "No squad-relative alternative available"} icon={<Shield className="h-5 w-5" />} tone="violet" />
-          <AlternativeCard eyebrow="Generic differential scout" name={differential?.name ?? "Not available"} detail={differential ? `${(differential.selected_by_percent ?? 0).toFixed(1)}% selected · Not a squad recommendation` : "Waiting for a differential"} icon={<TrendingUp className="h-5 w-5" />} tone="amber" />
-        </aside>
-      </section>
-
-      <section aria-labelledby="weekly-actions-title">
-        <div className="flex items-end justify-between gap-4"><div><div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Your checklist</div><h2 id="weekly-actions-title" className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">This gameweek’s decisions</h2></div><Link href="/decisions" className="hidden text-sm font-bold text-violet-700 hover:text-violet-900 sm:inline-flex sm:items-center sm:gap-2">Open full plan<ArrowRight className="h-4 w-4" /></Link></div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <ActionCard icon={<RefreshCw className="h-5 w-5" />} label="Transfers" value={transfer ? `${transfer.outgoing_name ?? "Player"} → ${transfer.incoming_name ?? "Player"}` : personalized ? "Roll the transfer" : "No personalized call"} detail={transfer ? `${transfer.projected_gain.toFixed(2)} projected-point gain` : personalized?.transfer_action ?? "Open the decision center"} href="/transfers" />
-          <ActionCard icon={<Crown className="h-5 w-5" />} label="Captain" value={topCaptain ? displayName(topCaptain) : "Pending"} detail="Primary pick ready" href="/captain" complete />
-          <ActionCard icon={<Users className="h-5 w-5" />} label="Bench" value={teamId ? "Review order" : "Link team first"} detail="Balance upside and autosub cover" href="/squad" />
-          <ActionCard icon={<Zap className="h-5 w-5" />} label="Chip" value="Proactive calls paused" detail="Availability remains live while validation builds" href="/chips" />
+      {pitchPlayers.length ? <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="text-xl font-black text-slate-950">Your lineup</h2><p className="mt-1 text-sm text-slate-500">Select any player to view their details.</p></div>
+          <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1"><LineupButton active={lineupView === "current"} onClick={() => setLineupView("current")}>Current XI</LineupButton><LineupButton active={lineupView === "recommended"} onClick={() => setLineupView("recommended")}>Best XI</LineupButton></div>
         </div>
-      </section>
-
-      <details className="group rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-5 sm:px-6">
-          <div><div className="font-bold text-slate-950">Why SquadMetric prefers this plan</div><div className="mt-1 text-sm text-slate-500">Projections, fixtures, uncertainty, and model context</div></div>
-          <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
-        </summary>
-        <div className="grid gap-4 border-t border-slate-200 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
-          <Evidence label="Projected XI" value={`${projectedPoints.toFixed(1)} xP`} detail="Top 11 current projections" icon={<Target className="h-5 w-5" />} />
-          <Evidence label="Player pool" value={overview.player_count.toLocaleString()} detail="Players evaluated" icon={<Users className="h-5 w-5" />} />
-          <Evidence label="Model error" value={modelError(overview)} detail="Lower is better" icon={<CircleAlert className="h-5 w-5" />} />
-          <Evidence label="Data cutoff" value={formatCutoff(overview.data_cutoff)} detail="Recommendation snapshot" icon={<CheckCircle2 className="h-5 w-5" />} />
-        </div>
-      </details>
+        <SquadPitch players={pitchPlayers} title={(lineupView === "current" && current ? "Current GW" : "Best GW") + gameweek + " lineup"} onPlayerClick={(player) => openDrawer(player.name)} />
+      </div> : null}
+      <p className="text-center text-xs text-slate-500">{overview.player_count.toLocaleString()} players evaluated · projections are estimates, not guarantees</p>
     </div>
   );
 }
 
-function PageIntro({ gameweek }: { gameweek: number }) { return <div><div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">Gameweek {gameweek}</div><h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Your decision dashboard</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Recommendations first. Supporting analysis when you need it.</p></div>; }
-
-function TeamConnection({ teamId }: { teamId: string }) { return teamId ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3"><div className="flex items-center gap-3 text-sm text-emerald-900"><CheckCircle2 className="h-5 w-5" /><span><strong>Team #{teamId} linked.</strong> Squad-aware pages can personalize your decisions.</span></div><Link href="/settings" className="text-sm font-bold text-emerald-800 hover:text-emerald-950">Manage team</Link></div> : <div className="flex flex-col gap-4 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="font-bold text-slate-950">Link your FPL team for personalized decisions</div><div className="mt-1 text-sm text-slate-600">Use your public Team ID or team URL—never your FPL password.</div></div><Link href="/settings" className="sm-primary-button shrink-0 justify-center px-4 py-2.5">Link my team<ArrowRight className="h-4 w-4" /></Link></div>; }
-
-function AlternativeCard({ eyebrow, name, detail, icon, tone }: { eyebrow: string; name: string; detail: string; icon: React.ReactNode; tone: "violet" | "amber" }) { return <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${tone === "violet" ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-700"}`}>{icon}</div><div className="mt-5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{eyebrow}</div><div className="mt-2 text-lg font-bold text-slate-950">{name}</div><div className="mt-1 text-sm leading-6 text-slate-500">{detail}</div></article>; }
-
-function ActionCard({ icon, label, value, detail, href, complete = false }: { icon: React.ReactNode; label: string; value: string; detail: string; href: string; complete?: boolean }) { return <Link href={href} className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-lg"><div className="flex items-center justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 group-hover:bg-violet-100 group-hover:text-violet-700">{icon}</span>{complete ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-700">Ready</span> : <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-violet-600" />}</div><div className="mt-5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{label}</div><div className="mt-2 font-bold text-slate-950">{value}</div><div className="mt-1 text-sm leading-5 text-slate-500">{detail}</div></Link>; }
-
-function Evidence({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) { return <div className="rounded-2xl bg-slate-50 p-4"><div className="text-violet-700">{icon}</div><div className="mt-4 text-xs font-bold uppercase tracking-[0.1em] text-slate-500">{label}</div><div className="mt-2 text-xl font-black text-slate-950">{value}</div><div className="mt-1 text-xs text-slate-500">{detail}</div></div>; }
-
-function displayName(player: { name: string; web_name?: string }) { return player.web_name || player.name; }
-function modelError(overview: OverviewResponse) { const row = overview.accuracy.find((item) => item.model.toLowerCase().includes("best")) ?? overview.accuracy[0]; return row ? (row.adjusted_MAE ?? row.raw_MAE).toFixed(2) : "—"; }
-function formatCutoff(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Current" : new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date); }
-function formatDeadline(value: string | null | undefined, now: number) { if (!value) return "Deadline time is syncing"; const deadline = new Date(value); if (Number.isNaN(deadline.getTime())) return "Deadline time is syncing"; const diff = deadline.getTime() - now; if (diff <= 0) return "Deadline passed · awaiting the next update"; const minutes = Math.floor(diff / 60_000); const days = Math.floor(minutes / 1440); const hours = Math.floor((minutes % 1440) / 60); const mins = minutes % 60; return `${days ? `${days}d ` : ""}${hours}h ${mins}m remaining`; }
+function EmptyRating({ teamId, message, gameweek }: { teamId: string; message?: string; gameweek: number }) {
+  return <div className="mx-auto max-w-3xl py-8"><div className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">Gameweek {gameweek}</div><h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Rate your FPL squad</h1><p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">Connect with a public Team ID for an exact grade, or upload a screenshot for a provisional one.</p><div className="mt-7 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-8"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">{teamId ? <RefreshCw className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}</div><h2 className="mt-5 text-xl font-black text-slate-950">{teamId ? "Your grade is not ready yet" : "Connect your squad once"}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{message || (teamId ? "Live projections could not produce a complete legal rating." : "No FPL password is needed. You stay in control of every recommendation.")}</p><Link href="/onboarding" className="sm-primary-button mt-6 justify-center px-5 py-3">{teamId ? "Retry team setup" : "Connect or upload screenshot"}<ArrowRight className="h-4 w-4" /></Link></div></div>;
+}
+function GradeCircle({ grade }: { grade: string }) { const colors = gradeColors(grade); return <div className={"flex h-44 w-44 items-center justify-center rounded-full border-[12px] shadow-[inset_0_0_0_5px_rgba(255,255,255,0.9),0_16px_35px_rgba(15,23,42,0.12)] " + colors.border + " " + colors.background}><div className={"text-6xl font-black tracking-[-0.08em] " + colors.text}>{grade}</div></div>; }
+function GradeMini({ grade, label, highlighted = false }: { grade: string; label: string; highlighted?: boolean }) { const colors = gradeColors(grade); return <div className="flex flex-1 items-center gap-3"><span className={"flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 text-sm font-black " + colors.border + " " + colors.background + " " + colors.text}>{grade}</span><span className={"text-xs font-bold " + (highlighted ? "text-emerald-700" : "text-slate-600")}>{label}</span></div>; }
+function RatingFactor({ factor }: { factor: TeamRatingFactor }) { const warning = factor.status === "warning"; return <div className="flex items-start gap-3"><span className={"mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full " + (warning ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>{warning ? <CircleAlert className="h-3 w-3" /> : <Check className="h-3 w-3" />}</span><div><div className="text-sm font-bold text-slate-900">{factor.label}</div><div className="mt-0.5 text-xs leading-5 text-slate-500">{factor.detail}</div></div></div>; }
+function QuickFact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700">{icon}</span><div><div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</div><div className="mt-0.5 text-sm font-black text-slate-950">{value}</div></div></div>; }
+function LineupButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" onClick={onClick} aria-pressed={active} className={"rounded-lg px-4 py-2 text-xs font-bold transition " + (active ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-900")}>{children}</button>; }
+function visualPlayers(starters: DecisionCenterPlayer[], bench: DecisionCenterPlayer[], captainId: number | null, viceCaptainId: number | null): VisualSquadPlayer[] { return [...starters.map((player) => ({ ...visualPlayer(player), starter: true, captain: player.element_id === captainId, viceCaptain: player.element_id === viceCaptainId })), ...bench.map((player, index) => ({ ...visualPlayer(player), starter: false, benchOrder: index }))]; }
+function visualPlayer(player: DecisionCenterPlayer) { return { id: player.element_id, name: player.name, shortName: player.web_name, team: player.team, teamCode: player.team_code, position: player.position, expectedPoints: player.expected_points, startLikelihood: player.start_likelihood, playerPrice: player.price }; }
+function formatDeadline(value?: string | null) { if (!value) return "—"; return new Intl.DateTimeFormat("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
+function gradeColors(grade: string) { if (grade.startsWith("A")) return { border: "border-emerald-500", background: "bg-emerald-50", text: "text-emerald-700" }; if (grade.startsWith("B")) return { border: "border-lime-500", background: "bg-lime-50", text: "text-lime-700" }; if (grade.startsWith("C")) return { border: "border-amber-400", background: "bg-amber-50", text: "text-amber-700" }; if (grade === "D" || grade === "E") return { border: "border-orange-500", background: "bg-orange-50", text: "text-orange-700" }; return { border: "border-rose-500", background: "bg-rose-50", text: "text-rose-700" }; }
