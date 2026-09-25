@@ -6,6 +6,8 @@ __pycache__/
 .runtime/
 frontend/output/playwright/report/
 frontend/output/playwright/test-results/
+frontend/public/tesseract/
+output/playwright/
 *.pyc
 *.egg-info/
 *.zip
