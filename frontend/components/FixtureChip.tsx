@@ -27,7 +27,7 @@ export function FixtureChip({ difficulty, label, opponentShortName }: FixtureChi
 }
 
 function fixtureTone(level: number): string {
-  if (level <= 2) return "bg-fpl-green text-black";
+  if (level <= 2) return "bg-fpl-green text-white";
   if (level === 3) return "bg-fpl-amber text-black";
   if (level === 4) return "bg-fpl-red text-white";
   return "bg-[#7f1d1d] text-white";

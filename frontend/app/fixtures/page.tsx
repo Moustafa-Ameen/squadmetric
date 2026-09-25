@@ -14,6 +14,7 @@ import { fixtureTickerRows, visibleFixtures } from "@/lib/fixtures";
 import type { FixtureTick, SquadPlayer } from "@/lib/types";
 
 type FixtureRange = 3 | 5 | 8;
+type FixtureView = "squad" | "targets";
 
 const fixtureRanges: FixtureRange[] = [3, 5, 8];
 
@@ -24,6 +25,7 @@ export default function FixturesPage() {
   const [teamId, setTeamId] = useState("");
   const [squadErrorCode, setSquadErrorCode] = useState<string | null>(null);
   const [range, setRange] = useState<FixtureRange>(5);
+  const [view, setView] = useState<FixtureView>("squad");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -100,20 +102,53 @@ export default function FixturesPage() {
         subtitle="Fixture difficulty for your squad and transfer targets"
       />
 
-      <div className="space-y-6">
-        <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-muted">
-          <span className="rounded-full border border-fpl-border bg-fpl-raised px-2 py-1">
-            {fixtureMeta?.source ?? "Fixture source pending"}
-          </span>
-          <span className="rounded-full border border-fpl-border bg-fpl-raised px-2 py-1">
-            {fixtureMeta?.season ?? "Season pending"}
-          </span>
-          <span className="rounded-full border border-fpl-border bg-fpl-raised px-2 py-1 text-fpl-amber">
-            {fixtureMeta?.difficulty_source ?? "Difficulty source pending"}
-          </span>
+      <div className="space-y-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-muted">
+            <span className="rounded-full border border-fpl-border bg-fpl-raised px-2 py-1">
+              {fixtureMeta?.source ?? "Fixture source pending"}
+            </span>
+            <span className="rounded-full border border-fpl-border bg-fpl-raised px-2 py-1">
+              {fixtureMeta?.season ?? "Season pending"}
+            </span>
+            <span className="rounded-full border border-fpl-border bg-fpl-raised px-2 py-1 text-[#92400e]">
+              {fixtureMeta?.difficulty_source ?? "Difficulty source pending"}
+            </span>
+          </div>
+
+          <div
+            role="group"
+            aria-label="Fixture view"
+            className="grid w-full grid-cols-2 rounded-xl border border-fpl-border bg-fpl-raised p-1 sm:w-auto"
+          >
+            <button
+              type="button"
+              aria-pressed={view === "squad"}
+              onClick={() => setView("squad")}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                view === "squad"
+                  ? "bg-fpl-purple text-white shadow-sm"
+                  : "text-secondary hover:bg-fpl-panel hover:text-primary"
+              }`}
+            >
+              My squad
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "targets"}
+              onClick={() => setView("targets")}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                view === "targets"
+                  ? "bg-fpl-purple text-white shadow-sm"
+                  : "text-secondary hover:bg-fpl-panel hover:text-primary"
+              }`}
+            >
+              Team targets
+            </button>
+          </div>
         </div>
 
-        <Panel>
+        {view === "squad" ? <Panel>
           <div className="mb-4">
             <h2 className="text-[18px] font-semibold text-primary">Your squad&apos;s upcoming fixtures</h2>
             <p className="mt-1 text-[13px] text-secondary">Tap a player to see more</p>
@@ -126,7 +161,7 @@ export default function FixturesPage() {
                   type="button"
                   key={player.name}
                   onClick={() => openDrawer(player.name)}
-                  className="grid w-full grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 rounded-[10px] border border-fpl-border/70 px-3 py-3 text-left transition hover:border-fpl-green/40 hover:bg-fpl-raised"
+                  className="grid w-full grid-cols-[40px_minmax(0,1fr)] items-center gap-3 rounded-[10px] border border-fpl-border/70 px-3 py-3 text-left transition hover:border-fpl-green/40 hover:bg-fpl-raised sm:grid-cols-[40px_minmax(0,1fr)_auto]"
                 >
                   <img
                     src={`https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${player.team_code ?? 1}-66.png`}
@@ -137,8 +172,8 @@ export default function FixturesPage() {
                     <div className="truncate text-sm font-semibold text-primary">{player.name}</div>
                     <div className="truncate text-xs text-muted">{player.team}</div>
                   </div>
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex gap-1.5">
+                <div className="col-span-2 flex min-w-0 flex-col items-start gap-1 sm:col-span-1 sm:items-end">
+                  <div className="flex max-w-full gap-1.5 overflow-x-auto pb-1 sm:overflow-visible sm:pb-0">
                       {upcoming.map((fixture, index) => (
                         <FixtureChip
                           key={`${player.name}-${fixture.gw}-${index}`}
@@ -164,9 +199,9 @@ export default function FixturesPage() {
               ) : null}
             </div>
           )}
-        </Panel>
+        </Panel> : null}
 
-        <Panel>
+        {view === "targets" ? <Panel>
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-[18px] font-semibold text-primary">Best teams to target</h2>
@@ -194,14 +229,14 @@ export default function FixturesPage() {
             {targetTeams.map(({ team, fixtures: upcoming, average }) => (
               <div
                 key={team.team}
-                className="grid grid-cols-[minmax(120px,1fr)_auto_48px] items-center gap-3 rounded-[10px] border border-fpl-border/70 px-3 py-3"
+                className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-x-3 gap-y-2 rounded-[10px] border border-fpl-border/70 px-3 py-3 sm:grid-cols-[minmax(120px,1fr)_auto_48px]"
               >
                 <div className={`truncate text-sm font-semibold ${
                   average !== null && average <= 2.5 ? "text-fpl-green" : "text-primary"
                 }`}>
                   {team.team}
                 </div>
-                <div className="flex gap-1.5">
+                <div className="col-span-2 flex max-w-full min-w-0 gap-1.5 overflow-x-auto pb-1 sm:col-span-1 sm:overflow-visible sm:pb-0">
                   {upcoming.map((fixture, index) => (
                     <FixtureChip
                       key={`${team.team}-${fixture.gw}-${index}`}
@@ -210,13 +245,13 @@ export default function FixturesPage() {
                     />
                   ))}
                 </div>
-                <div className={`text-right font-mono text-sm font-semibold ${scoreClass(average)}`}>
+                <div className={`col-start-2 row-start-1 text-right font-mono text-sm font-semibold sm:col-start-3 ${scoreClass(average)}`}>
                   {average === null ? "-" : average.toFixed(1)}
                 </div>
               </div>
             ))}
           </div>
-        </Panel>
+        </Panel> : null}
       </div>
     </div>
   );
@@ -240,6 +275,6 @@ function averageDifficulty(fixtures: { difficulty: number }[]): number | null {
 function scoreClass(score: number | null): string {
   if (score === null) return "text-muted";
   if (score <= 2.5) return "text-fpl-green";
-  if (score <= 3.5) return "text-fpl-amber";
+  if (score <= 3.5) return "text-[#92400e]";
   return "text-fpl-red";
 }
