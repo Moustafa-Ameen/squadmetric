@@ -13,7 +13,10 @@ export function DecisionStatusNotice({
   const ready = recommendationsAreReady(seasonState);
   const unavailable = seasonState.decision_status === "unavailable";
   const Icon = ready ? CheckCircle2 : unavailable ? DatabaseZap : AlertTriangle;
-  const age = seasonState.artifact_data.age_hours;
+  const primaryBlocker = seasonState.decision_blockers[0]?.message;
+  const statusSummary = unavailable
+    ? primaryBlocker ?? "Official FPL data cannot be reached right now."
+    : `${primaryBlocker ?? "The latest prediction data is not ready."} Team, fixtures and official player data remain available.`;
   const tone = ready
     ? "border-emerald-200 bg-emerald-50"
     : unavailable
@@ -43,12 +46,11 @@ export function DecisionStatusNotice({
           ) : (
             <>
               <p className="mt-1 text-sm text-secondary">
-                Recommendations are paused until the processed model bundle is manually refreshed.
-                {typeof age === "number" ? ` Current artifacts are ${age.toFixed(1)} hours old.` : ""}
+                {statusSummary}
               </p>
-              {!compact && seasonState.decision_blockers.length ? (
+              {!compact && seasonState.decision_blockers.length > 1 ? (
                 <ul className="mt-3 space-y-1 text-sm text-secondary">
-                  {seasonState.decision_blockers.map((blocker) => (
+                  {seasonState.decision_blockers.slice(1).map((blocker) => (
                     <li key={`${blocker.code}-${blocker.message}`} className="flex items-start gap-2">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-fpl-amber" />
                       <span>{blocker.message}</span>
