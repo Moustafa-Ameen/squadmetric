@@ -40,6 +40,21 @@ const players = positions.map((position, index) => ({
   status: "a",
   prior_source: "test",
 }));
+const decisionPlayers = players.map((player) => ({
+  element_id: player.element_id,
+  name: player.name,
+  web_name: player.web_name,
+  team: player.team,
+  team_code: player.team_code,
+  position: player.position,
+  price: player.price,
+  expected_points: player.gw1_points,
+  start_likelihood: player.start_likelihood,
+  blank: false,
+  double: false,
+}));
+const decisionStarters = [0, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13].map((index) => decisionPlayers[index]);
+const decisionBench = [5, 6, 14, 1].map((index) => decisionPlayers[index]);
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => mockApi(route));
@@ -103,13 +118,50 @@ test("guided onboarding accepts an official FPL URL and stores verified setup", 
   expect(JSON.parse(stored.preferences ?? "{}").riskStyle).toBe("aggressive");
 });
 
-test("my team is readable and presents the lineup on a visual pitch", async ({ page }) => {
+test("my team is readable, interactive, and offers a best-XI view", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/squad");
   await expect(page.getByRole("heading", { name: "My Team" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Your current lineup" })).toBeVisible();
-  await expect(page.getByText("Starting XI projection")).toBeVisible();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading", { name: "Your lineup" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Current XI" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Substitutes")).toBeVisible();
+  await page.getByRole("button", { name: "Open P1 details", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Player 1", exact: true })).toBeVisible();
+  await expect(page.getByText("3 most recent completed gameweeks")).toBeVisible();
+  const rangePicker = page.getByLabel("Chart gameweek range");
+  await expect(rangePicker.getByRole("button", { name: "3", exact: true })).toBeVisible();
+  await expect(rangePicker.getByRole("button", { name: "5", exact: true })).toHaveCount(0);
+  await expect(rangePicker.getByRole("button", { name: "10", exact: true })).toHaveCount(0);
+  await expect(page.getByText("GW38", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Next fixtures" })).toBeVisible();
+  await expect(page.getByText("GW5", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Best XI", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Best XI" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Best GW1 lineup", { exact: true })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("my team offers useful routes when prediction data needs a refresh", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.route("**/api/fpl/season-state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...seasonState,
+      recommendations_ready: false,
+      decision_status: "blocked",
+      decision_blockers: [{ code: "finalized_gameweek_missing", message: "GW4 is finalized, but predictions use results only through GW3." }],
+    }),
+  }));
+
+  await page.goto("/dashboard");
+
+  await expect(page.getByRole("heading", { name: "My Team" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recommendations are paused until the data bundle is refreshed." })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Players Browse current official/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /This Week See the latest saved/ })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 });
 
@@ -136,7 +188,8 @@ test("players page keeps the official catalog usable while model data refreshes"
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test("routine live FPL changes refresh captaincy without an updating banner", async ({ page }) => {
+test("legacy captain route converges on the weekly plan", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.route("**/api/fpl/season-state", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -153,18 +206,39 @@ test("routine live FPL changes refresh captaincy without an updating banner", as
 
   await page.goto("/captain");
 
-  await expect(page.getByRole("heading", { name: "Who should I captain this week?" })).toBeVisible();
-  await expect(page.getByText("Erling Haaland", { exact: true }).first()).toBeVisible();
+  await expect(page).toHaveURL(/\/decisions$/);
+  await expect(page.getByRole("heading", { name: "This Week · GW1" })).toBeVisible();
+  await expect(page.getByText("P13", { exact: true })).toBeVisible();
   await expect(page.getByText("Recommendations updating")).not.toBeVisible();
   await expect(page.getByText("Captaincy recommendations are not decision-ready")).not.toBeVisible();
 });
 
-test("gameweek plan leads with a clear action and a visual recommended XI", async ({ page }) => {
+test("legacy planner route converges on the weekly plan", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/planner");
-  await expect(page.getByRole("heading", { name: "2026-27 Initial Squad" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Recommended opening lineup" })).toBeVisible();
-  await expect(page.getByText("Captain, vice-captain and bench order are shown on the pitch.")).toBeVisible();
-  await expect(page.getByText("Explore alternatives and build a custom plan")).not.toBeVisible();
+  await expect(page).toHaveURL(/\/decisions$/);
+  await expect(page.getByRole("heading", { name: "This Week · GW1" })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("personal plan explains package funding and accepts corrected manager state", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.goto("/decisions");
+
+  await expect(page.getByRole("heading", { name: "This Week · GW1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Transfer package" })).toBeVisible();
+  await expect(page.getByText("P8 to Value releases £2.0m, helping fund P9 to Star.")).toBeVisible();
+  await expect(page.getByText("Reconstructed from public FPL history.")).toBeVisible();
+  await expect(page.getByText("First substitute", { exact: true })).toBeVisible();
+  await expect(page.getByText("P6", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Correct this" }).click();
+  await page.getByLabel("Money in bank (£m)").fill("2.5");
+  await page.getByLabel("Free transfers").selectOption("3");
+  await page.getByRole("button", { name: "Recalculate" }).click();
+  await expect(page.getByRole("heading", { name: "This Week · GW1" })).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("squadmetric_manager_state_v1:5605168") ?? "null"));
+  expect(saved).toEqual({ bank: 2.5, freeTransfers: 3 });
   await expectNoSeriousAccessibilityViolations(page);
 });
 
@@ -178,31 +252,35 @@ test("performance evidence is readable and states its limits", async ({ page }) 
 });
 
 test("decision dashboard prioritizes recommendations and progressively discloses evidence", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { name: "Your decision dashboard" })).toBeVisible();
-  await expect(page.getByText("Primary recommendation", { exact: true })).toBeVisible();
-  await expect(page.getByText("This gameweek’s decisions")).toBeVisible();
-  await expect(page.getByText("Why SquadMetric prefers this plan")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "My Team" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your squad is B+" })).toBeVisible();
+  await expect(page.getByText("Best improvement", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "View this week’s plan" })).toBeVisible();
+  await expect(page.getByText(/Rating score/)).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: /navigation/i }).first()).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test("decision dashboard stays useful while recommendations await a manual refresh", async ({ page }) => {
+test("decision dashboard stays useful while recommendations await a prediction refresh", async ({ page }) => {
   await page.route("**/api/fpl/season-state", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...seasonState, recommendations_ready: false, decision_status: "blocked", decision_blockers: [{ code: "bootstrap_drift", message: "Official player data changed." }] }) }));
   await page.route("**/api/predictions/overview", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: { code: "recommendations_blocked" } }) }));
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { name: "Your decision dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "My Team" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recommendations are paused until the data bundle is refreshed." })).toBeVisible();
-  await expect(page.getByText("It will not update data automatically", { exact: false })).toBeVisible();
+  await expect(page.getByText("Your team and official FPL information remain available", { exact: false })).toBeVisible();
   await expect(page.getByText("Dashboard unavailable")).not.toBeVisible();
   await expect(page.locator('a[href="/stats"]').filter({ hasText: "Browse current official players and prices." })).toBeVisible();
-  await expect(page.locator('a[href="/deadline"]').filter({ hasText: "Follow final checks and team-news timing." })).toBeVisible();
+  await expect(page.locator('a[href="/decisions"]').filter({ hasText: "See the latest saved weekly plan." })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test("deadline center is keyboard reachable, secure, and accessible", async ({ page }) => {
+test("legacy deadline route redirects and the app remains keyboard reachable", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/deadline");
-  await expect(page.getByRole("heading", { name: "GW1 Deadline Intelligence" })).toBeVisible();
+  await expect(page).toHaveURL(/\/decisions$/);
+  await expect(page.getByRole("heading", { name: "This Week · GW1" })).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to main content" })).toBeFocused();
   await page.keyboard.press("Enter");
@@ -225,14 +303,60 @@ test("multi-draft workspace saves and compares a named legal draft", async ({ pa
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test("rank mode is opt-in review-only and handles preseason safely", async ({ page }) => {
+test("results page handles preseason safely without an objective switch", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/review");
-  await expect(page.getByRole("heading", { name: "2026-27 Post-GW Review" })).toBeVisible();
-  await expect(page.getByText("Waiting for the first finalized Gameweek")).toBeVisible();
-  await page.getByRole("button", { name: "Rank (review only)" }).click();
-  await expect(page.getByText("Not a production optimizer objective.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your Results", exact: true })).toBeVisible();
+  await expect(page.getByText("Waiting for the first finalized gameweek")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Rank/ })).toHaveCount(0);
   await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("navigation exposes one simple signed-in product structure", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.goto("/dashboard");
+  const navigation = page.getByRole("navigation", { name: (page.viewportSize()?.width ?? 1280) < 1024 ? "Mobile navigation" : "Primary navigation" });
+  await expect(navigation.getByRole("link", { name: "My Team", exact: true })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "This Week", exact: true })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Players", exact: true })).toBeVisible();
+  await expect(navigation.getByText("Transfer planner", { exact: true })).toHaveCount(0);
+  await expect(navigation.getByText("Draft workspace", { exact: true })).toHaveCount(0);
+  await navigation.getByText("More", { exact: true }).click();
+  await expect(page.getByRole("link", { name: "Fixtures", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Chip guide", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Your results", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("fixtures keep squad and team targets one click apart", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.goto("/fixtures");
+
+  await expect(page.getByRole("heading", { name: "Your squad's upcoming fixtures" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Best teams to target" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Team targets" }).click();
+  await expect(page.getByRole("heading", { name: "Best teams to target" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your squad's upcoming fixtures" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "My squad" }).click();
+  await expect(page.getByRole("heading", { name: "Your squad's upcoming fixtures" })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("chip guide is readable and legacy decision routes have one destination", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.goto("/chips");
+  await expect(page.getByRole("heading", { name: "Chip Guide" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your chips" })).toBeVisible();
+  await expect(page.getByText("recommendations are not personalized", { exact: false })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+
+  await page.goto("/transfers");
+  await expect(page).toHaveURL(/\/decisions$/);
+  await page.goto("/compare");
+  await expect(page).toHaveURL(/\/stats$/);
 });
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
@@ -251,9 +375,19 @@ async function mockApi(route: Route) {
   if (url.pathname === "/api/health") return json({ status: "ok" });
   if (url.pathname === "/api/fpl/current-gw") return json({ current_gw: 1 });
   if (url.pathname === "/api/fpl/season-state") return json(seasonState);
+  if (url.pathname === "/api/chip-opportunities") return json({ status: "ready", target_gameweek: 2, horizon_end_gameweek: 8, message: "Ready", model: "fixture-opportunity-v1", data_cutoff: "2026-08-18", personalized: false, automatic_chip_actions: false, opportunities: [{ chip_type: "3xc", chip: "Triple Captain", recommended_gameweek: 4, headline: "Consider Haaland in GW4", summary: "Strong attacking form meets a vulnerable defence.", confidence: "high", why_now: ["High projected involvement", "Opponent allows strong chances"], why_wait: "A double gameweek may offer a stronger ceiling.", primary_candidate: { gameweek: 4, player: "Haaland" }, alternatives: [] }] });
+  if (url.pathname === "/api/fpl/team/5605168/chips" || url.pathname === "/api/fpl/chips") return json({ status: "ready", team_id: 5605168, message: "Ready", chips: [{ key: "wc1", chip_type: "wildcard", name: "Wildcard 1", subtitle: "first half", number: 1, start_event: 1, stop_event: 19, status: "available" }] });
   if (url.pathname === "/api/fpl/team/5605168") return json({ team_name: "Test XI", overall_rank: 1000, total_points: 0, bank_value: 0, current_gw_points: 0, squad_value: 100, free_transfers_available: 1 });
   if (url.pathname === "/api/fpl/team/5605168/squad") return json(players.map((player, index) => ({ ...player, expected_points: player.gw1_points, raw_xp: player.gw1_points, start_adjusted_xp: player.gw1_points, form: 4, current_price: player.price, is_captain: index === 12, is_vice_captain: index === 8 })));
+  if (url.pathname === "/api/fpl/team/5605168/roster") return json(players.map((player, index) => ({ ...player, expected_points: null, raw_xp: 0, start_adjusted_xp: null, start_likelihood: null, form: 4, current_price: player.price, is_captain: index === 12, is_vice_captain: index === 8 })));
+  if (url.pathname.match(/^\/api\/players\/.*\/history$/)) return json([
+    { element_id: 1, gw: 1, price: 6.0, total_points: 2, minutes: 90, selected_by_percent: 5 },
+    { element_id: 1, gw: 2, price: 6.0, total_points: 5, minutes: 90, selected_by_percent: 6 },
+    { element_id: 1, gw: 3, price: 6.1, total_points: 7, minutes: 90, selected_by_percent: 7 },
+    { element_id: 1, gw: 4, price: 6.1, total_points: 4, minutes: 90, selected_by_percent: 8 },
+  ]);
   if (url.pathname === "/api/players") return json([
+    { element_id: 1, name: "Player 1", web_name: "P1", team: "T1", team_code: 100, position: "GKP", price: 6, total_points: 18, ppg: 4.5, form: 4, start_likelihood: 0.9, value: 0.75, captain_rank_score: 4.5, transfer_rank_score: 4.1, selected_by_percent: 8 },
     { element_id: 101, name: "Erling Haaland", web_name: "Haaland", team: "Man City", team_code: 43, position: "FWD", price: 14, total_points: 0, ppg: 7.2, form: 6.8, start_likelihood: 0.97, value: 0.51, captain_rank_score: 8.4, transfer_rank_score: 7.8, selected_by_percent: 58 },
     { element_id: 102, name: "Bukayo Saka", web_name: "Saka", team: "Arsenal", team_code: 3, position: "MID", price: 10, total_points: 0, ppg: 6.5, form: 6.1, start_likelihood: 0.95, value: 0.65, captain_rank_score: 7.5, transfer_rank_score: 7.3, selected_by_percent: 42 },
   ]);
@@ -293,7 +427,90 @@ async function mockApi(route: Route) {
     projection_contract_version: "test-v1",
     data_cutoff: "2026-08-18T08:00:00Z",
   });
+  if (url.pathname === "/api/predictions/decision-center") return json({
+    status: "ready",
+    message: "Complete personalized weekly decision from one legal planner state.",
+    team_id: 5605168,
+    season_state: "in_season",
+    gameweek: 1,
+    horizon: Number(url.searchParams.get("horizon") ?? 3),
+    deadline: "2026-08-21T19:00:00Z",
+    rating: {
+      grade: "B+",
+      score: 90,
+      after_grade: "A-",
+      after_score: 92,
+      horizon: 3,
+      projected_points: 185,
+      recommended_projected_points: 190,
+      benchmark_points: 200,
+      gap_to_best: 15,
+      budget: 100.5,
+      provisional: false,
+      summary: "A strong squad with one linked upgrade path.",
+      factors: [{ label: "Three-gameweek strength", status: "strong", detail: "185 projected points over the next three gameweeks." }],
+      method: "Compared with the strongest legal same-budget squad found.",
+    },
+    manager_state_confirmation: {
+      bank_source: url.searchParams.has("bank_override") ? "user_override" : "public_history",
+      free_transfers_source: url.searchParams.has("free_transfers_override") ? "user_override" : "public_history_inference",
+      can_override: true,
+    },
+    state_before: {
+      bank: Number(url.searchParams.get("bank_override") ?? 0.5),
+      free_transfers: Number(url.searchParams.get("free_transfers_override") ?? 2),
+      remaining_chips: [],
+      used_chips: [],
+    },
+    current_lineup: {
+      starting_xi: decisionStarters,
+      bench_order: decisionBench,
+      captain_id: 13,
+      vice_captain_id: 8,
+    },
+    recommendation: {
+      transfer_action: "make_2_transfers",
+      transfers: [
+        { outgoing_id: 8, outgoing_name: "P8", incoming_id: 108, incoming_name: "Value", projected_gain: -0.5, hit_cost: 0, outgoing_price: 8, incoming_price: 6, bank_effect: 2 },
+        { outgoing_id: 9, outgoing_name: "P9", incoming_id: 109, incoming_name: "Star", projected_gain: 4, hit_cost: 0, outgoing_price: 6, incoming_price: 8, bank_effect: -2 },
+      ],
+      transfer_count: 2,
+      hit_recommended: false,
+      hit_cost: 0,
+      bank_before: 0.5,
+      bank_after: 0.5,
+      free_transfers_after: 0,
+      funds_released: 2,
+      funds_spent: 2,
+      funding_explanation: "P8 to Value releases £2.0m, helping fund P9 to Star.",
+      future_plan: [{ gameweek: 2, transfers: [], transfer_count: 0, hit_cost: 0, expected_points: 61, net_expected_points: 61, bank_before: 0.5, bank_after: 0.5, free_transfers_before: 1, free_transfers_after: 2, funds_released: 0, funds_spent: 0 }],
+      chip_action: "save",
+      chip_key: "none",
+      starting_xi: decisionStarters,
+      bench_order: decisionBench,
+      captain_id: 13,
+      vice_captain_id: 8,
+      expected_gameweek_points: 62,
+      expected_horizon_points: 190,
+      gain_vs_no_action: 5,
+      future_opportunity_cost: 0,
+      uncertainty_penalty: 0.3,
+      downside_range: { low: 61, high: 63, method: "test" },
+      confidence: "high",
+      confidence_basis: { search_score_margin: 2, uncertainty_penalty: 0.3 },
+      reason: "Best linked package.",
+    },
+    no_action: { expected_gameweek_points: 60, expected_horizon_points: 185, starting_ids: decisionStarters.map((player) => player.element_id), captain_id: 13, vice_captain_id: 8, reason: "Roll." },
+    alternatives: [],
+  });
   if (url.pathname === "/api/fixtures") return json([]);
+  if (url.pathname === "/api/fixtures/ticker") return json([
+    { team: "T1", team_short: "T1", range: 3, fixtures: [
+      { gw: 5, opponent: "T2", home: true, difficulty: 2 },
+      { gw: 6, opponent: "T3", home: false, difficulty: 3 },
+      { gw: 7, opponent: "T4", home: true, difficulty: 4 },
+    ] },
+  ]);
   if (url.pathname === "/api/operations/deadline-readiness") return json({
     ready: true,
     season: "2026-27",
