@@ -65,9 +65,9 @@ test("selects a legal XI, captain, vice, and outfield-first autosub bench", () =
   assert.equal(lastBench.position, "GKP");
 });
 
-test("rates the unchanged optimized draft at 100", () => {
+test("reserves uncertainty instead of rating an optimized draft as perfect", () => {
   const players = squad();
-  assert.equal(draftRating(players, players, true), 100);
+  assert.equal(draftRating(players, players, true), 98);
   assert.equal(draftRating(players, players, false), 0);
 });
 

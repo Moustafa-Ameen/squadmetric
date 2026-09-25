@@ -245,7 +245,7 @@ export default function DraftWorkspacePage() {
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.12em] text-fpl-green">Rules-aware squad builder</div>
             <h2 className="mt-2 text-xl font-semibold text-primary">
-              {validation.legal ? "Legal draft" : "Draft needs attention"} · Rating {rating}/100
+              {validation.legal ? "Legal draft" : "Draft needs attention"} · Rating score {rating}
             </h2>
             <p className="mt-2 text-sm text-secondary">
               The optimizer is the starting point. Every replacement is checked against the live budget,

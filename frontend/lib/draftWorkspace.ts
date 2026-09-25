@@ -193,7 +193,7 @@ export function draftRating(
   if (!legal || !optimizedPlayers.length) return 0;
   const reference = draftValue(optimizedPlayers);
   if (reference <= 0) return 0;
-  return Math.min(110, Math.max(0, Math.round((draftValue(players) / reference) * 100)));
+  return Math.min(98, Math.max(0, Math.round((draftValue(players) / reference) * 98)));
 }
 
 export function compareDraft(

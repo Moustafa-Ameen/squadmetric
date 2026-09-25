@@ -14,7 +14,7 @@ import type { Player, SeasonState } from "@/lib/types";
 
 type ViewMode = "table" | "card";
 type ListMode = "all" | "watchlist";
-type SortKey = "name" | "team" | "position" | "price" | "ppg" | "form" | "captain_rank_score" | "start_likelihood" | "value";
+type SortKey = "name" | "team" | "position" | "price" | "ppg" | "form" | "transfer_rank_score" | "start_likelihood" | "value";
 type PositionFilter = "All" | "GK" | "DEF" | "MID" | "FWD";
 
 const positions: PositionFilter[] = ["All", "GK", "DEF", "MID", "FWD"];
@@ -25,7 +25,7 @@ const columns: { label: string; key: SortKey; align?: "right" }[] = [
   { label: "Price", key: "price", align: "right" },
   { label: "PPG", key: "ppg", align: "right" },
   { label: "Form", key: "form", align: "right" },
-  { label: "Captain rank", key: "captain_rank_score", align: "right" },
+  { label: "Recommendation", key: "transfer_rank_score", align: "right" },
   { label: "Start %", key: "start_likelihood", align: "right" },
   { label: "Value", key: "value", align: "right" },
 ];
@@ -42,7 +42,7 @@ export default function StatsPage() {
   const [position, setPosition] = useState<PositionFilter>("All");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("captain_rank_score");
+  const [sortKey, setSortKey] = useState<SortKey>("transfer_rank_score");
   const [ascending, setAscending] = useState(false);
   const [page, setPage] = useState(1);
   const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
@@ -69,7 +69,7 @@ export default function StatsPage() {
     const groups = new Map<string, number[]>();
     for (const player of players) {
       const code = positionCode(player.position);
-      groups.set(code, [...(groups.get(code) ?? []), captainRank(player)]);
+      groups.set(code, [...(groups.get(code) ?? []), transferRating(player)]);
     }
     return Object.fromEntries(
       [...groups.entries()].map(([key, values]) => [key, values.reduce((sum, value) => sum + value, 0) / values.length]),
@@ -202,7 +202,7 @@ export default function StatsPage() {
               }}
               className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-violet-500"
             >
-              <option value="captain_rank_score">Sort by captain rank</option>
+              <option value="transfer_rank_score">Sort by recommendation</option>
               <option value="price">Sort by price</option>
               <option value="ppg">Sort by PPG</option>
               <option value="form">Sort by form</option>
@@ -334,7 +334,7 @@ function PlayerTable({
               <td className="py-3 pr-3 text-right font-semibold text-slate-900">{points(player.ppg)}</td>
               <td className="py-3 pr-3 text-right font-semibold text-slate-900">{points(player.form)}</td>
               <td className={`py-3 pr-3 text-right font-extrabold ${predictedClass(player, averages)}`}>
-                {player.metrics_available === false ? "—" : points(captainRank(player))}
+                {player.metrics_available === false ? "—" : points(transferRating(player))}
               </td>
               <td className="py-3 pr-3 text-right">
                 <StartLikelihood value={player.start_likelihood} />
@@ -374,7 +374,7 @@ function PlayerCard({
         <div className="mt-3 truncate text-sm font-extrabold text-slate-950">{player.name}</div>
         <div className="mt-1 text-xs text-slate-500">{player.team} · {positionCode(player.position)}</div>
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <CardMetric label="Captain rank" value={player.metrics_available === false ? "Refresh needed" : points(captainRank(player))} />
+          <CardMetric label="Recommendation" value={player.metrics_available === false ? "Refresh needed" : points(transferRating(player))} />
           <CardMetric label="Price" value={price(player.price)} />
           <div>
             <div className="text-[11px] text-muted">Start %</div>
@@ -452,17 +452,17 @@ function CardMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function captainRank(player: Player): number {
-  return player.captain_rank_score ?? 0;
+function transferRating(player: Player): number {
+  return player.transfer_rank_score ?? 0;
 }
 
 function predictedClass(player: Player, averages: Record<string, number>): string {
   const average = averages[positionCode(player.position)] ?? 0;
-  return captainRank(player) >= average ? "text-fpl-green" : "text-fpl-red";
+  return transferRating(player) >= average ? "text-emerald-700" : "text-slate-500";
 }
 
 function valueForSort(player: Player, key: SortKey): string | number {
-  if (key === "captain_rank_score") return captainRank(player);
+  if (key === "transfer_rank_score") return transferRating(player);
   if (key === "position") return positionCode(player.position);
   return player[key] as string | number;
 }
