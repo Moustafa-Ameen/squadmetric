@@ -9,9 +9,7 @@ import { getTeam } from "@/lib/api";
 import { DEFAULT_ONBOARDING_PREFERENCES, persistOnboarding, type OnboardingPreferences } from "@/lib/account";
 import { disconnectAccountTeam, exportAccountData, savePreferencePatch } from "@/lib/accountStorage";
 import { parseFplTeamInput } from "@/lib/fplTeam";
-import { parseReviewMode } from "@/lib/reviewMode";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { ReviewMode } from "@/lib/reviewMode";
 import type { TeamData } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -21,10 +19,8 @@ export default function SettingsPage() {
   const [team, setTeam] = useState<TeamData | null>(null);
   const [teamError, setTeamError] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [showFixtureBar, setShowFixtureBar] = useState(true);
   const [showBench, setShowBench] = useState(true);
   const [compactRows, setCompactRows] = useState(false);
-  const [reviewMode, setReviewMode] = useState<ReviewMode>("points");
   const [accountEmail, setAccountEmail] = useState("");
   const [accountMessage, setAccountMessage] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -35,10 +31,8 @@ export default function SettingsPage() {
       const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
       setTeamId(savedTeamId);
       setDraftTeamId(savedTeamId);
-      setShowFixtureBar(window.localStorage.getItem("show_match_bar") !== "false");
       setShowBench(window.localStorage.getItem("show_bench_players") !== "false");
       setCompactRows(window.localStorage.getItem("compact_table_rows") === "true");
-      setReviewMode(parseReviewMode(window.localStorage.getItem("fpl_decision_objective_mode")));
       void createSupabaseBrowserClient()?.auth.getUser().then(({ data }) => setAccountEmail(data.user?.email ?? ""));
     });
   }, []);
@@ -109,23 +103,16 @@ export default function SettingsPage() {
   }
 
   function updateBoolean(
-    key: "show_match_bar" | "show_bench_players" | "compact_table_rows",
+    key: "show_bench_players" | "compact_table_rows",
     value: boolean,
     setter: (value: boolean) => void,
   ) {
     window.localStorage.setItem(key, String(value));
     savePreferencePatch({
-      ...(key === "show_match_bar" ? { showFixtureBar: value } : {}),
       ...(key === "show_bench_players" ? { showBenchPlayers: value } : {}),
       ...(key === "compact_table_rows" ? { compactTableRows: value } : {}),
     });
     setter(value);
-  }
-
-  function updateReviewMode(value: ReviewMode) {
-    window.localStorage.setItem("fpl_decision_objective_mode", value);
-    savePreferencePatch({ objectiveMode: value });
-    setReviewMode(value);
   }
 
   async function downloadAccountData() {
@@ -220,7 +207,7 @@ export default function SettingsPage() {
 
         <Panel title="SquadMetric account">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div><div className="font-semibold text-primary">{accountEmail || "Local development mode"}</div><p className="mt-1 text-sm text-muted">Account data is protected by Supabase row-level security when sign-in is configured.</p></div>
+            <div><div className="font-semibold text-primary">{accountEmail || "Browser profile"}</div><p className="mt-1 text-sm text-muted">{accountEmail ? "Your account keeps preferences available across supported devices." : "Your preferences are saved on this device."}</p></div>
             {accountEmail ? <button type="button" onClick={signOut} className="fpl-secondary-button px-4 py-2 text-sm">Sign out</button> : null}
           </div>
           <div className="mt-5 border-t border-fpl-border pt-5">
@@ -238,21 +225,8 @@ export default function SettingsPage() {
           ) : null}
         </Panel>
 
-        <Panel title="Decision objective">
-          <div className="flex flex-wrap gap-2">
-            <ObjectiveButton active={reviewMode === "points"} label="Points mode (default)" onClick={() => updateReviewMode("points")} />
-            <ObjectiveButton active={reviewMode === "rank"} label="Rank review mode" onClick={() => updateReviewMode("rank")} />
-          </div>
-          <p className="mt-3 text-xs text-muted">Rank mode is an optional post-Gameweek review lens. It does not alter the production points-maximizing transfer, captain, or chip recommendations.</p>
-        </Panel>
-
         <Panel title="Display preferences">
           <div className="space-y-4">
-            <Toggle
-              label="Show fixture bar"
-              checked={showFixtureBar}
-              onChange={(value) => updateBoolean("show_match_bar", value, setShowFixtureBar)}
-            />
             <Toggle
               label="Show bench players on squad page"
               checked={showBench}
@@ -269,19 +243,14 @@ export default function SettingsPage() {
         <Panel title="About">
           <div className="space-y-1 text-sm text-muted">
             <p>SquadMetric v1.0</p>
-            <p>Built with Python, FastAPI, and Next.js</p>
             <p>Live season: 2026/27</p>
-            <p>Models: consumer-specific portfolio trained only on completed seasons</p>
-            <p>Validation: season-held-out benchmark evidence is shown on the Proof page</p>
+            <p>Independent FPL analytics. SquadMetric never changes your official team.</p>
+            <p><Link href="/proof" className="font-semibold text-violet-700 hover:text-violet-900">How SquadMetric performs →</Link></p>
           </div>
         </Panel>
       </div>
     </div>
   );
-}
-
-function ObjectiveButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return <button type="button" aria-pressed={active} onClick={onClick} className={`rounded-lg border px-4 py-2 text-sm font-semibold ${active ? "border-fpl-green bg-fpl-green/15 text-fpl-green" : "border-fpl-border bg-fpl-raised text-secondary"}`}>{label}</button>;
 }
 
 function Toggle({
