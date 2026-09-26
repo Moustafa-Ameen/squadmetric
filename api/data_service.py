@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from fpl_intelligence.artifact_contract import resolve_artifact_path
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -133,11 +135,9 @@ def live_current_player_gw() -> pd.DataFrame:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
         manifest = {}
-    path = Path(
-        str(
-            manifest.get("live_history_path")
-            or (PROCESSED_DIR / "live_2026_27_player_gw.csv")
-        )
+    path = resolve_artifact_path(
+        manifest.get("live_history_path")
+        or (PROCESSED_DIR / "live_2026_27_player_gw.csv")
     )
     if not path.is_file():
         logging.warning("Live current-season history is missing: %s", path)

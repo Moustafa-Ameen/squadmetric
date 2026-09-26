@@ -7,6 +7,8 @@ The website is a Next.js Node server, not a static export. It relies on same-ori
 
 1. Run the FastAPI service with the repository's Python environment and current,
    validated 2026/27 artifacts.
+   For the zero-idle-cost Cloud Run package and exact command, follow
+   [`../docs/deployment/cloud-run.md`](../docs/deployment/cloud-run.md).
 2. Set `FPL_API_SERVER_URL` to the server-side FastAPI origin. Never expose that
    value through `NEXT_PUBLIC_*`.
 3. Set the canonical `NEXT_PUBLIC_SITE_URL`. The launch experience is guest-first:

@@ -38,6 +38,37 @@ ARTIFACT_SCHEMA_VERSION = "current-artifacts-v2-launch-intelligence"
 LIVE_CURRENT_HISTORY_PATH = PROCESSED_DIR / "live_2026_27_player_gw.csv"
 
 
+def portable_artifact_path(path: Path) -> str:
+    """Store repository artifacts relative to the project whenever possible."""
+
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
+def resolve_artifact_path(raw_path: Any) -> Path:
+    """Resolve both portable paths and manifests created on another operating system."""
+
+    text = str(raw_path or "").strip()
+    if not text:
+        return PROJECT_ROOT / "__missing_artifact_path__"
+    direct = Path(text)
+    if direct.is_file():
+        return direct
+    normalized = text.replace("\\", "/")
+    relative = Path(normalized)
+    if not relative.is_absolute() and not relative.drive:
+        return PROJECT_ROOT / relative
+    lowered = normalized.casefold()
+    for marker in ("/data/", "/models/"):
+        index = lowered.find(marker)
+        if index >= 0:
+            return PROJECT_ROOT / normalized[index + 1 :]
+    return direct
+
+
 @dataclass(frozen=True)
 class CurrentArtifactManifest:
     schema_version: str
@@ -128,28 +159,28 @@ def build_current_artifact_manifest(
         season=season,
         generated_at=timestamp,
         data_cutoff=timestamp,
-        bootstrap_path=str(RAW_DIR / "bootstrap-static.json"),
+        bootstrap_path=portable_artifact_path(RAW_DIR / "bootstrap-static.json"),
         bootstrap_hash=payload_hash(bootstrap),
-        fixtures_path=str(fixtures_path),
+        fixtures_path=portable_artifact_path(fixtures_path),
         fixtures_hash=file_sha256(fixtures_path),
-        players_current_path=str(players_current_path),
+        players_current_path=portable_artifact_path(players_current_path),
         players_current_hash=file_sha256(players_current_path),
-        players_ranked_path=str(players_ranked_path),
+        players_ranked_path=portable_artifact_path(players_ranked_path),
         players_ranked_hash=file_sha256(players_ranked_path),
         player_count=len(players),
         team_count=len(teams),
         rules_version=rules.rules_version,
         rules_payload_hash=rules.payload_hash,
         rules_contract_hash=rules_contract_hash(rules),
-        rules_manifest_path=str(rules_manifest_path),
-        model_metadata_path=str(model_metadata_path),
+        rules_manifest_path=portable_artifact_path(rules_manifest_path),
+        model_metadata_path=portable_artifact_path(model_metadata_path),
         model_metadata_hash=file_sha256(model_metadata_path),
-        launch_evidence_path=str(launch_evidence_path),
+        launch_evidence_path=portable_artifact_path(launch_evidence_path),
         launch_evidence_hash=file_sha256(launch_evidence_path),
-        availability_events_path=str(availability_events_path),
+        availability_events_path=portable_artifact_path(availability_events_path),
         availability_events_hash=file_sha256(availability_events_path),
         live_history_path=(
-            str(LIVE_CURRENT_HISTORY_PATH)
+            portable_artifact_path(LIVE_CURRENT_HISTORY_PATH)
             if LIVE_CURRENT_HISTORY_PATH.exists()
             else None
         ),
@@ -219,7 +250,7 @@ def validate_current_artifacts(
     paths: dict[str, Path] = {}
     for field in path_fields:
         raw_path = str(manifest.get(field, "")).strip()
-        path = Path(raw_path) if raw_path else Path("__missing_artifact_path__")
+        path = resolve_artifact_path(raw_path)
         paths[field] = path
         if not raw_path or not path.is_file():
             errors.append(f"{field} is missing: {path}")
@@ -387,7 +418,7 @@ def validate_current_artifacts(
         if not live_history_path:
             errors.append("artifact manifest is missing finalized live-history path")
         else:
-            live_path = Path(live_history_path)
+            live_path = resolve_artifact_path(live_history_path)
             if not live_path.is_file():
                 errors.append(f"finalized live history is missing: {live_path}")
             elif file_sha256(live_path) != manifest.get("live_history_hash"):

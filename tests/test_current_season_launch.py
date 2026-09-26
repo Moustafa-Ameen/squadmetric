@@ -11,6 +11,9 @@ from api.routers.fpl_live import _detect_season_state
 
 from fpl_intelligence.artifact_contract import (
     CURRENT_ARTIFACT_MANIFEST_PATH,
+    PROJECT_ROOT,
+    portable_artifact_path,
+    resolve_artifact_path,
     validate_current_artifacts,
 )
 from fpl_intelligence.launch_intelligence import LaunchPlayerEvidence
@@ -86,6 +89,19 @@ def test_unstarted_live_bootstrap_is_preseason():
     )
 
     assert state == "pre_season"
+
+
+def test_artifact_paths_survive_windows_to_linux_deployment():
+    windows_path = (
+        r"C:\Users\builder\squadmetric\data\processed\players_current.csv"
+    )
+
+    assert resolve_artifact_path(windows_path) == (
+        PROJECT_ROOT / "data" / "processed" / "players_current.csv"
+    )
+    assert portable_artifact_path(
+        PROJECT_ROOT / "models" / "live_2026_27_models.json"
+    ) == "models/live_2026_27_models.json"
 
 
 def test_preseason_priors_match_names_not_season_local_ids():

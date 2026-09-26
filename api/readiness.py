@@ -22,6 +22,7 @@ from api import fpl_client
 from fpl_intelligence.artifact_contract import (
     CURRENT_ARTIFACT_MANIFEST_PATH,
     ArtifactReadiness,
+    resolve_artifact_path,
     validate_current_artifacts,
 )
 from fpl_intelligence.season_rules import (
@@ -103,8 +104,8 @@ def _artifact_fingerprint(
         manifest = {}
     for field, value in manifest.items():
         if field.endswith("_path") and value:
-            paths.add(Path(str(value)))
-    model_metadata_path = Path(str(manifest.get("model_metadata_path") or ""))
+            paths.add(resolve_artifact_path(value))
+    model_metadata_path = resolve_artifact_path(manifest.get("model_metadata_path"))
     if model_metadata_path.is_file():
         try:
             model_metadata: dict[str, Any] = json.loads(
@@ -417,7 +418,7 @@ def _artifact_player_ids(manifest: dict[str, Any]) -> set[int] | None:
     try:
         import pandas as pd
 
-        rows = pd.read_csv(Path(raw_path), usecols=["element_id"])
+        rows = pd.read_csv(resolve_artifact_path(raw_path), usecols=["element_id"])
         return set(pd.to_numeric(rows["element_id"], errors="coerce").dropna().astype(int))
     except (OSError, ValueError, KeyError):
         return None
@@ -455,7 +456,7 @@ def _artifact_finalized_gameweeks(manifest: dict[str, Any]) -> list[int]:
 
 
 def _artifact_json_payload(raw_path: Any) -> Any | None:
-    path = Path(str(raw_path or ""))
+    path = resolve_artifact_path(raw_path)
     if not path.is_file():
         return None
     try:
