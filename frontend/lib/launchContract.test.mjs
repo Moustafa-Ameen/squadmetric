@@ -10,26 +10,24 @@ test("production verification fails closed when launch credentials are absent", 
     env: { PATH: process.env.PATH },
   });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /NEXT_PUBLIC_SUPABASE_URL/);
-  assert.match(result.stderr, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(result.stderr, /FPL_API_SERVER_URL/);
+  assert.match(result.stderr, /NEXT_PUBLIC_SITE_URL/);
 });
 
-test("production verification accepts a complete non-local launch contract", () => {
+test("production verification accepts a guest-first non-local launch contract", () => {
   const result = spawnSync(process.execPath, ["scripts/verify-production-env.mjs"], {
     cwd: process.cwd(),
     encoding: "utf8",
     env: {
       ...process.env,
       FPL_API_SERVER_URL: "https://api.squadmetric.test",
-      NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
-      SUPABASE_SERVICE_ROLE_KEY: "server_only_test_key",
       NEXT_PUBLIC_SITE_URL: "https://squadmetric.test",
       NEXT_PUBLIC_SUPPORT_EMAIL: "support@squadmetric.test",
     },
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Production contract verified/);
+  assert.match(result.stdout, /Guest-first browser storage enabled/);
 });
 
 test("account schema enables owner isolation and launch data contracts", () => {

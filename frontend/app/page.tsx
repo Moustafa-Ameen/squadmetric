@@ -51,12 +51,12 @@ export default function LandingPage() {
                 SquadMetric turns projections, fixtures, availability, and uncertainty into one clear weekly plan for your transfers, captain, bench, and chips.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <Link href="/signup" className="sm-primary-button justify-center px-6 py-3.5">
-                  Create your account
+                <Link href="/onboarding" className="sm-primary-button justify-center px-6 py-3.5">
+                  Rate my team
                   <ArrowRight className="h-4 w-4" />
                 </Link>
-                <Link href="/login" className="sm-secondary-button justify-center px-6 py-3.5">
-                  Sign in
+                <Link href="/#how-it-works" className="sm-secondary-button justify-center px-6 py-3.5">
+                  See how it works
                 </Link>
               </div>
               <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-600">
@@ -140,8 +140,8 @@ export default function LandingPage() {
         <section className="px-5 py-20 sm:px-8 lg:px-10">
           <div className="mx-auto max-w-7xl rounded-[32px] bg-slate-950 px-6 py-12 text-center text-white sm:px-10">
             <h2 className="text-3xl font-black tracking-[-0.035em] sm:text-4xl">Your next gameweek starts with one clear plan.</h2>
-            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-300">Set up your SquadMetric account now. Team linking and personalized recommendations follow in the guided onboarding flow.</p>
-            <Link href="/signup" className="sm-primary-button mt-8 justify-center px-6 py-3.5">Get started <ArrowRight className="h-4 w-4" /></Link>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-300">Enter a public Team ID or upload a screenshot. No signup and no FPL password required.</p>
+            <Link href="/onboarding" className="sm-primary-button mt-8 justify-center px-6 py-3.5">Rate my team <ArrowRight className="h-4 w-4" /></Link>
           </div>
         </section>
       </main>

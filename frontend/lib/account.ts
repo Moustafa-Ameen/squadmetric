@@ -38,7 +38,7 @@ export async function persistOnboarding({
 
   if (!supabase) return { storage: "local" as const };
   const { data, error: userError } = await supabase.auth.getUser();
-  if (userError || !data.user) throw userError ?? new Error("Your session has expired. Sign in again.");
+  if (userError || !data.user) return { storage: "local" as const };
 
   const userId = data.user.id;
   const [profileResult, linkResult, preferenceResult] = await Promise.all([
@@ -78,7 +78,7 @@ export async function persistProvisionalOnboarding({
   window.localStorage.setItem("squadmetric_preferences", JSON.stringify(preferences));
   if (!supabase) return { storage: "local" as const };
   const { data, error: userError } = await supabase.auth.getUser();
-  if (userError || !data.user) throw userError ?? new Error("Your session has expired. Sign in again.");
+  if (userError || !data.user) return { storage: "local" as const };
   const [profileResult, preferenceResult] = await Promise.all([
     supabase.from("profiles").upsert({ user_id: data.user.id, onboarding_completed: true }),
     supabase.from("user_preferences").upsert({

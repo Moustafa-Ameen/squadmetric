@@ -114,34 +114,6 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
     }
   }
 
-  async function continueWithGoogle() {
-    if (submitting) return;
-    if (mode === "signup" && !acceptedLegal) {
-      setStatusTone("error");
-      setStatus("Agree to the Terms of Use and acknowledge the Privacy Policy before continuing.");
-      return;
-    }
-    const supabase = createSupabaseBrowserClient();
-    if (!supabase) {
-      setStatusTone("error");
-      setStatus("Google sign-in is not configured on this deployment yet.");
-      return;
-    }
-
-    setSubmitting(true);
-    setStatus("");
-    const next = mode === "signup" ? "/consent" : sanitizeNextPath(new URLSearchParams(window.location.search).get("next"), "/dashboard");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: authRedirectUrl(`/auth/callback?next=${encodeURIComponent(next)}`) },
-    });
-    if (error) {
-      setSubmitting(false);
-      setStatusTone("error");
-      setStatus(friendlyAuthError(error));
-    }
-  }
-
   const copy = {
     login: { eyebrow: "Welcome back", title: "Sign in to SquadMetric", body: "Open your latest gameweek plan and saved decisions.", action: "Sign in", switchText: "New to SquadMetric?", switchAction: "Create an account", switchHref: "/signup" },
     signup: { eyebrow: "Get started", title: "Create your account", body: "Your weekly FPL decisions, drafts, and preferences in one place.", action: "Create account", switchText: "Already have an account?", switchAction: "Sign in", switchHref: "/login" },
@@ -154,16 +126,7 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
       <h1 id="auth-title" className="mt-3 text-3xl font-black tracking-[-0.04em] text-slate-950">{copy.title}</h1>
       <p className="mt-3 text-sm leading-6 text-slate-600">{copy.body}</p>
 
-      {mode !== "forgot" ? (
-        <button type="button" onClick={continueWithGoogle} disabled={submitting} className="mt-7 flex w-full items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-xs font-black text-blue-600" aria-hidden="true">G</span>
-          Continue with Google
-        </button>
-      ) : null}
-
-      {mode !== "forgot" ? <div className="my-6 flex items-center gap-3 text-xs font-semibold text-slate-600"><span className="h-px flex-1 bg-slate-200" />or continue with email<span className="h-px flex-1 bg-slate-200" /></div> : null}
-
-      <form onSubmit={submit} noValidate className={mode === "forgot" ? "mt-7 space-y-5" : "space-y-5"}>
+      <form onSubmit={submit} noValidate className="mt-7 space-y-5">
         <Field id={`${mode}-email`} label="Email address" error={touched.email && !emailValid ? "Enter a valid email address." : ""}>
           <Mail className="auth-field-icon" aria-hidden="true" />
           <input id={`${mode}-email`} type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={() => setTouched((value) => ({ ...value, email: true }))} aria-invalid={touched.email && !emailValid} aria-describedby={touched.email && !emailValid ? `${mode}-email-error` : undefined} className="auth-input" placeholder="you@example.com" />

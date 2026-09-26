@@ -64,7 +64,7 @@ test("public landing page explains the product and leads with one clear action",
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Make the smarter FPL decision. Every gameweek." })).toBeVisible();
   await expect(page.getByText("SquadMetric", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create your account" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Rate my team" }).first()).toBeVisible();
   await expect(page.getByText("Primary recommendation", { exact: true })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 });
@@ -82,6 +82,7 @@ test("privacy and terms are public, linked, and explicit about recommendation li
 test("account creation exposes requirements and validates beside the field", async ({ page }) => {
   await page.goto("/signup");
   await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toHaveCount(0);
   await page.getByLabel("Email address").fill("not-an-email");
   await page.getByLabel("Email address").blur();
   await expect(page.getByText("Enter a valid email address.")).toBeVisible();
@@ -107,15 +108,11 @@ test("unconfigured authentication never simulates account creation", async ({ pa
 test("guided onboarding accepts an official FPL URL and stores verified setup", async ({ page }) => {
   await page.goto("/onboarding");
   await page.getByLabel("FPL Team ID or URL").fill("https://fantasy.premierleague.com/entry/5605168/history");
-  await page.getByRole("button", { name: "Verify team" }).click();
-  await expect(page.getByText("Test XI")).toBeVisible();
-  await page.getByText("Aggressive", { exact: true }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Finish setup" }).click();
+  await page.getByRole("button", { name: "Rate my team" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   const stored = await page.evaluate(() => ({ teamId: localStorage.getItem("fpl_team_id"), preferences: localStorage.getItem("squadmetric_preferences") }));
   expect(stored.teamId).toBe("5605168");
-  expect(JSON.parse(stored.preferences ?? "{}").riskStyle).toBe("aggressive");
+  expect(JSON.parse(stored.preferences ?? "{}").riskStyle).toBe("balanced");
 });
 
 test("my team is readable, interactive, and offers a best-XI view", async ({ page }) => {

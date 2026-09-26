@@ -13,9 +13,8 @@ npm.cmd run dev
 Open <http://localhost:3000>. FastAPI must be running at
 `http://localhost:8000` unless `FPL_API_SERVER_URL` is overridden.
 
-Authentication requires the public Supabase variables described in
-[`../supabase/README.md`](../supabase/README.md). Never expose the service-role
-key through a `NEXT_PUBLIC_*` variable.
+The launch experience is guest-first. Team links, drafts, watchlists, and
+preferences are stored in the visitor's browser; no account provider is required.
 
 ## Quality gates
 

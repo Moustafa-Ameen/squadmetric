@@ -9,10 +9,9 @@ export function PublicHeader() {
         <Brand />
         <nav aria-label="Public navigation" className="hidden items-center gap-7 md:flex">
           <Link href="/#how-it-works" className="text-sm font-semibold text-slate-600 hover:text-slate-950">How it works</Link>
-          <Link href="/login" className="text-sm font-semibold text-slate-600 hover:text-slate-950">Sign in</Link>
-          <Link href="/signup" className="sm-primary-button px-4 py-2.5">Get started</Link>
+          <Link href="/onboarding" className="sm-primary-button px-4 py-2.5">Rate my team</Link>
         </nav>
-        <div className="md:hidden"><Link href="/login" className="sm-secondary-button px-4 py-2.5">Sign in</Link></div>
+        <div className="md:hidden"><Link href="/onboarding" className="sm-primary-button px-4 py-2.5">Rate my team</Link></div>
       </div>
     </header>
   );
