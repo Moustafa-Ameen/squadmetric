@@ -72,10 +72,7 @@ export default function SettingsPage() {
       const verified = await getTeam(parsed.value.teamId);
       const stored = JSON.parse(window.localStorage.getItem("squadmetric_preferences") ?? "{}") as Partial<OnboardingPreferences>;
       await persistOnboarding({
-        supabase: null,
         teamId: parsed.value.teamId,
-        sourceInput: draftTeamId.trim(),
-        team: verified,
         preferences: { ...DEFAULT_ONBOARDING_PREFERENCES, ...stored },
       });
       setTeamId(parsed.value.teamId);

@@ -30,12 +30,9 @@ export function OnboardingFlow() {
     setBusy(true);
     setError("");
     try {
-      const team = await getTeam(parsed.value.teamId);
+      await getTeam(parsed.value.teamId);
       await persistOnboarding({
-        supabase: null,
         teamId: parsed.value.teamId,
-        sourceInput: teamInput.trim(),
-        team,
         preferences: DEFAULT_ONBOARDING_PREFERENCES,
       });
       router.replace("/dashboard");
@@ -51,7 +48,6 @@ export function OnboardingFlow() {
     setError("");
     try {
       await persistProvisionalOnboarding({
-        supabase: null,
         analysis,
         preferences: DEFAULT_ONBOARDING_PREFERENCES,
       });

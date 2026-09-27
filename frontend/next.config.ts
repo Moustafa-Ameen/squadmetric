@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-const supabaseWebSocket = supabaseUrl?.replace(/^https:/, "wss:");
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -12,7 +10,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self'${supabaseUrl ? ` ${supabaseUrl}` : ""}${supabaseWebSocket ? ` ${supabaseWebSocket}` : ""}`,
+  "connect-src 'self'",
   "worker-src 'self' blob:",
 ].join("; ");
 

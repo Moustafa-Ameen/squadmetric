@@ -79,32 +79,6 @@ test("privacy and terms are public, linked, and explicit about recommendation li
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test("account creation exposes requirements and validates beside the field", async ({ page }) => {
-  await page.goto("/signup");
-  await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue with Google" })).toHaveCount(0);
-  await page.getByLabel("Email address").fill("not-an-email");
-  await page.getByLabel("Email address").blur();
-  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create account" })).toBeDisabled();
-  await expect(page.getByText("8+ characters")).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: /I agree to the Terms of Use/ })).not.toBeChecked();
-  await expectNoSeriousAccessibilityViolations(page);
-});
-
-test("unconfigured authentication never simulates account creation", async ({ page }) => {
-  await page.goto("/signup");
-  await page.getByLabel("Email address").fill("manager@example.com");
-  await page.getByLabel("Password", { exact: true }).fill("squadmetric1");
-  await page.getByLabel("Confirm password").fill("squadmetric1");
-  await expect(page.getByRole("button", { name: "Create account" })).toBeDisabled();
-  await page.getByRole("checkbox", { name: /I agree to the Terms of Use/ }).check();
-  await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByText("Account access is not configured on this deployment.", { exact: false })).toBeVisible();
-  await expect(page).toHaveURL(/\/signup$/);
-  await expectNoSeriousAccessibilityViolations(page);
-});
-
 test("guided onboarding accepts an official FPL URL and stores verified setup", async ({ page }) => {
   await page.goto("/onboarding");
   await page.getByLabel("FPL Team ID or URL").fill("https://fantasy.premierleague.com/entry/5605168/history");
@@ -309,7 +283,7 @@ test("results page handles preseason safely without an objective switch", async 
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test("navigation exposes one simple signed-in product structure", async ({ page }) => {
+test("navigation exposes one simple guest product structure", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/dashboard");
   const navigation = page.getByRole("navigation", { name: (page.viewportSize()?.width ?? 1280) < 1024 ? "Mobile navigation" : "Primary navigation" });

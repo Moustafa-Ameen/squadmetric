@@ -1,5 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ScreenshotAnalysis, TeamData } from "@/lib/types";
+import type { ScreenshotAnalysis } from "@/lib/types";
 import { ACCOUNT_STORAGE_KEYS } from "@/lib/accountStorage";
 
 export type RiskStyle = "safe" | "balanced" | "aggressive";
@@ -20,76 +19,28 @@ export const DEFAULT_ONBOARDING_PREFERENCES: OnboardingPreferences = {
 };
 
 export async function persistOnboarding({
-  supabase,
   teamId,
-  sourceInput,
-  team,
   preferences,
 }: {
-  supabase: SupabaseClient | null;
   teamId: string;
-  sourceInput: string;
-  team: TeamData;
   preferences: OnboardingPreferences;
 }) {
   window.localStorage.setItem("fpl_team_id", teamId);
   window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.provisionalSquad);
   window.localStorage.setItem("squadmetric_preferences", JSON.stringify(preferences));
 
-  if (!supabase) return { storage: "local" as const };
-  const { data, error: userError } = await supabase.auth.getUser();
-  if (userError || !data.user) return { storage: "local" as const };
-
-  const userId = data.user.id;
-  const [profileResult, linkResult, preferenceResult] = await Promise.all([
-    supabase.from("profiles").upsert({ user_id: userId, onboarding_completed: true }),
-    supabase.from("fpl_team_links").upsert({
-      user_id: userId,
-      team_id: Number(teamId),
-      source_input: sourceInput,
-      verified_team_name: team.team_name,
-      verified_at: new Date().toISOString(),
-    }),
-    supabase.from("user_preferences").upsert({
-      user_id: userId,
-      risk_style: preferences.riskStyle,
-      alternative_style: preferences.alternativeStyle,
-      deadline_reminders: preferences.deadlineReminders,
-      email_notifications: preferences.emailNotifications,
-    }),
-  ]);
-
-  const failure = profileResult.error ?? linkResult.error ?? preferenceResult.error;
-  if (failure) throw failure;
-  return { storage: "account" as const };
+  return { storage: "browser" as const };
 }
 
 export async function persistProvisionalOnboarding({
-  supabase,
   analysis,
   preferences,
 }: {
-  supabase: SupabaseClient | null;
   analysis: ScreenshotAnalysis;
   preferences: OnboardingPreferences;
 }) {
   window.localStorage.removeItem("fpl_team_id");
   window.localStorage.setItem(ACCOUNT_STORAGE_KEYS.provisionalSquad, JSON.stringify(analysis));
   window.localStorage.setItem("squadmetric_preferences", JSON.stringify(preferences));
-  if (!supabase) return { storage: "local" as const };
-  const { data, error: userError } = await supabase.auth.getUser();
-  if (userError || !data.user) return { storage: "local" as const };
-  const [profileResult, preferenceResult] = await Promise.all([
-    supabase.from("profiles").upsert({ user_id: data.user.id, onboarding_completed: true }),
-    supabase.from("user_preferences").upsert({
-      user_id: data.user.id,
-      risk_style: preferences.riskStyle,
-      alternative_style: preferences.alternativeStyle,
-      deadline_reminders: preferences.deadlineReminders,
-      email_notifications: preferences.emailNotifications,
-    }),
-  ]);
-  const failure = profileResult.error ?? preferenceResult.error;
-  if (failure) throw failure;
   return { storage: "browser" as const };
 }

@@ -7,11 +7,10 @@ import { DrawerProvider } from "@/context/DrawerContext";
 import { getSeasonState } from "@/lib/api";
 import type { SeasonState } from "@/lib/types";
 import { AppNavigation } from "./AppNavigation";
-import { AccountSessionHydrator } from "./AccountSessionHydrator";
 import { DecisionStatusNotice } from "./DecisionStatusNotice";
 import { PlayerDrawer } from "./PlayerDrawer";
 
-const SHELLLESS_ROUTES = new Set(["/", "/login", "/signup", "/forgot-password", "/update-password", "/onboarding", "/consent", "/privacy", "/terms", "/auth/error"]);
+const SHELLLESS_ROUTES = new Set(["/", "/onboarding", "/privacy", "/terms"]);
 const ROUTES_WITH_OWN_STATUS = new Set(["/dashboard", "/decisions"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -48,7 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               Live decision status is unavailable. Existing content remains visible, but confirm freshness before acting.
             </div>
           ) : null}
-          <AccountSessionHydrator>{children}</AccountSessionHydrator>
+          {children}
         </div>
       </main>
       <PlayerDrawer />

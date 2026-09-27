@@ -17,8 +17,8 @@
   <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" />
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-live-009688?logo=fastapi&logoColor=white" />
-  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-317%20passing-22c55e" />
-  <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-32%20passing-8b5cf6" />
+  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-336%20passing-22c55e" />
+  <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-38%20passing-8b5cf6" />
 </p>
 
 <p align="center">
@@ -84,8 +84,8 @@ Rank-relative play remains an explicit, optional review mode. It never silently 
 - Professional recommendation-first dashboard.
 - Visual pitch for the current squad and recommended XI.
 - Weekly transfer, captaincy, bench, chip, player, and fixture pages.
-- Email/password and Google authentication through Supabase.
-- Owner-isolated profiles, FPL team links, preferences, drafts, and decision history.
+- Guest-first onboarding by public FPL Team ID, official URL, or squad screenshot.
+- Browser-local team link, preferences, drafts, watchlist, and decision history.
 - Responsive desktop/mobile interface with graceful live-data fallbacks.
 
 ### Evidence and operations
@@ -129,7 +129,7 @@ The system improves during the season through a guarded feedback loop:
 ```mermaid
 graph TD
     UI[Next.js 16 frontend] --> API[FastAPI service]
-    UI --> AUTH[Supabase Auth + Postgres RLS]
+    UI --> LOCAL[Browser-local manager state]
     API --> LIVE[Official FPL API]
     API --> ART[Validated serving artifacts]
     ART --> MODELS[scikit-learn models]
@@ -141,10 +141,10 @@ graph TD
 
 | Layer | Technology | Responsibility |
 |---|---|---|
-| Web | Next.js 16, React 19, TypeScript, Tailwind CSS | Accounts, dashboard, team, planner, players, fixtures, proof |
+| Web | Next.js 16, React 19, TypeScript, Tailwind CSS | Guest onboarding, dashboard, team, planner, players, fixtures, proof |
 | API | FastAPI, Pydantic, httpx | Live FPL access, readiness, projections, recommendations |
 | Intelligence | pandas, NumPy, scikit-learn, SciPy | Features, projections, calibration, deterministic optimization |
-| Identity/data | Supabase Auth, PostgreSQL, RLS | Secure user accounts and owner-only saved data |
+| Local state | Browser `localStorage` | Team link, preferences, drafts, watchlist, decision history |
 | Validation | pytest, Ruff, ESLint, Playwright, axe | Correctness, leakage protection, accessibility, responsive flows |
 
 ## Quick start
@@ -154,7 +154,6 @@ graph TD
 - Windows PowerShell (the maintained production/development path).
 - Python 3.13.
 - Node.js 24 and npm.
-- A Supabase project for real account authentication.
 
 ### 1. Install
 
@@ -172,18 +171,7 @@ cd ..
 
 ### 2. Configure
 
-The API defaults work locally. Copy values from `.env.example` if you need to override hosts, ports, season, or readiness limits.
-
-For authentication, apply the migration and configure Supabase as described in [supabase/README.md](supabase/README.md). Then create `frontend/.env.local`:
-
-```dotenv
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
-SUPABASE_SECRET_KEY=YOUR_SERVER_ONLY_SECRET_KEY
-```
-
-> [!CAUTION]
-> Never prefix the Supabase secret key with `NEXT_PUBLIC_`, expose it in the browser, or commit it. User-owned tables are protected by Row Level Security.
+The API defaults work locally. Copy values from `.env.example` only if you need to override hosts, ports, season, or readiness limits. The public launch is guest-first: no identity provider, OAuth app, database, or email service is required.
 
 ### 3. Build the current serving bundle
 
@@ -207,10 +195,9 @@ services. Startup logs are written under `.runtime/squadmetric/`. On a fresh clo
 the launcher creates the Python environment and installs dependencies when needed.
 It does not refresh season data or create any automatic schedule.
 
-If the configured Supabase project cannot be reached, the launcher automatically
-opens the dashboard in local workspace mode. Recommendations and browser-local
-settings remain usable, while sign-in and cloud account sync stay disabled for
-that run; `.env.local` is not changed.
+SquadMetric stores the linked Team ID, preferences, drafts, watchlist, and decision
+history in the visitor's browser. It does not request an FPL password or create a
+SquadMetric account.
 
 The default launcher uses an optimized frontend build so page-to-page navigation
 stays fast. It rebuilds only when frontend source files change. Use
@@ -387,9 +374,9 @@ Current verified baseline:
 
 | Gate | Result |
 |---|---:|
-| Python tests | 317 passing |
-| Frontend unit tests | 32 passing |
-| Desktop/mobile browser tests | 32 passing |
+| Python tests | 336 passing |
+| Frontend unit tests | 35 passing |
+| Desktop/mobile browser tests | 38 passing |
 | Ruff, ESLint, TypeScript | Clean |
 | Next.js production build | Passing |
 
@@ -405,7 +392,6 @@ squadmetric/
 ├── data/                     Raw snapshots, processed contracts, evidence
 ├── models/                   Versioned serving-model metadata/artifacts
 ├── scripts/                  Refresh and operational commands
-├── supabase/                 Account schema, RLS policies, setup guide
 ├── tests/                    Backend correctness and regression suite
 └── docs/                     Operations, decision history, and product visuals
 ```

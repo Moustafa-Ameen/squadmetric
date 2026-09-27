@@ -160,8 +160,8 @@ Rejected behavior must remain unreachable from defaults:
   volatile official selection-rank and price-projection fields. Decision evidence
   remains tied to one frozen serving snapshot.
 - Production deployment still requires a persistent FastAPI host, configured
-  Next.js origin, Supabase production callbacks, service-role account deletion,
-  OAuth, SMTP, TLS, monitoring, and end-to-end verification.
+  Next.js origin, TLS, monitoring, and end-to-end verification. The first public
+  launch is deliberately guest-first, with user state stored in the browser.
 - The next modeling intervention should follow real frozen deadline evidence and
   change one consumer or policy at a time. Do not begin another broad model
   tournament before the corrected-economics baseline and live evidence loop are

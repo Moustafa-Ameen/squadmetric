@@ -1,5 +1,7 @@
 # SquadMetric website deployment
 
+For the end-to-end first-release sequence, use the [public-launch checklist](../docs/deployment/launch-checklist.md).
+
 The website is a Next.js Node server, not a static export. It relies on same-origin
 `/api/*` rewrites to a separately running FastAPI service.
 
@@ -13,7 +15,7 @@ The website is a Next.js Node server, not a static export. It relies on same-ori
    value through `NEXT_PUBLIC_*`.
 3. Set the canonical `NEXT_PUBLIC_SITE_URL`. The launch experience is guest-first:
    team links, preferences, drafts, watchlists, and history are stored in the
-   visitor's browser. Supabase and OAuth credentials are not required.
+   visitor's browser. No identity provider or OAuth credentials are required.
 4. Set a monitored `NEXT_PUBLIC_SUPPORT_EMAIL`, then verify the production
    contract, build, and start the website:
 
