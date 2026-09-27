@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM mirror.gcr.io/library/python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,7 +9,9 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir .
+# An editable install keeps package paths rooted at /app/src. Several artifact
+# contracts deliberately derive the repository root from their source location.
+RUN pip install --no-cache-dir -e .
 
 COPY api ./api
 COPY data/raw/bootstrap-static.json data/raw/fixtures.json ./data/raw/
