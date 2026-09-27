@@ -58,14 +58,14 @@ def resolve_artifact_path(raw_path: Any) -> Path:
     if direct.is_file():
         return direct
     normalized = text.replace("\\", "/")
-    relative = Path(normalized)
-    if not relative.is_absolute() and not relative.drive:
-        return PROJECT_ROOT / relative
     lowered = normalized.casefold()
     for marker in ("/data/", "/models/"):
         index = lowered.find(marker)
         if index >= 0:
             return PROJECT_ROOT / normalized[index + 1 :]
+    relative = Path(normalized)
+    if not relative.is_absolute() and not relative.drive:
+        return PROJECT_ROOT / relative
     return direct
 
 

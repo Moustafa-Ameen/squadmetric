@@ -92,13 +92,14 @@ def test_unstarted_live_bootstrap_is_preseason():
 
 
 def test_artifact_paths_survive_windows_to_linux_deployment():
-    windows_path = (
+    assert resolve_artifact_path(
         r"C:\Users\builder\squadmetric\data\processed\players_current.csv"
-    )
-
-    assert resolve_artifact_path(windows_path) == (
+    ) == (
         PROJECT_ROOT / "data" / "processed" / "players_current.csv"
     )
+    assert resolve_artifact_path(
+        r"D:\build\squadmetric\models\live_2026_27_models.json"
+    ) == (PROJECT_ROOT / "models" / "live_2026_27_models.json")
     assert portable_artifact_path(
         PROJECT_ROOT / "models" / "live_2026_27_models.json"
     ) == "models/live_2026_27_models.json"
