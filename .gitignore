@@ -23,5 +23,22 @@ data/processed/*.txt
 models/**
 models/*.joblib
 
+# Production-serving artifacts are intentionally versioned. The live backend is
+# built from GitHub, so these files must be present in the remote build context.
+!data/raw/bootstrap-static.json
+!data/raw/fixtures.json
+!data/processed/current_artifact_manifest.json
+!data/processed/current_availability_events.json
+!data/processed/live_2026_27_player_gw.csv
+!data/processed/players_current.csv
+!data/processed/players_ranked.csv
+!data/processed/rules/
+!data/processed/rules/**
+!models/live_2026_27_gradient_points.joblib
+!models/live_2026_27_minutes_band.joblib
+!models/live_2026_27_minutes_binary.joblib
+!models/live_2026_27_models.json
+!models/live_2026_27_ridge_points.joblib
+
 .env
 .env*.local

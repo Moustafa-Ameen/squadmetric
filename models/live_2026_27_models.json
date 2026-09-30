@@ -1,0 +1,55 @@
+{
+  "artifacts": {
+    "gradient": {
+      "class": "sklearn.pipeline.Pipeline",
+      "path": "live_2026_27_gradient_points.joblib",
+      "sha256": "8812eb6fcd9352302baa2aa04c184ca4ff705bb3358b06943ed9e330e2d0fe1f"
+    },
+    "minutes_band": {
+      "class": "fpl_intelligence.minutes_model.MinutesBandConditionalModel",
+      "path": "live_2026_27_minutes_band.joblib",
+      "sha256": "3a20a5ac76984c0588a0556b883372727b263026ab3c05f092b2aeda83950fea"
+    },
+    "minutes_binary": {
+      "class": "sklearn.pipeline.Pipeline",
+      "path": "live_2026_27_minutes_binary.joblib",
+      "sha256": "2e58a53171afd2800a8583042ef1b20e2f1dd6246fe6adffe4e7421fb170b280"
+    },
+    "ridge": {
+      "class": "sklearn.pipeline.Pipeline",
+      "path": "live_2026_27_ridge_points.joblib",
+      "sha256": "e6ea44f41a5e413af2e406a60ff4cdf69a72a5abc2a2fbc299f98360fcb1bb95"
+    }
+  },
+  "feature_columns": [
+    "price_before_deadline",
+    "minutes_last_3",
+    "points_last_3",
+    "opponent_strength",
+    "selected_by_percent_before_deadline",
+    "market_snapshot_available",
+    "position",
+    "home_or_away"
+  ],
+  "finalized_current_season_gameweeks": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "finalized_current_season_hash": "368a4b1627bebbc51a1ee3fa3e0b2c2f93f7f6c6e30be38831a0154e5af45c38",
+  "finalized_current_season_rows": 3149,
+  "generated_at": "2026-09-22T11:39:43.923209Z",
+  "schema_version": "live-models-v2-finalized-current-season",
+  "target_season": "2026-27",
+  "training_rows": 88460,
+  "training_seasons": [
+    "2023-24",
+    "2024-25",
+    "2025-26",
+    "2026-27"
+  ],
+  "validation_policy": "Serving architecture is fixed by completed-season validation. The live fit adds only official target-season Gameweeks marked both finished and data-checked; provisional outcomes are excluded.",
+  "validation_source": "data/processed/step5_model_comparison.csv and season benchmark history"
+}

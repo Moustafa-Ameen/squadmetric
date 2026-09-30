@@ -1,0 +1,299 @@
+{
+  "bps_rule_version": "bps_v2_2026_27",
+  "budget": 100.0,
+  "chip_reset_gameweek": 19,
+  "chip_rules_version": "chips_v4_double_set_2026_27",
+  "chips": [
+    {
+      "bench_points_included": false,
+      "blocks_other_chips": false,
+      "captain_multiplier": 2,
+      "chip_type": "transfer",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": false,
+      "id": 1,
+      "name": "wildcard",
+      "number": 1,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": true,
+      "start_event": 2,
+      "stop_event": 19
+    },
+    {
+      "bench_points_included": false,
+      "blocks_other_chips": false,
+      "captain_multiplier": 2,
+      "chip_type": "transfer",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": false,
+      "id": 2,
+      "name": "wildcard",
+      "number": 2,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": true,
+      "start_event": 20,
+      "stop_event": 38
+    },
+    {
+      "bench_points_included": false,
+      "blocks_other_chips": false,
+      "captain_multiplier": 2,
+      "chip_type": "transfer",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": true,
+      "id": 3,
+      "name": "freehit",
+      "number": 1,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": false,
+      "start_event": 2,
+      "stop_event": 19
+    },
+    {
+      "bench_points_included": true,
+      "blocks_other_chips": false,
+      "captain_multiplier": 2,
+      "chip_type": "team",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": false,
+      "id": 4,
+      "name": "bboost",
+      "number": 1,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": false,
+      "start_event": 1,
+      "stop_event": 19
+    },
+    {
+      "bench_points_included": false,
+      "blocks_other_chips": false,
+      "captain_multiplier": 3,
+      "chip_type": "team",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": false,
+      "id": 5,
+      "name": "3xc",
+      "number": 1,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": false,
+      "start_event": 1,
+      "stop_event": 19
+    },
+    {
+      "bench_points_included": false,
+      "blocks_other_chips": false,
+      "captain_multiplier": 2,
+      "chip_type": "transfer",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": true,
+      "id": 6,
+      "name": "freehit",
+      "number": 2,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": false,
+      "start_event": 20,
+      "stop_event": 38
+    },
+    {
+      "bench_points_included": true,
+      "blocks_other_chips": false,
+      "captain_multiplier": 2,
+      "chip_type": "team",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": false,
+      "id": 7,
+      "name": "bboost",
+      "number": 2,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": false,
+      "start_event": 20,
+      "stop_event": 38
+    },
+    {
+      "bench_points_included": false,
+      "blocks_other_chips": false,
+      "captain_multiplier": 3,
+      "chip_type": "team",
+      "duration_gameweeks": 1,
+      "free_hit_reversion": false,
+      "id": 8,
+      "name": "3xc",
+      "number": 2,
+      "overrides": {
+        "element_types": [],
+        "pick_multiplier": null,
+        "rules": {},
+        "scoring": {}
+      },
+      "permanent_transfers": false,
+      "start_event": 20,
+      "stop_event": 38
+    }
+  ],
+  "cutoff_at": "2026-09-27T08:05:19.992073Z",
+  "dc_rule_version": "dc_v1",
+  "effective_from_gameweek": 1,
+  "effective_to_gameweek": 38,
+  "max_extra_free_transfers": 4,
+  "max_free_transfers": 5,
+  "max_players_per_team": 3,
+  "payload_hash": "0c133121c3637cccea64e7dc70a58d499d53501a46c780f65d6f89cd020d52e9",
+  "position_limits": {
+    "DEF": {
+      "position_id": 2,
+      "squad_max_play": 5,
+      "squad_min_play": 3,
+      "squad_select": 5
+    },
+    "FWD": {
+      "position_id": 4,
+      "squad_max_play": 3,
+      "squad_min_play": 1,
+      "squad_select": 3
+    },
+    "GKP": {
+      "position_id": 1,
+      "squad_max_play": 1,
+      "squad_min_play": 1,
+      "squad_select": 2
+    },
+    "MID": {
+      "position_id": 3,
+      "squad_max_play": 5,
+      "squad_min_play": 2,
+      "squad_select": 5
+    }
+  },
+  "retrieved_at": "2026-09-27T08:05:19.992073Z",
+  "rules_version": "2026-27-m6-v3-chips_v4_double_set_2026_27-bps_v2_2026_27",
+  "schema_version": "m6-v3",
+  "scoring": {
+    "assists": 3,
+    "bonus": 1,
+    "bps": 0,
+    "clean_sheets": {
+      "DEF": 4,
+      "FWD": 0,
+      "GKP": 4,
+      "MID": 1
+    },
+    "clearances_blocks_interceptions": 0,
+    "creativity": 0,
+    "defensive_contribution": {
+      "DEF": 2,
+      "FWD": 2,
+      "GKP": 0,
+      "MID": 2
+    },
+    "expected_assists": 0,
+    "expected_goal_involvements": 0,
+    "expected_goals": 0,
+    "expected_goals_conceded": 0,
+    "goals_conceded": {
+      "DEF": -1,
+      "FWD": 0,
+      "GKP": -1,
+      "MID": 0
+    },
+    "goals_scored": {
+      "DEF": 6,
+      "FWD": 4,
+      "GKP": 10,
+      "MID": 5
+    },
+    "ict_index": 0,
+    "influence": 0,
+    "long_play": 2,
+    "mng_clean_sheets": {
+      "DEF": 0,
+      "FWD": 0,
+      "GKP": 0,
+      "MID": 0
+    },
+    "mng_draw": {
+      "DEF": 0,
+      "FWD": 0,
+      "GKP": 0,
+      "MID": 0
+    },
+    "mng_goals_scored": {
+      "DEF": 0,
+      "FWD": 0,
+      "GKP": 0,
+      "MID": 0
+    },
+    "mng_loss": 0,
+    "mng_underdog_draw": {
+      "DEF": 0,
+      "FWD": 0,
+      "GKP": 0,
+      "MID": 0
+    },
+    "mng_underdog_win": {
+      "DEF": 0,
+      "FWD": 0,
+      "GKP": 0,
+      "MID": 0
+    },
+    "mng_win": {
+      "DEF": 0,
+      "FWD": 0,
+      "GKP": 0,
+      "MID": 0
+    },
+    "own_goals": -2,
+    "penalties_missed": -2,
+    "penalties_saved": 5,
+    "recoveries": 0,
+    "red_cards": -3,
+    "saves": 1,
+    "short_play": 1,
+    "special_multiplier": 1,
+    "starts": 0,
+    "tackles": 0,
+    "threat": 0,
+    "yellow_cards": -1
+  },
+  "season": "2026-27",
+  "source_url": "https://fantasy.premierleague.com/api/bootstrap-static/",
+  "squad_size": 15,
+  "starting_xi_size": 11,
+  "transfer_hit_cost": 4,
+  "transfer_sell_on_fee": 0.5,
+  "transfers_per_gameweek": 1
+}
