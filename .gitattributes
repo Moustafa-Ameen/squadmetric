@@ -1,1 +1,10 @@
 frontend.zip filter=lfs diff=lfs merge=lfs -text
+
+# Serving manifests hash exact artifact bytes. Keep Git from rewriting line
+# endings so a GitHub-built container receives the validated files unchanged.
+data/raw/bootstrap-static.json -text
+data/raw/fixtures.json -text
+data/processed/*.json -text
+data/processed/*.csv -text
+data/processed/rules/** -text
+models/live_2026_27_models.json -text
