@@ -237,19 +237,6 @@ export async function getDecisionCenter(
   );
 }
 
-export async function getProvisionalTeamRating(input: {
-  element_ids: number[];
-  bank: number;
-  free_transfers: number;
-}): Promise<DecisionCenterResponse> {
-  return fetchJson("/api/predictions/provisional-team-rating", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-    cache: "no-store",
-  });
-}
-
 export async function getInitialSquad(
   horizon: number,
   riskProfile: "maximum_points" | "balanced" | "safe" = "balanced",

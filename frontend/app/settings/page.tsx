@@ -6,12 +6,13 @@ import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { getTeam } from "@/lib/api";
 import { DEFAULT_ONBOARDING_PREFERENCES, persistOnboarding, type OnboardingPreferences } from "@/lib/account";
-import { disconnectAccountTeam, exportAccountData, savePreferencePatch } from "@/lib/accountStorage";
+import { disconnectAccountTeam, exportAccountData, isGuestDemoMode, savePreferencePatch } from "@/lib/accountStorage";
 import { parseFplTeamInput } from "@/lib/fplTeam";
 import type { TeamData } from "@/lib/types";
 
 export default function SettingsPage() {
   const [teamId, setTeamId] = useState("");
+  const [guestMode, setGuestMode] = useState(false);
   const [draftTeamId, setDraftTeamId] = useState("");
   const [team, setTeam] = useState<TeamData | null>(null);
   const [teamError, setTeamError] = useState(false);
@@ -25,6 +26,7 @@ export default function SettingsPage() {
     queueMicrotask(() => {
       const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
       setTeamId(savedTeamId);
+      setGuestMode(isGuestDemoMode());
       setDraftTeamId(savedTeamId);
       setShowBench(window.localStorage.getItem("show_bench_players") !== "false");
       setCompactRows(window.localStorage.getItem("compact_table_rows") === "true");
@@ -76,6 +78,7 @@ export default function SettingsPage() {
         preferences: { ...DEFAULT_ONBOARDING_PREFERENCES, ...stored },
       });
       setTeamId(parsed.value.teamId);
+      setGuestMode(false);
       setTeam(verified);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);
@@ -89,6 +92,7 @@ export default function SettingsPage() {
   async function disconnect() {
     await disconnectAccountTeam().catch(() => undefined);
     setTeamId("");
+    setGuestMode(false);
     setDraftTeamId("");
     setTeam(null);
   }
@@ -154,6 +158,7 @@ export default function SettingsPage() {
 
           {teamId ? (
             <div className="mt-4 rounded-[10px] border border-fpl-border bg-fpl-raised p-4">
+              {guestMode ? <div className="mb-3 inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-800">Demo team</div> : null}
               {team ? (
                 <div>
                   <div className="font-semibold text-primary">{team.team_name}</div>
@@ -167,7 +172,7 @@ export default function SettingsPage() {
                 </div>
               )}
               <button type="button" onClick={disconnect} className="mt-3 text-sm font-semibold text-fpl-red">
-                Disconnect
+                {guestMode ? "Exit demo" : "Disconnect"}
               </button>
             </div>
           ) : null}

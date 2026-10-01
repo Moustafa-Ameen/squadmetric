@@ -84,7 +84,7 @@ Rank-relative play remains an explicit, optional review mode. It never silently 
 - Professional recommendation-first dashboard.
 - Visual pitch for the current squad and recommended XI.
 - Weekly transfer, captaincy, bench, chip, player, and fixture pages.
-- Guest-first onboarding by public FPL Team ID, official URL, or squad screenshot.
+- Guest-first onboarding with a full demo workspace, public FPL Team ID, or official URL.
 - Browser-local team link, preferences, drafts, watchlist, and decision history.
 - Responsive desktop/mobile interface with graceful live-data fallbacks.
 

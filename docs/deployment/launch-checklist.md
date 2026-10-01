@@ -4,7 +4,7 @@ Use this list for the first guest-first release. Do not announce the site until 
 
 ## Release candidate verified locally
 
-- Guest onboarding accepts a Team ID, official FPL URL, or squad screenshot.
+- Guest onboarding offers a clearly labeled full demo, a Team ID, or an official FPL URL.
 - No login, OAuth provider, email service, database, or FPL password is required.
 - Team link, preferences, drafts, watchlist, and decision history stay in browser storage and can be exported.
 - The current model bundle covers finalized Gameweeks 1–5 and reports recommendation readiness as ready.
@@ -23,7 +23,7 @@ Use this list for the first guest-first release. Do not announce the site until 
 4. Deploy the frontend and confirm the page source uses the public URL—not localhost—for `og:url`, `og:image`, and the sitemap.
 5. Test the full flow in a private browser window and on a phone:
    - Team ID and an official URL containing `/en/` both connect.
-   - Screenshot import can be reviewed before use.
+   - Continue as guest opens a clearly labeled demo and does not claim that the sample team is the visitor's.
    - Team grade, transfer explanation, Best XI, captaincy, player drawer, fixtures, and chips render.
    - Refreshing preserves browser data; disconnecting removes the linked team; export downloads valid JSON.
    - The stale-data state blocks recommendations clearly instead of serving old advice.

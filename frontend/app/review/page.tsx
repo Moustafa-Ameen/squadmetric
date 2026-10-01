@@ -7,10 +7,12 @@ import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { getPostGameweekReview } from "@/lib/api";
+import { isGuestDemoMode } from "@/lib/accountStorage";
 import type { PostGameweekReviewResponse } from "@/lib/types";
 
 export default function ReviewPage() {
   const [teamId, setTeamId] = useState("");
+  const [guestMode, setGuestMode] = useState(false);
   const [data, setData] = useState<PostGameweekReviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -18,7 +20,10 @@ export default function ReviewPage() {
   useEffect(() => {
     let cancelled = false;
     const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
-    queueMicrotask(() => setTeamId(savedTeamId));
+    queueMicrotask(() => {
+      setTeamId(savedTeamId);
+      setGuestMode(isGuestDemoMode());
+    });
     if (!savedTeamId) {
       queueMicrotask(() => setLoading(false));
       return () => { cancelled = true; };
@@ -39,7 +44,7 @@ export default function ReviewPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="Your Results" subtitle={"Team #" + teamId + " · only finalized gameweeks appear here"} />
+      <SectionHeader title="Your Results" subtitle={(guestMode ? "Demo team" : "Team #" + teamId) + " · only finalized gameweeks appear here"} />
       {data.gameweeks.length === 0 ? (
         <Panel>
           <div className="py-8 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-emerald-600" /><h2 className="mt-3 text-lg font-bold text-slate-950">Waiting for the first finalized gameweek</h2><p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">Your results will appear after official scoring is complete and checked.</p></div>

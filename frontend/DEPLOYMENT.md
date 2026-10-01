@@ -41,7 +41,7 @@ The website is a Next.js Node server, not a static export. It relies on same-ori
    `/api/readiness`, then use that origin as `FPL_API_SERVER_URL`.
 4. Redeploy after any `NEXT_PUBLIC_*` change because those values are embedded at
    build time.
-5. Test Team ID and URL linking, screenshot import, local persistence, browser-data
+5. Test Team ID and URL linking, guest-demo entry, local persistence, browser-data
    export, team disconnection, and the complete recommendation flow in Production.
 
 Do not deploy from a dirty working tree containing unrelated changes. Create a

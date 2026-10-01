@@ -18,7 +18,7 @@ import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { getDecisionCenter, getSeasonState } from "@/lib/api";
-import { persistWeeklyRecommendation } from "@/lib/accountStorage";
+import { isGuestDemoMode, persistWeeklyRecommendation } from "@/lib/accountStorage";
 import { recommendationIsComplete } from "@/lib/decisionCenter";
 import { points, positionCode } from "@/lib/format";
 import {
@@ -34,6 +34,7 @@ import type {
 
 export default function DecisionCenterPage() {
   const [teamId, setTeamId] = useState("");
+  const [guestMode, setGuestMode] = useState(false);
   const [seasonState, setSeasonState] = useState<SeasonState | null>(null);
   const [data, setData] = useState<DecisionCenterResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +49,7 @@ export default function DecisionCenterPage() {
     const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
     queueMicrotask(() => {
       setTeamId(savedTeamId);
+      setGuestMode(isGuestDemoMode());
       setLoading(true);
       setError(false);
     });
@@ -106,6 +108,7 @@ export default function DecisionCenterPage() {
   }
 
   const recommendation = data?.recommendation;
+  const teamLabel = guestMode ? "Demo team" : `Team #${teamId}`;
   const playersById = useMemo(
     () => new Map(
       [...(recommendation?.starting_xi ?? []), ...(recommendation?.bench_order ?? [])]
@@ -132,7 +135,7 @@ export default function DecisionCenterPage() {
   if (seasonState && !seasonState.recommendations_ready) {
     return (
       <div className="space-y-5">
-        <SectionHeader title="This Week" subtitle={`Team #${teamId} · recommendations paused`} />
+        <SectionHeader title="This Week" subtitle={`${teamLabel} · recommendations paused`} />
         <DecisionStatusNotice seasonState={seasonState} />
       </div>
     );
@@ -140,7 +143,7 @@ export default function DecisionCenterPage() {
   if (!data || data.status !== "ready" || !recommendation || !recommendationIsComplete(recommendation)) {
     return (
       <div className="space-y-5">
-        <SectionHeader title="This Week" subtitle={`Team #${teamId}`} />
+        <SectionHeader title="This Week" subtitle={teamLabel} />
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
           {data?.message ?? "A complete, legal weekly recommendation is not available yet."}
         </div>
@@ -156,7 +159,9 @@ export default function DecisionCenterPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title={`This Week · GW${data.gameweek}`} subtitle={`Team #${teamId} · one clear plan for the next deadline`} />
+      <SectionHeader title={`This Week · GW${data.gameweek}`} subtitle={`${teamLabel} · one clear plan for the next deadline`} />
+
+      {guestMode ? <div className="flex flex-col gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950 sm:flex-row sm:items-center sm:justify-between"><span><strong>Demo plan:</strong> this shows how SquadMetric explains a real weekly decision.</span><Link href="/onboarding" className="shrink-0 font-extrabold text-violet-700">Use my team →</Link></div> : null}
 
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-violet-50 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">

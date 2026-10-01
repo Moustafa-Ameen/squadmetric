@@ -1,22 +1,20 @@
 "use client";
 
-import { ArrowRight, ShieldCheck, Trophy } from "lucide-react";
+import { ArrowRight, ShieldCheck, Sparkles, Trophy } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getTeam } from "@/lib/api";
 import {
   DEFAULT_ONBOARDING_PREFERENCES,
+  persistGuestDemo,
   persistOnboarding,
-  persistProvisionalOnboarding,
 } from "@/lib/account";
 import { parseFplTeamInput } from "@/lib/fplTeam";
-import type { ScreenshotAnalysis } from "@/lib/types";
-import { ScreenshotTeamImport } from "./ScreenshotTeamImport";
 
 export function OnboardingFlow() {
   const router = useRouter();
   const [teamInput, setTeamInput] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"team" | "guest" | null>(null);
   const [error, setError] = useState("");
 
   async function verifyTeam(event: React.FormEvent) {
@@ -27,7 +25,7 @@ export function OnboardingFlow() {
       return;
     }
 
-    setBusy(true);
+    setBusy("team");
     setError("");
     try {
       await getTeam(parsed.value.teamId);
@@ -39,23 +37,22 @@ export function OnboardingFlow() {
       router.refresh();
     } catch {
       setError("We could not verify that team with the official FPL data service. Check the ID and try again.");
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  async function handleScreenshot(analysis: ScreenshotAnalysis) {
-    setBusy(true);
+  async function continueAsGuest() {
+    setBusy("guest");
     setError("");
     try {
-      await persistProvisionalOnboarding({
-        analysis,
+      await persistGuestDemo({
         preferences: DEFAULT_ONBOARDING_PREFERENCES,
       });
       router.replace("/dashboard");
       router.refresh();
     } catch {
-      setError("We read the screenshot but could not save it in this browser. Please try again.");
-      setBusy(false);
+      setError("We could not open the demo in this browser. Please try again.");
+      setBusy(null);
     }
   }
 
@@ -88,16 +85,23 @@ export function OnboardingFlow() {
         <p id="team-input-help" className="mt-2 text-xs leading-5 text-slate-500">
           Numeric IDs and official links—including localized `/en/` links—are accepted. Your FPL password is never requested.
         </p>
-        <button type="submit" disabled={!teamInput.trim() || busy} className="sm-primary-button mt-6 w-full justify-center px-5 py-3.5 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">
-          {busy ? "Checking your team…" : "Rate my team"}<ArrowRight className="h-4 w-4" />
+        <button type="submit" disabled={!teamInput.trim() || busy !== null} className="sm-primary-button mt-6 w-full justify-center px-5 py-3.5 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">
+          {busy === "team" ? "Checking your team…" : "Rate my team"}<ArrowRight className="h-4 w-4" />
         </button>
       </form>
 
       <div className="my-6 flex items-center gap-3"><span className="h-px flex-1 bg-slate-200" /><span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">or</span><span className="h-px flex-1 bg-slate-200" /></div>
-      <ScreenshotTeamImport onAnalyzed={(analysis) => void handleScreenshot(analysis)} />
+      <button type="button" onClick={() => void continueAsGuest()} disabled={busy !== null} className="sm-secondary-button w-full justify-center px-5 py-3.5 disabled:cursor-not-allowed disabled:opacity-60">
+        <Sparkles className="h-4 w-4" />
+        {busy === "guest" ? "Opening demo…" : "Continue as guest"}
+        <ArrowRight className="h-4 w-4" />
+      </button>
+      <p className="mt-3 text-center text-xs leading-5 text-slate-500">
+        Explore a complete demo squad and weekly plan. Nothing is linked, and you can add your own Team ID anytime.
+      </p>
 
       <p className="mt-5 text-center text-xs leading-5 text-slate-500">
-        Browser-only storage means there is no signup, password, or cloud account to manage.
+        Guest mode and linked teams are saved only in this browser—there is no signup, password, or cloud account to manage.
       </p>
       {error ? <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900" role="alert">{error}</div> : null}
     </section>

@@ -482,13 +482,6 @@ export interface TeamRating {
   method: string;
 }
 
-export interface ScreenshotAnalysis {
-  decision: DecisionCenterResponse;
-  elementIds: number[];
-  bank: number;
-  freeTransfers: number;
-}
-
 export interface DecisionCenterResponse {
   status: "ready" | "unavailable";
   message: string;

@@ -84,9 +84,24 @@ test("guided onboarding accepts an official FPL URL and stores verified setup", 
   await page.getByLabel("FPL Team ID or URL").fill("https://fantasy.premierleague.com/entry/5605168/history");
   await page.getByRole("button", { name: "Rate my team" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  const stored = await page.evaluate(() => ({ teamId: localStorage.getItem("fpl_team_id"), preferences: localStorage.getItem("squadmetric_preferences") }));
+  const stored = await page.evaluate(() => ({ teamId: localStorage.getItem("fpl_team_id"), preferences: localStorage.getItem("squadmetric_preferences"), guest: localStorage.getItem("squadmetric_guest_demo_v1") }));
   expect(stored.teamId).toBe("5605168");
   expect(JSON.parse(stored.preferences ?? "{}").riskStyle).toBe("balanced");
+  expect(stored.guest).toBeNull();
+});
+
+test("guest onboarding opens a clearly labeled demo workspace", async ({ page }) => {
+  await page.goto("/onboarding");
+  await expect(page.getByText("Use a team screenshot")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue as guest" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue as guest" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByText("Demo team", { exact: true })).toBeVisible();
+  await expect(page.getByText("You’re exploring a demo team.", { exact: false })).toBeVisible();
+  const stored = await page.evaluate(() => ({ teamId: localStorage.getItem("fpl_team_id"), guest: localStorage.getItem("squadmetric_guest_demo_v1") }));
+  expect(stored.teamId).toBe("3254925");
+  expect(stored.guest).toBe("true");
+  await expectNoSeriousAccessibilityViolations(page);
 });
 
 test("my team is readable, interactive, and offers a best-XI view", async ({ page }) => {

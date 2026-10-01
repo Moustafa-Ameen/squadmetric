@@ -13,6 +13,7 @@ export const ACCOUNT_STORAGE_KEYS = {
   decisionHistory: "squadmetric_decision_history_v1",
   weeklyRecommendations: "squadmetric_weekly_recommendations_v1",
   provisionalSquad: "squadmetric_provisional_squad_v1",
+  guestDemo: "squadmetric_guest_demo_v1",
 } as const;
 
 type PreferencePatch = {
@@ -75,6 +76,13 @@ export async function disconnectAccountTeam() {
   const teamId = window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.teamId);
   if (teamId) clearManagerStateOverride(teamId);
   window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.teamId);
+  window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.guestDemo);
+  window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.provisionalSquad);
+}
+
+export function isGuestDemoMode(): boolean {
+  return typeof window !== "undefined"
+    && window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.guestDemo) === "true";
 }
 
 export async function persistWeeklyRecommendation(data: DecisionCenterResponse) {

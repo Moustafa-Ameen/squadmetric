@@ -5,7 +5,7 @@ import { ArrowRight, CalendarClock, RefreshCw, ShieldCheck, Users, UserRoundSear
 import { useCallback, useEffect, useState } from "react";
 import { getDecisionCenter, getOverview, getSeasonState } from "@/lib/api";
 import type { DecisionCenterResponse, OverviewResponse, SeasonState } from "@/lib/types";
-import { ACCOUNT_STORAGE_KEYS } from "@/lib/accountStorage";
+import { isGuestDemoMode } from "@/lib/accountStorage";
 import { readManagerStateOverride } from "@/lib/managerState";
 import { DashboardClient } from "./DashboardClient";
 import { DashboardSkeleton } from "./LoadingState";
@@ -17,19 +17,20 @@ export function DashboardLoader() {
   const [seasonError, setSeasonError] = useState(false);
   const [decisionCenter, setDecisionCenter] = useState<DecisionCenterResponse | null>(null);
   const [teamId, setTeamId] = useState("");
+  const [guestMode, setGuestMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     const linkedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
-    const provisionalDecision = readProvisionalDecision();
     setTeamId(linkedTeamId);
+    setGuestMode(isGuestDemoMode());
     const [overviewResult, seasonResult, decisionResult] = await Promise.allSettled([
       getOverview(),
       getSeasonState(),
       linkedTeamId
         ? getDecisionCenter(linkedTeamId, 3, readManagerStateOverride(linkedTeamId))
-        : Promise.resolve(provisionalDecision),
+        : Promise.resolve(null),
     ]);
     if (overviewResult.status === "fulfilled") {
       setOverview(overviewResult.value);
@@ -56,16 +57,7 @@ export function DashboardLoader() {
     return <DashboardRefreshState seasonState={seasonState} loading={loading} onRefresh={load} />;
   }
 
-  return <DashboardClient overview={overview} seasonState={seasonState} seasonStateUnavailable={seasonError} decisionCenter={decisionCenter} teamId={teamId} />;
-}
-
-function readProvisionalDecision(): DecisionCenterResponse | null {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.provisionalSquad) ?? "null") as { decision?: DecisionCenterResponse } | null;
-    return saved?.decision?.rating ? saved.decision : null;
-  } catch {
-    return null;
-  }
+  return <DashboardClient overview={overview} seasonState={seasonState} seasonStateUnavailable={seasonError} decisionCenter={decisionCenter} teamId={teamId} guestMode={guestMode} />;
 }
 
 function DashboardRefreshState({
