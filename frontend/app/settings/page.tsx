@@ -27,14 +27,14 @@ export default function SettingsPage() {
       const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
       setTeamId(savedTeamId);
       setGuestMode(isGuestDemoMode());
-      setDraftTeamId(savedTeamId);
+      setDraftTeamId("");
       setShowBench(window.localStorage.getItem("show_bench_players") !== "false");
       setCompactRows(window.localStorage.getItem("compact_table_rows") === "true");
     });
   }, []);
 
   useEffect(() => {
-    if (!teamId) {
+    if (!teamId || guestMode) {
       queueMicrotask(() => {
         setTeam(null);
         setTeamError(false);
@@ -60,7 +60,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [teamId]);
+  }, [teamId, guestMode]);
 
   async function saveTeamId() {
     const parsed = parseFplTeamInput(draftTeamId);
@@ -156,9 +156,14 @@ export default function SettingsPage() {
             </div>
           </label>
 
-          {teamId ? (
+          {guestMode ? (
+            <div className="mt-4 rounded-[10px] border border-violet-200 bg-violet-50 p-4">
+              <div className="inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-800">Demo team</div>
+              <p className="mt-3 text-sm text-violet-950">You are exploring a dedicated sample squad. Enter your Team ID above to replace it with personalized recommendations.</p>
+              <button type="button" onClick={disconnect} className="mt-3 text-sm font-semibold text-fpl-red">Exit demo</button>
+            </div>
+          ) : teamId ? (
             <div className="mt-4 rounded-[10px] border border-fpl-border bg-fpl-raised p-4">
-              {guestMode ? <div className="mb-3 inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-800">Demo team</div> : null}
               {team ? (
                 <div>
                   <div className="font-semibold text-primary">{team.team_name}</div>
@@ -172,7 +177,7 @@ export default function SettingsPage() {
                 </div>
               )}
               <button type="button" onClick={disconnect} className="mt-3 text-sm font-semibold text-fpl-red">
-                {guestMode ? "Exit demo" : "Disconnect"}
+                Disconnect
               </button>
             </div>
           ) : null}

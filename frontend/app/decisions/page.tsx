@@ -20,6 +20,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { getDecisionCenter, getSeasonState } from "@/lib/api";
 import { isGuestDemoMode, persistWeeklyRecommendation } from "@/lib/accountStorage";
 import { recommendationIsComplete } from "@/lib/decisionCenter";
+import { createDemoDecisionCenter } from "@/lib/demoDecision";
 import { points, positionCode } from "@/lib/format";
 import {
   clearManagerStateOverride,
@@ -47,9 +48,10 @@ export default function DecisionCenterPage() {
   useEffect(() => {
     let cancelled = false;
     const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
+    const demoMode = isGuestDemoMode();
     queueMicrotask(() => {
       setTeamId(savedTeamId);
-      setGuestMode(isGuestDemoMode());
+      setGuestMode(demoMode);
       setLoading(true);
       setError(false);
     });
@@ -57,15 +59,19 @@ export default function DecisionCenterPage() {
       .then(async (state) => {
         if (cancelled) return;
         setSeasonState(state);
-        if (!state.recommendations_ready || !savedTeamId) return;
-        const response = await getDecisionCenter(
-          savedTeamId,
-          3,
-          readManagerStateOverride(savedTeamId),
-        );
+        if (!state.recommendations_ready) return;
+        const response = demoMode
+          ? createDemoDecisionCenter(state.next_gw ?? state.current_gw ?? 1)
+          : savedTeamId
+            ? await getDecisionCenter(
+                savedTeamId,
+                3,
+                readManagerStateOverride(savedTeamId),
+              )
+            : null;
         if (!cancelled) {
           setData(response);
-          if (response.state_before) {
+          if (response?.state_before) {
             setBankDraft(response.state_before.bank.toFixed(1));
             setFreeTransfersDraft(String(response.state_before.free_transfers));
           }
@@ -83,7 +89,7 @@ export default function DecisionCenterPage() {
   }, [refreshToken]);
 
   useEffect(() => {
-    if (data?.status === "ready" && data.recommendation) {
+    if (data?.status === "ready" && data.recommendation && data.team_id !== null) {
       void persistWeeklyRecommendation(data).catch(() => undefined);
     }
   }, [data]);
@@ -119,7 +125,7 @@ export default function DecisionCenterPage() {
 
   if (loading) return <PlannerSkeleton />;
   if (error) return <ErrorState />;
-  if (!teamId) {
+  if (!teamId && !guestMode) {
     return (
       <div className="space-y-5">
         <SectionHeader title="This Week" subtitle="Your transfer, captain, and bench order in one place" />
@@ -223,12 +229,12 @@ export default function DecisionCenterPage() {
           <div className="text-sm text-slate-600">
             Planning with <strong className="text-slate-950">£{(data.state_before?.bank ?? 0).toFixed(1)}m</strong> in the bank and <strong className="text-slate-950">{data.state_before?.free_transfers ?? 0} free transfer{data.state_before?.free_transfers === 1 ? "" : "s"}</strong>.
             <span className="ml-1 text-xs text-slate-600">
-              {data.manager_state_confirmation?.bank_source === "user_override" ? "Confirmed by you." : "Reconstructed from public FPL history."}
+              {guestMode ? "Fixed sample state." : data.manager_state_confirmation?.bank_source === "user_override" ? "Confirmed by you." : "Reconstructed from public FPL history."}
             </span>
           </div>
-          <button type="button" onClick={() => setShowStateEditor((value) => !value)} className="inline-flex items-center gap-2 text-sm font-extrabold text-violet-700 hover:text-violet-900">
+          {!guestMode ? <button type="button" onClick={() => setShowStateEditor((value) => !value)} className="inline-flex items-center gap-2 text-sm font-extrabold text-violet-700 hover:text-violet-900">
             <Settings2 className="h-4 w-4" /> Correct this
-          </button>
+          </button> : null}
         </div>
         {showStateEditor ? (
           <div className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">

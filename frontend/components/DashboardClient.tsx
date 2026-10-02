@@ -77,10 +77,10 @@ export function DashboardClient({ overview, seasonState, seasonStateUnavailable,
 
       {pitchPlayers.length ? <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-xl font-black text-slate-950">Your lineup</h2><p className="mt-1 text-sm text-slate-500">Select any player to view their details.</p></div>
+          <div><h2 className="text-xl font-black text-slate-950">Your lineup</h2><p className="mt-1 text-sm text-slate-500">{guestMode ? "Compare the sample manager’s submitted XI with SquadMetric’s optimized XI." : "Current XI uses the latest lineup published by FPL; Best XI optimizes your squad for the next deadline."}</p></div>
           <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1"><LineupButton active={lineupView === "current"} onClick={() => setLineupView("current")}>Current XI</LineupButton><LineupButton active={lineupView === "recommended"} onClick={() => setLineupView("recommended")}>Best XI</LineupButton></div>
         </div>
-        <SquadPitch players={pitchPlayers} title={(lineupView === "current" && current ? "Current GW" : "Best GW") + gameweek + " lineup"} onPlayerClick={(player) => openDrawer(player.name)} />
+        <SquadPitch players={pitchPlayers} title={lineupView === "current" && current ? (guestMode ? "Sample current XI" : "Latest published FPL XI") : `Best GW${gameweek} lineup`} onPlayerClick={(player) => openDrawer(player.name)} />
       </div> : null}
       <p className="text-center text-xs text-slate-500">{overview.player_count.toLocaleString()} players evaluated · projections are estimates, not guarantees</p>
     </div>

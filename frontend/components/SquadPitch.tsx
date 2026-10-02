@@ -99,8 +99,8 @@ function BenchPlayer({ player, order, showExpectedPoints, onPlayerClick }: { pla
 }
 
 function PlayerInteraction({ player, onPlayerClick, className, children }: { player: VisualSquadPlayer; onPlayerClick?: (player: VisualSquadPlayer) => void; className: string; children: ReactNode }) {
-  if (!onPlayerClick) return <div className={className}>{children}</div>;
-  return <button type="button" onClick={() => onPlayerClick(player)} aria-label={`Open ${label(player)} details`} className={`${className} cursor-pointer transition hover:-translate-y-0.5 hover:ring-2 hover:ring-violet-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300`}>{children}</button>;
+  if (!onPlayerClick) return <div data-player-id={player.id} data-starter={player.starter} className={className}>{children}</div>;
+  return <button type="button" data-player-id={player.id} data-starter={player.starter} onClick={() => onPlayerClick(player)} aria-label={`Open ${label(player)} details`} className={`${className} cursor-pointer transition hover:-translate-y-0.5 hover:ring-2 hover:ring-violet-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300`}>{children}</button>;
 }
 
 function label(player: VisualSquadPlayer) {

@@ -236,6 +236,10 @@ async def planner(
     effective_picks = list(manager_state.picks)
     projections_by_id = {player["element_id"]: player for player in projected_players}
     squad = _squad_rows(effective_picks, projections_by_id)
+    published_lineup = _squad_rows(
+        list(picks_payload.get("picks", [])),
+        projections_by_id,
+    )
     if not squad:
         raise HTTPException(status_code=404, detail="No squad picks were available for this team.")
 
@@ -431,6 +435,7 @@ async def planner(
         "max_extra_free_transfers": int(settings.get("max_extra_free_transfers") or 4),
         "baseline": baseline,
         "squad": squad,
+        "published_lineup": published_lineup,
         "player_pool": player_pool,
         "decision": decision,
         "decision_evidence": decision_evidence,
@@ -692,7 +697,7 @@ def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
     player_by_id = {
         int(player["element_id"]): player
-        for player in [*payload.get("squad", []), *payload.get("player_pool", [])]
+        for player in [*payload.get("player_pool", []), *payload.get("squad", [])]
         if player.get("element_id") is not None
     }
     gameweek = int(payload.get("start_gameweek") or 1)
@@ -706,16 +711,60 @@ def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:
     ]
     starting_xi = [player for player in starting_xi if player is not None]
     bench = [player for player in bench if player is not None]
+    published_lineup = payload.get("published_lineup") or payload.get("squad", [])
+    official_picks = sorted(
+        (
+            player
+            for player in published_lineup
+            if player.get("pick_order") is not None
+        ),
+        key=lambda player: int(player.get("pick_order") or 99),
+    )
+    official_starters = [
+        player
+        for player in official_picks
+        if bool(player.get("is_starter"))
+        or int(player.get("pick_order") or 99) <= 11
+    ]
+    official_bench = [
+        player
+        for player in official_picks
+        if not bool(player.get("is_starter"))
+        and int(player.get("pick_order") or 99) > 11
+    ]
+    has_complete_official_lineup = len(official_starters) == 11 and len(official_bench) == 4
     current_starting_xi = [
+        _decision_center_player(player, gameweek)
+        for player in official_starters
+    ] if has_complete_official_lineup else [
         _decision_center_player(player_by_id.get(int(player_id)), gameweek)
         for player_id in no_action.get("starting_ids", [])
     ]
     current_bench = [
+        _decision_center_player(player, gameweek)
+        for player in official_bench
+    ] if has_complete_official_lineup else [
         _decision_center_player(player_by_id.get(int(player_id)), gameweek)
         for player_id in no_action.get("bench_order", [])
     ]
     current_starting_xi = [player for player in current_starting_xi if player is not None]
     current_bench = [player for player in current_bench if player is not None]
+    official_captain = next(
+        (
+            int(player["element_id"])
+            for player in official_starters
+            if player.get("is_captain") and player.get("element_id") is not None
+        ),
+        None,
+    )
+    official_vice_captain = next(
+        (
+            int(player["element_id"])
+            for player in official_starters
+            if player.get("is_vice_captain") and player.get("element_id") is not None
+        ),
+        None,
+    )
 
     ranked_branches = sorted(
         branches,
@@ -758,8 +807,16 @@ def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "current_lineup": {
             "starting_xi": current_starting_xi,
             "bench_order": current_bench,
-            "captain_id": no_action.get("captain_id"),
-            "vice_captain_id": no_action.get("vice_captain_id"),
+            "captain_id": (
+                official_captain
+                if has_complete_official_lineup
+                else no_action.get("captain_id")
+            ),
+            "vice_captain_id": (
+                official_vice_captain
+                if has_complete_official_lineup
+                else no_action.get("vice_captain_id")
+            ),
         },
         "recommendation": {
             "transfer_action": (

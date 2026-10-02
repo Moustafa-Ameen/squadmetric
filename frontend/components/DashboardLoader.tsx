@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getDecisionCenter, getOverview, getSeasonState } from "@/lib/api";
 import type { DecisionCenterResponse, OverviewResponse, SeasonState } from "@/lib/types";
 import { isGuestDemoMode } from "@/lib/accountStorage";
+import { createDemoDecisionCenter } from "@/lib/demoDecision";
 import { readManagerStateOverride } from "@/lib/managerState";
 import { DashboardClient } from "./DashboardClient";
 import { DashboardSkeleton } from "./LoadingState";
@@ -23,14 +24,12 @@ export function DashboardLoader() {
   const load = useCallback(async () => {
     setLoading(true);
     const linkedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
+    const demoMode = isGuestDemoMode();
     setTeamId(linkedTeamId);
-    setGuestMode(isGuestDemoMode());
-    const [overviewResult, seasonResult, decisionResult] = await Promise.allSettled([
+    setGuestMode(demoMode);
+    const [overviewResult, seasonResult] = await Promise.allSettled([
       getOverview(),
       getSeasonState(),
-      linkedTeamId
-        ? getDecisionCenter(linkedTeamId, 3, readManagerStateOverride(linkedTeamId))
-        : Promise.resolve(null),
     ]);
     if (overviewResult.status === "fulfilled") {
       setOverview(overviewResult.value);
@@ -46,7 +45,20 @@ export function DashboardLoader() {
       setSeasonState(null);
       setSeasonError(true);
     }
-    setDecisionCenter(decisionResult.status === "fulfilled" ? decisionResult.value : null);
+    const gameweek = seasonResult.status === "fulfilled"
+      ? seasonResult.value.next_gw ?? seasonResult.value.current_gw ?? 1
+      : 1;
+    if (demoMode) {
+      setDecisionCenter(createDemoDecisionCenter(gameweek));
+    } else if (linkedTeamId) {
+      try {
+        setDecisionCenter(await getDecisionCenter(linkedTeamId, 3, readManagerStateOverride(linkedTeamId)));
+      } catch {
+        setDecisionCenter(null);
+      }
+    } else {
+      setDecisionCenter(null);
+    }
     setLoading(false);
   }, []);
 

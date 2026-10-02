@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { getChipOpportunities, getChipStatuses } from "@/lib/api";
+import { isGuestDemoMode } from "@/lib/accountStorage";
 import type {
   ChipAvailabilityStatus,
   ChipOpportunitiesResponse,
@@ -123,7 +124,9 @@ export default function ChipsPage() {
 
   useEffect(() => {
     let active = true;
-    const teamId = window.localStorage.getItem("fpl_team_id") || undefined;
+    const teamId = isGuestDemoMode()
+      ? undefined
+      : window.localStorage.getItem("fpl_team_id") || undefined;
     getChipOpportunities()
       .then((response) => {
         if (active) setOpportunities(response);

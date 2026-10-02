@@ -37,7 +37,7 @@ export default function ReviewPage() {
 
   if (loading) return <PlannerSkeleton />;
   if (error) return <ErrorState />;
-  if (!teamId) {
+  if (!teamId || guestMode) {
     return <div className="space-y-5"><SectionHeader title="Your Results" subtitle="See how your weekly decisions performed after scores are final" /><Panel><p className="text-sm text-slate-600">Connect your FPL team before reviewing personalized results.</p><Link href="/onboarding" className="sm-primary-button mt-4 px-4 py-2 text-sm">Connect team</Link></Panel></div>;
   }
   if (!data) return <ErrorState />;

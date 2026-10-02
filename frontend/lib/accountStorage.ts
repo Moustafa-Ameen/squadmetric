@@ -81,8 +81,13 @@ export async function disconnectAccountTeam() {
 }
 
 export function isGuestDemoMode(): boolean {
-  return typeof window !== "undefined"
-    && window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.guestDemo) === "true";
+  if (typeof window === "undefined") return false;
+  const guestMode = window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.guestDemo) === "true";
+  if (guestMode) {
+    // Migrate the original guest implementation, which reused a real manager's Team ID.
+    window.localStorage.removeItem(ACCOUNT_STORAGE_KEYS.teamId);
+  }
+  return guestMode;
 }
 
 export async function persistWeeklyRecommendation(data: DecisionCenterResponse) {

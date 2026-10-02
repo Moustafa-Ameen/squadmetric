@@ -55,6 +55,8 @@ const decisionPlayers = players.map((player) => ({
 }));
 const decisionStarters = [0, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13].map((index) => decisionPlayers[index]);
 const decisionBench = [5, 6, 14, 1].map((index) => decisionPlayers[index]);
+const currentDecisionStarters = [0, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13].map((index) => decisionPlayers[index]);
+const currentDecisionBench = [11, 6, 14, 1].map((index) => decisionPlayers[index]);
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => mockApi(route));
@@ -98,8 +100,9 @@ test("guest onboarding opens a clearly labeled demo workspace", async ({ page })
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("Demo team", { exact: true })).toBeVisible();
   await expect(page.getByText("You’re exploring a demo team.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Dowell → Tavernier", { exact: true })).toBeVisible();
   const stored = await page.evaluate(() => ({ teamId: localStorage.getItem("fpl_team_id"), guest: localStorage.getItem("squadmetric_guest_demo_v1") }));
-  expect(stored.teamId).toBe("3254925");
+  expect(stored.teamId).toBeNull();
   expect(stored.guest).toBe("true");
   await expectNoSeriousAccessibilityViolations(page);
 });
@@ -111,6 +114,9 @@ test("my team is readable, interactive, and offers a best-XI view", async ({ pag
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Your lineup" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Current XI" })).toHaveAttribute("aria-pressed", "true");
+  const currentPitch = page.locator('section[aria-label="Latest published FPL XI"]');
+  await expect(currentPitch.locator('[data-player-id="6"]')).toHaveAttribute("data-starter", "true");
+  await expect(currentPitch.locator('[data-player-id="12"]')).toHaveAttribute("data-starter", "false");
   await expect(page.getByText("Substitutes")).toBeVisible();
   await page.getByRole("button", { name: "Open P1 details", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Player 1", exact: true })).toBeVisible();
@@ -126,6 +132,9 @@ test("my team is readable, interactive, and offers a best-XI view", async ({ pag
   await page.getByRole("button", { name: "Best XI", exact: true }).click();
   await expect(page.getByRole("button", { name: "Best XI" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Best GW1 lineup", { exact: true })).toBeVisible();
+  const bestPitch = page.locator('section[aria-label="Best GW1 lineup"]');
+  await expect(bestPitch.locator('[data-player-id="6"]')).toHaveAttribute("data-starter", "false");
+  await expect(bestPitch.locator('[data-player-id="12"]')).toHaveAttribute("data-starter", "true");
   await expectNoSeriousAccessibilityViolations(page);
 });
 
@@ -449,9 +458,9 @@ async function mockApi(route: Route) {
       used_chips: [],
     },
     current_lineup: {
-      starting_xi: decisionStarters,
-      bench_order: decisionBench,
-      captain_id: 13,
+      starting_xi: currentDecisionStarters,
+      bench_order: currentDecisionBench,
+      captain_id: 6,
       vice_captain_id: 8,
     },
     recommendation: {

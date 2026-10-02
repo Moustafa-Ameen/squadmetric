@@ -61,6 +61,7 @@ def test_decision_payload_contains_complete_recommendation_state():
 
 
 def _decision_center_fixture(include_no_action: bool = True) -> dict:
+    official_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 10, 11, 14, 15]
     players = [
         {
             "element_id": player_id,
@@ -78,6 +79,10 @@ def _decision_center_fixture(include_no_action: bool = True) -> dict:
             ),
             "price": 5.0,
             "start_likelihood": 0.9,
+            "pick_order": official_order.index(player_id) + 1,
+            "is_starter": official_order.index(player_id) < 11,
+            "is_captain": player_id == 12,
+            "is_vice_captain": player_id == 13,
             "projections": [
                 {
                     "gameweek": 2,
@@ -137,7 +142,15 @@ def _decision_center_fixture(include_no_action: bool = True) -> dict:
         "rules_version": "rules-v1",
         "data_cutoff": "2026-08-17T00:00:00Z",
         "deadline": "2026-08-21T18:00:00Z",
-        "squad": players,
+        "squad": [
+            {
+                key: value
+                for key, value in player.items()
+                if key not in {"pick_order", "is_starter", "is_captain", "is_vice_captain"}
+            }
+            for player in players
+        ],
+        "published_lineup": players,
         "player_pool": [],
         "decision": {"transfer_count": 1},
         "decision_evidence": {
@@ -164,7 +177,15 @@ def test_decision_center_compares_selected_branch_with_exact_no_action_control()
     assert len(result["recommendation"]["bench_order"]) == 4
     assert len(result["current_lineup"]["starting_xi"]) == 11
     assert len(result["current_lineup"]["bench_order"]) == 4
-    assert result["current_lineup"]["captain_id"] == 11
+    assert [player["element_id"] for player in result["current_lineup"]["starting_xi"]] == [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13
+    ]
+    assert [
+        player["element_id"]
+        for player in result["recommendation"]["starting_xi"]
+    ] == list(range(1, 12))
+    assert result["current_lineup"]["captain_id"] == 12
+    assert result["current_lineup"]["vice_captain_id"] == 13
     assert result["no_action"]["expected_horizon_points"] == 184.0
 
 

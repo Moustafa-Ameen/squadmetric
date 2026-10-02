@@ -9,6 +9,7 @@ import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { useDrawer } from "@/context/DrawerContext";
 import { apiErrorCode, getCurrentGameweek, getFixtureTicker, getSquad } from "@/lib/api";
+import { isGuestDemoMode } from "@/lib/accountStorage";
 import { squadAccessState } from "@/lib/decisionState";
 import { fixtureTickerRows, visibleFixtures } from "@/lib/fixtures";
 import type { FixtureTick, SquadPlayer } from "@/lib/types";
@@ -31,7 +32,9 @@ export default function FixturesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const savedTeamId = window.localStorage.getItem("fpl_team_id") ?? "";
+    const savedTeamId = isGuestDemoMode()
+      ? ""
+      : window.localStorage.getItem("fpl_team_id") ?? "";
     queueMicrotask(() => {
       if (!cancelled) setTeamId(savedTeamId);
     });
