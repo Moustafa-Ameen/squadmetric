@@ -64,7 +64,10 @@ export function DashboardLoader() {
 
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
 
-  if (loading && !overview && !seasonState && !overviewError) return <DashboardSkeleton />;
+  // Overview and season state resolve before the personalized planner. Keep the
+  // honest loading state visible until that planner has finished instead of
+  // briefly rendering the empty/error card with a null decision.
+  if (loading && !decisionCenter) return <DashboardSkeleton />;
   if (overviewError || !overview || seasonState?.recommendations_ready === false) {
     return <DashboardRefreshState seasonState={seasonState} loading={loading} onRefresh={load} />;
   }

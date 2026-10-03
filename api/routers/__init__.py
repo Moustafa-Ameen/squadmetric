@@ -1,1 +1,1 @@
-"""API routers for FPL Intelligence."""
+"""API routers for SquadMetric."""

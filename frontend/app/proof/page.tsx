@@ -19,23 +19,27 @@ export default function ProofPage() {
   useEffect(() => {
     Promise.all([getAccuracy(), getCaptaincyBacktest(), getTop10Metrics()])
       .then(([accuracyRows, captaincyRows, top10Rows]) => {
-        setAccuracy(accuracyRows);
-        setCaptaincy(captaincyRows.map(renameStrategy));
-        setTop10(top10Rows);
+        setAccuracy(accuracyRows.map(renameProjectionModel));
+        setCaptaincy(captaincyRows.map(renameCaptainStrategy));
+        setTop10(top10Rows.map(renameTop10Model));
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
   const sortedCaptaincy = useMemo(() => [...captaincy].sort((a, b) => b.total_captain_points - a.total_captain_points), [captaincy]);
+  const sortedTop10 = useMemo(() => [...top10].sort((a, b) => b.precision_at_10 - a.precision_at_10), [top10]);
   if (loading) return <TableSkeleton />;
   if (error) return <ErrorState />;
   if (!accuracy.length) return <EmptyState />;
 
-  const bestAdjusted = [...accuracy].sort((a, b) => a.adjusted_MAE - b.adjusted_MAE)[0];
+  const sortedAccuracy = [...accuracy].sort((a, b) => a.adjusted_MAE - b.adjusted_MAE);
+  const modelAccuracy = sortedAccuracy.find((row) => row.model === "SquadMetric");
+  const accuracyRank = modelAccuracy ? sortedAccuracy.findIndex((row) => row.model === "SquadMetric") + 1 : null;
   const modelCaptain = sortedCaptaincy.find((row) => row.strategy === "SquadMetric");
   const captainRank = modelCaptain ? sortedCaptaincy.findIndex((row) => row.strategy === "SquadMetric") + 1 : null;
-  const improvedWithMinutes = accuracy.filter((row) => row.adjusted_MAE < row.raw_MAE).length;
+  const modelTop10 = sortedTop10.find((row) => row.model === "SquadMetric");
+  const top10Rank = modelTop10 ? sortedTop10.findIndex((row) => row.model === "SquadMetric") + 1 : null;
 
   return (
     <div className="space-y-7">
@@ -48,9 +52,9 @@ export default function ProofPage() {
       </section>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <EvidenceCard icon={Target} label="Best start-adjusted MAE" value={`${points(bestAdjusted.adjusted_MAE)} pts`} detail={friendlyModel(bestAdjusted.model)} />
+        <EvidenceCard icon={Target} label="Prediction accuracy rank" value={accuracyRank ? `#${accuracyRank} of ${sortedAccuracy.length}` : "Not available"} detail={modelAccuracy ? `${points(modelAccuracy.adjusted_MAE)} points MAE · SquadMetric` : "No model row returned"} />
         <EvidenceCard icon={TrendingUp} label="Captain strategy rank" value={captainRank ? `#${captainRank} of ${sortedCaptaincy.length}` : "Not available"} detail={modelCaptain ? `${points(modelCaptain.total_captain_points, 0)} historical captain points` : "No model row returned"} />
-        <EvidenceCard icon={CheckCircle2} label="Models helped by minutes adjustment" value={`${improvedWithMinutes} of ${accuracy.length}`} detail="Lower prediction error after availability adjustment" />
+        <EvidenceCard icon={CheckCircle2} label="Top-10 identification rank" value={top10Rank ? `#${top10Rank} of ${sortedTop10.length}` : "Not available"} detail={modelTop10 ? `${percent(modelTop10.precision_at_10)} precision and recall` : "No ranking result returned"} />
       </div>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_35px_rgba(15,23,42,0.06)] sm:p-6">
@@ -58,7 +62,7 @@ export default function ProofPage() {
         <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Prediction accuracy table">
           <table className="w-full min-w-[620px] text-left text-sm">
             <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><th className="pb-3">Model</th><th className="pb-3 text-right">Raw MAE</th><th className="pb-3 text-right">Start-adjusted MAE</th><th className="pb-3 text-right">Change</th><th className="pb-3 text-right">Adjusted RMSE</th></tr></thead>
-            <tbody>{[...accuracy].sort((a, b) => a.adjusted_MAE - b.adjusted_MAE).map((row, index) => { const change = row.raw_MAE - row.adjusted_MAE; return <tr key={row.model} className={index === 0 ? "border-b border-emerald-200 bg-emerald-50" : "border-b border-slate-100"}><td className="py-3.5 font-bold text-slate-950">{friendlyModel(row.model)}{index === 0 ? <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700">Best</span> : null}</td><td className="py-3.5 text-right font-semibold text-slate-700">{points(row.raw_MAE)}</td><td className="py-3.5 text-right font-extrabold text-slate-950">{points(row.adjusted_MAE)}</td><td className={`py-3.5 text-right font-bold ${change > 0 ? "text-emerald-700" : "text-rose-700"}`}>{change > 0 ? "−" : "+"}{points(Math.abs(change))}</td><td className="py-3.5 text-right font-semibold text-slate-700">{points(row.adjusted_RMSE)}</td></tr>; })}</tbody>
+            <tbody>{sortedAccuracy.map((row, index) => { const change = row.raw_MAE - row.adjusted_MAE; return <tr key={row.model} className={row.model === "SquadMetric" ? "border-b border-emerald-200 bg-emerald-50" : "border-b border-slate-100"}><td className="py-3.5 font-bold text-slate-950">{row.model}{row.model === "SquadMetric" && index === 0 ? <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700">Best</span> : null}</td><td className="py-3.5 text-right font-semibold text-slate-700">{points(row.raw_MAE)}</td><td className="py-3.5 text-right font-extrabold text-slate-950">{points(row.adjusted_MAE)}</td><td className={`py-3.5 text-right font-bold ${change > 0 ? "text-emerald-700" : "text-rose-700"}`}>{change > 0 ? "−" : "+"}{points(Math.abs(change))}</td><td className="py-3.5 text-right font-semibold text-slate-700">{points(row.adjusted_RMSE)}</td></tr>; })}</tbody>
           </table>
         </div>
       </section>
@@ -70,7 +74,7 @@ export default function ProofPage() {
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_35px_rgba(15,23,42,0.06)] sm:p-6">
         <div className="mb-5"><h2 className="text-xl font-black text-slate-950">Finding the week&apos;s top players</h2><p className="mt-1 text-sm text-slate-600">Precision asks how many recommended top-10 players truly finished there; recall asks how much of the actual top 10 was found.</p></div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{top10.map((row) => <div key={row.model} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="font-extrabold text-slate-950">{friendlyModel(row.model)}</div><div className="mt-4 grid grid-cols-2 gap-3"><MiniMetric label="Precision" value={percent(row.precision_at_10)} /><MiniMetric label="Recall" value={percent(row.recall_at_10)} /></div></div>)}</div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{sortedTop10.map((row, index) => <div key={row.model} className={`rounded-2xl border p-4 ${row.model === "SquadMetric" ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}><div className="flex items-center justify-between gap-2"><div className="font-extrabold text-slate-950">{row.model}</div>{row.model === "SquadMetric" && index === 0 ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700">Best</span> : null}</div><div className="mt-4 grid grid-cols-2 gap-3"><MiniMetric label="Precision" value={percent(row.precision_at_10)} /><MiniMetric label="Recall" value={percent(row.recall_at_10)} /></div></div>)}</div>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -84,6 +88,26 @@ export default function ProofPage() {
 function EvidenceCard({ icon: Icon, label, value, detail }: { icon: typeof Target; label: string; value: string; detail: string }) { return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]"><Icon className="h-5 w-5 text-violet-600" /><div className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-black text-slate-950">{value}</div><div className="mt-1 text-xs leading-5 text-slate-500">{detail}</div></div>; }
 function MiniMetric({ label, value }: { label: string; value: string }) { return <div><div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-xl font-black text-slate-950">{value}</div></div>; }
 function EvidenceNote({ good = false, title, items }: { good?: boolean; title: string; items: string[] }) { return <section className={`rounded-2xl border p-5 ${good ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><div className={`flex items-center gap-2 font-black ${good ? "text-emerald-950" : "text-amber-950"}`}>{good ? <CheckCircle2 className="h-5 w-5" /> : <ShieldAlert className="h-5 w-5" />}{title}</div><ul className={`mt-3 space-y-2 text-sm leading-6 ${good ? "text-emerald-900" : "text-amber-900"}`}>{items.map((item) => <li key={item} className="flex gap-2"><span aria-hidden="true">•</span><span>{item}</span></li>)}</ul></section>; }
-function renameStrategy(row: BacktestResult): BacktestResult { const names: Record<string, string> = { "FPL Intelligence (best)": "SquadMetric", "Ridge (Captaincy Model)": "Ridge model", "No model (form average)": "Form average", "Most popular player": "Most popular", "Best points-per-game": "Highest PPG", "Random pick": "Random pick" }; return { ...row, strategy: names[row.strategy] ?? row.strategy }; }
-function friendlyModel(model: string): string { return model === "FPL Intelligence (best)" ? "SquadMetric" : model; }
+function renameProjectionModel(row: AccuracyResult): AccuracyResult { return { ...row, model: projectionModelName(row.model) }; }
+function renameTop10Model(row: Top10Metric): Top10Metric { return { ...row, model: projectionModelName(row.model) }; }
+function projectionModelName(model: string): string {
+  const name = model.toLowerCase();
+  if (model === "SquadMetric" || (name.includes("intelligence") && name.includes("best")) || name.includes("gradient boosting")) return "SquadMetric";
+  if (name.includes("alternative") || name.includes("random forest")) return "Random forest";
+  if (name.includes("simple") || name.includes("ridge")) return "Ridge regression";
+  if (name.includes("naive") || name.includes("form average")) return "Form average";
+  return model;
+}
+function renameCaptainStrategy(row: BacktestResult): BacktestResult {
+  const name = row.strategy.toLowerCase();
+  let strategy = row.strategy;
+  if (row.strategy === "SquadMetric" || name.includes("ridge")) strategy = "SquadMetric";
+  else if ((name.includes("intelligence") && name.includes("best")) || name.includes("gradient boosting")) strategy = "Gradient boosting";
+  else if (name.includes("alternative") || name.includes("random forest")) strategy = "Random forest";
+  else if (name.includes("naive") || name.includes("form average")) strategy = "Form average";
+  else if (name.includes("most popular") || name.includes("most-owned")) strategy = "Most popular";
+  else if (name.includes("points-per-game") || name.includes("highest ppg")) strategy = "Highest PPG";
+  else if (name.includes("random")) strategy = "Random pick";
+  return { ...row, strategy };
+}
 function percent(value: number) { return `${Math.round((value <= 1 ? value * 100 : value) * 10) / 10}%`; }

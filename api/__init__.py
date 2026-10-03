@@ -1,1 +1,1 @@
-"""FastAPI backend for FPL Intelligence."""
+"""FastAPI backend for SquadMetric."""

@@ -20,6 +20,7 @@ import { PublicFooter } from "@/components/PublicFooter";
 
 export const metadata: Metadata = {
   title: "SquadMetric — Smarter FPL Decisions",
+  alternates: { canonical: "/" },
 };
 
 const decisions = [

@@ -1468,8 +1468,18 @@ def test_backtest_accuracy_uses_plain_english_model_names():
     assert response.status_code == 200
     payload = response.json()
     models = {row["model"] for row in payload}
-    assert "FPL Intelligence (best)" in models
+    assert "SquadMetric" in models
     assert "Gradient Boosting Regressor" not in models
     assert "Random Forest Regressor" not in models
     assert "Ridge Regression" not in models
     assert "Naive baseline" not in models
+
+
+@pytest.mark.requires_local_artifacts
+def test_backtest_captaincy_credits_the_active_squadmetric_model():
+    response = asyncio.run(_get("/api/backtest/captaincy"))
+
+    assert response.status_code == 200
+    payload = response.json()
+    winner = max(payload, key=lambda row: row["total_captain_points"])
+    assert winner["strategy"] == "SquadMetric"

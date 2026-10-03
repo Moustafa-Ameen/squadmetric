@@ -7,14 +7,14 @@ from api import data_service
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
 MODEL_NAME_MAP = {
-    "Gradient Boosting Regressor": "FPL Intelligence (best)",
-    "Random Forest Regressor": "FPL Intelligence (alternative)",
-    "Ridge Regression": "Simple model",
-    "Naive baseline": "No model (form average)",
-    "gradient_boosting": "FPL Intelligence (best)",
-    "random_forest": "FPL Intelligence (alternative)",
-    "ridge": "Simple model",
-    "naive_baseline": "No model (form average)",
+    "Gradient Boosting Regressor": "SquadMetric",
+    "Random Forest Regressor": "Random forest",
+    "Ridge Regression": "Ridge regression",
+    "Naive baseline": "Form average",
+    "gradient_boosting": "SquadMetric",
+    "random_forest": "Random forest",
+    "ridge": "Ridge regression",
+    "naive_baseline": "Form average",
 }
 
 
@@ -72,14 +72,15 @@ def _plain_model_name(model: str) -> str:
 
 def _plain_strategy_name(strategy: str) -> str:
     lowered = strategy.lower()
-    if "gradient boosting" in lowered:
-        return "FPL Intelligence (best)"
-    if "random forest" in lowered:
-        return "FPL Intelligence (alternative)"
     if "ridge" in lowered:
-        return "Ridge (Captaincy Model)"
+        # Ridge is the captain model in the active production portfolio.
+        return "SquadMetric"
+    if "gradient boosting" in lowered:
+        return "Gradient boosting"
+    if "random forest" in lowered:
+        return "Random forest"
     if "naive" in lowered:
-        return "No model (form average)"
+        return "Form average"
     if "most-owned" in lowered or "most owned" in lowered:
         return "Most popular player"
     if "highest prior rolling ppg" in lowered or "highest_ppg" in lowered:

@@ -18,7 +18,7 @@ from api.routers import (
     review,
 )
 
-app = FastAPI(title="FPL Intelligence API")
+app = FastAPI(title="SquadMetric API")
 
 allowed_origins = [
     origin.strip()

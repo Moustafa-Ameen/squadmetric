@@ -140,7 +140,7 @@ export function Sidebar({
           </div>
         </div>
 
-        <nav aria-label="FPL Intelligence sections" className="mt-5 space-y-6">
+        <nav aria-label="SquadMetric sections" className="mt-5 space-y-6">
           {navGroups.map((group) => (
             <div key={group.label}>
               <div className="mb-2 px-5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted md:hidden lg:block">

@@ -1,1 +1,1 @@
-"""FPL Intelligence package."""
+"""SquadMetric analytics package."""

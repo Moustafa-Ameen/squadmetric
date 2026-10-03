@@ -241,6 +241,9 @@ test("performance evidence is readable and states its limits", async ({ page }) 
   await page.goto("/proof");
   await expect(page.getByRole("heading", { name: "Performance evidence" })).toBeVisible();
   await expect(page.getByText("The model is tested on matches it was not trained to predict.")).toBeVisible();
+  await expect(page.getByText("Prediction accuracy rank").locator("..").getByText("#1")).toBeVisible();
+  await expect(page.getByText("Captain strategy rank").locator("..").getByText("#1 of 2")).toBeVisible();
+  await expect(page.getByText("Top-10 identification rank").locator("..").getByText("#1 of 2")).toBeVisible();
   await expect(page.getByText("What it does not prove")).toBeVisible();
   await expect(page.getByText("A guaranteed top-1% finish or a fixed season score.")).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
@@ -391,15 +394,15 @@ async function mockApi(route: Route) {
     { element_id: 102, name: "Bukayo Saka", web_name: "Saka", team: "Arsenal", team_code: 3, position: "MID", price: 10, total_points: 0, ppg: 6.5, form: 6.1, start_likelihood: 0.95, value: 0.65, captain_rank_score: 0, transfer_rank_score: 0, selected_by_percent: 42, metrics_available: false },
   ]);
   if (url.pathname === "/api/backtest/accuracy") return json([
-    { model: "FPL Intelligence (best)", raw_MAE: 2.1, raw_RMSE: 3.2, raw_beats_naive_MAE: "yes", raw_beats_naive_RMSE: "yes", adjusted_MAE: 1.8, adjusted_RMSE: 2.9, adjusted_beats_naive_MAE: "yes", adjusted_beats_naive_RMSE: "yes" },
+    { model: "SquadMetric", raw_MAE: 2.1, raw_RMSE: 3.2, raw_beats_naive_MAE: "yes", raw_beats_naive_RMSE: "yes", adjusted_MAE: 1.8, adjusted_RMSE: 2.9, adjusted_beats_naive_MAE: "yes", adjusted_beats_naive_RMSE: "yes" },
     { model: "Naive form", raw_MAE: 2.5, raw_RMSE: 3.6, raw_beats_naive_MAE: "no", raw_beats_naive_RMSE: "no", adjusted_MAE: 2.3, adjusted_RMSE: 3.3, adjusted_beats_naive_MAE: "no", adjusted_beats_naive_RMSE: "no" },
   ]);
   if (url.pathname === "/api/backtest/captaincy") return json([
-    { strategy: "FPL Intelligence (best)", total_captain_points: 510, avg_per_gameweek: 13.4 },
+    { strategy: "SquadMetric", total_captain_points: 510, avg_per_gameweek: 13.4 },
     { strategy: "Most popular player", total_captain_points: 472, avg_per_gameweek: 12.4 },
   ]);
   if (url.pathname === "/api/backtest/top10") return json([
-    { model: "FPL Intelligence (best)", precision_at_10: 0.16, recall_at_10: 0.16 },
+    { model: "SquadMetric", precision_at_10: 0.16, recall_at_10: 0.16 },
     { model: "Naive form", precision_at_10: 0.1, recall_at_10: 0.1 },
   ]);
   if (url.pathname === "/api/predictions/initial-squad") return json({

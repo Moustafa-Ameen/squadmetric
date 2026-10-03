@@ -1,5 +1,5 @@
 [project]
-name = "fpl-intelligence"
+name = "squadmetric"
 version = "0.1.0"
 description = "Fantasy Premier League analytics, captaincy, and transfer intelligence."
 requires-python = ">=3.13"

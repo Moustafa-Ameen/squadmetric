@@ -118,7 +118,7 @@ export function OverviewClient({
   const viceCaptainEdgeName = squadMetrics.viceCaptainPick?.web_name ?? squadMetrics.viceCaptainPick?.name ?? "VC";
   const captaincyEdge = squadMetrics.captainPick ? squadMetrics.captaincyEdge : (captains[0]?.expected_points ?? 0);
   const topCaptain = captains[0];
-  const bestAccuracy = accuracy.find((row) => row.model === "FPL Intelligence (best)") ?? accuracy[0];
+  const bestAccuracy = accuracy.find((row) => row.model === "SquadMetric") ?? accuracy[0];
   const suggestions = buildSuggestions(squad, transfers);
   const fixtureRows = fixtureTickerRows(fixtures);
   const fixtureMeta = fixtureRows[0];
@@ -142,7 +142,7 @@ export function OverviewClient({
         <div className="fpl-card-shadow rounded-lg border border-fpl-border bg-[linear-gradient(135deg,rgba(0,255,135,0.1),rgba(16,21,20,0.96)_38%,rgba(143,76,248,0.12))] p-5">
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-fpl-green">
             <Sparkles className="h-4 w-4" />
-            FPL Intelligence
+            SquadMetric
           </div>
           <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
             <div>
