@@ -107,6 +107,22 @@ test("guest onboarding opens a clearly labeled demo workspace", async ({ page })
   await expectNoSeriousAccessibilityViolations(page);
 });
 
+test("guest demo shows a full plan even when prediction data is stale", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("squadmetric_guest_demo_v1", "true"));
+  await page.route("**/api/fpl/season-state", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...seasonState, recommendations_ready: false, decision_status: "blocked", decision_blockers: [{ code: "finalized_gameweek_missing", message: "GW4 is finalized, but predictions use results only through GW3." }] }) }));
+  await page.route("**/api/predictions/overview", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: { code: "recommendations_blocked" } }) }));
+
+  await page.goto("/dashboard");
+  await expect(page.getByText("You’re exploring a demo team.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Dowell → Tavernier", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recommendations are paused until the data bundle is refreshed." })).toHaveCount(0);
+
+  await page.goto("/decisions");
+  await expect(page.getByText("Demo plan:", { exact: false })).toBeVisible();
+  await expect(page.getByText("recommendations paused", { exact: false })).toHaveCount(0);
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
 test("my team is readable, interactive, and offers a best-XI view", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/squad");

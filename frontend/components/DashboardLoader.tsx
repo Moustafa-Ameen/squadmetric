@@ -68,7 +68,9 @@ export function DashboardLoader() {
   // honest loading state visible until that planner has finished instead of
   // briefly rendering the empty/error card with a null decision.
   if (loading && !decisionCenter) return <DashboardSkeleton />;
-  if (overviewError || !overview || seasonState?.recommendations_ready === false) {
+  // The guest demo plan is fixed sample data, so stale predictions (which also
+  // block the overview endpoint) never hide it.
+  if (!guestMode && (overviewError || !overview || seasonState?.recommendations_ready === false)) {
     return <DashboardRefreshState seasonState={seasonState} loading={loading} onRefresh={load} />;
   }
 

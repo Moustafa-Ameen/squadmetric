@@ -44,7 +44,7 @@ export default function LandingPage() {
                 <Sparkles className="h-3.5 w-3.5" />
                 Built for the 2026/27 season
               </div>
-              <h1 className="mt-7 max-w-3xl text-5xl font-black tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-[72px] lg:leading-[0.98]">
+              <h1 className="mt-7 max-w-3xl text-5xl font-black tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-[clamp(3.5rem,5.6vw,72px)] lg:leading-[0.98]">
                 Make the smarter FPL decision.
                 <span className="brand-gradient block">Every gameweek.</span>
               </h1>

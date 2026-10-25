@@ -7,7 +7,7 @@ import { useDrawer } from "@/context/DrawerContext";
 import type { DecisionCenterPlayer, DecisionCenterResponse, OverviewResponse, SeasonState, TeamRatingFactor } from "@/lib/types";
 import { SquadPitch, type VisualSquadPlayer } from "./SquadPitch";
 
-export function DashboardClient({ overview, seasonState, seasonStateUnavailable, decisionCenter, teamId, guestMode = false }: { overview: OverviewResponse; seasonState: SeasonState | null; seasonStateUnavailable: boolean; decisionCenter: DecisionCenterResponse | null; teamId: string; guestMode?: boolean }) {
+export function DashboardClient({ overview, seasonState, seasonStateUnavailable, decisionCenter, teamId, guestMode = false }: { overview: OverviewResponse | null; seasonState: SeasonState | null; seasonStateUnavailable: boolean; decisionCenter: DecisionCenterResponse | null; teamId: string; guestMode?: boolean }) {
   const { openDrawer } = useDrawer();
   const [lineupView, setLineupView] = useState<"current" | "recommended">("current");
   const rating = decisionCenter?.rating;
@@ -82,7 +82,7 @@ export function DashboardClient({ overview, seasonState, seasonStateUnavailable,
         </div>
         <SquadPitch players={pitchPlayers} title={lineupView === "current" && current ? (guestMode ? "Sample current XI" : "Latest published FPL XI") : `Best GW${gameweek} lineup`} onPlayerClick={(player) => openDrawer(player.name)} />
       </div> : null}
-      <p className="text-center text-xs text-slate-500">{overview.player_count.toLocaleString()} players evaluated · projections are estimates, not guarantees</p>
+      <p className="text-center text-xs text-slate-500">{overview ? `${overview.player_count.toLocaleString()} players evaluated · ` : ""}projections are estimates, not guarantees</p>
     </div>
   );
 }

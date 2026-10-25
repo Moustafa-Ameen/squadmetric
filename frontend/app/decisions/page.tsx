@@ -59,7 +59,8 @@ export default function DecisionCenterPage() {
       .then(async (state) => {
         if (cancelled) return;
         setSeasonState(state);
-        if (!state.recommendations_ready) return;
+        // The guest demo plan is fixed sample data, so stale predictions never block it.
+        if (!state.recommendations_ready && !demoMode) return;
         const response = demoMode
           ? createDemoDecisionCenter(state.next_gw ?? state.current_gw ?? 1)
           : savedTeamId
@@ -138,7 +139,7 @@ export default function DecisionCenterPage() {
       </div>
     );
   }
-  if (seasonState && !seasonState.recommendations_ready) {
+  if (seasonState && !seasonState.recommendations_ready && !guestMode) {
     return (
       <div className="space-y-5">
         <SectionHeader title="This Week" subtitle={`${teamLabel} · recommendations paused`} />

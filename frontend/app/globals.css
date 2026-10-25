@@ -221,6 +221,8 @@ table {
   background: linear-gradient(90deg, #0d9f62 0%, #5b3dd5 58%, #7c3aed 100%);
   background-clip: text;
   -webkit-background-clip: text;
+  /* Tight display line-heights end the clipped background above descenders. */
+  padding-bottom: 0.12em;
 }
 
 .sm-primary-button,
