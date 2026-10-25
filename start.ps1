@@ -188,6 +188,12 @@ function Wait-ForHttp {
             }
         }
         catch {
+            # Windows PowerShell throws on 4xx, but any answer below 500 means
+            # the server is up; only connection failures and 5xx keep waiting.
+            $errorResponse = $_.Exception.Response
+            if ($null -ne $errorResponse -and [int]$errorResponse.StatusCode -lt 500) {
+                return
+            }
             Start-Sleep -Milliseconds 750
         }
     }
@@ -434,7 +440,7 @@ try {
 
     Wait-ForHttp `
         -Name "SquadMetric website" `
-        -Uri "http://127.0.0.1:$FrontendPort/login" `
+        -Uri "http://127.0.0.1:$FrontendPort/" `
         -Process $frontendProcess `
         -ErrorLog $frontendError
 
