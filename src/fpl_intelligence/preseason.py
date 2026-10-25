@@ -112,8 +112,13 @@ def build_identity_safe_preseason_pool(
     if not np.isfinite(global_prior):
         global_prior = 2.5
     unmatched = ~gw1["prior_matched"]
+    # Cast explicitly: mapping an empty selection yields object dtype, which
+    # pandas >= 3.1 refuses to set into a float column.
     gw1.loc[unmatched, "prior_points_per_appearance"] = (
-        gw1.loc[unmatched, "position_group"].map(position_prior).fillna(global_prior)
+        gw1.loc[unmatched, "position_group"]
+        .map(position_prior)
+        .fillna(global_prior)
+        .astype(float)
     )
     gw1.loc[unmatched, "prior_value"] = gw1.loc[
         unmatched, "prior_points_per_appearance"
