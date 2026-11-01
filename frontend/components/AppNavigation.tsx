@@ -17,6 +17,7 @@ import {
 import { useState } from "react";
 import { Brand } from "./Brand";
 import { AccountMenu } from "./AccountMenu";
+import { DismissibleMenu } from "./DismissibleMenu";
 
 const primary = [
   { href: "/dashboard", label: "My Team", icon: Shield },
@@ -43,16 +44,17 @@ export function AppNavigation() {
           <Brand compact href="/dashboard" />
           <nav aria-label="Primary navigation" className="hidden min-w-0 flex-1 items-center justify-center gap-1 lg:flex">
             {primary.map((item) => <DesktopNavItem key={item.href} {...item} pathname={pathname} />)}
-            <details className="relative">
+            <DismissibleMenu summary={
               <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950">
                 More <ChevronDown className="h-4 w-4" />
               </summary>
+            }>
               <div className="absolute right-0 top-12 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
                 {secondary.map((item) => (
                   <Link key={item.href} href={item.href} className="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950">{item.label}</Link>
                 ))}
               </div>
-            </details>
+            </DismissibleMenu>
           </nav>
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 sm:inline">2026/27 live</span>

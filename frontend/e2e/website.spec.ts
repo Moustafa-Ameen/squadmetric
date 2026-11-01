@@ -396,11 +396,28 @@ test("chip guide is readable and legacy decision routes have one destination", a
 test("track record scores each saved plan against doing nothing", async ({ page }) => {
   await page.goto("/track-record");
   await expect(page.getByRole("heading", { name: "Track record" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /\+13 points versus doing nothing/ })).toBeVisible();
-  await expect(page.getByText("+13 of that came from chips.", { exact: false })).toBeVisible();
-  await expect(page.getByText("Vušković → Shaw")).toBeVisible();
-  await expect(page.getByText("Not scored: GW4, GW5")).toBeVisible();
+  await expect(page.getByText("points over 2 scored gameweeks")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Gain by gameweek: GW2 +13, GW6 0" })).toBeVisible();
+  await expect(page.getByText("Vušković")).toBeVisible();
+  await expect(page.getByText("GW4–5", { exact: true })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
+});
+
+test("header menus close when clicking elsewhere or pressing Escape", async ({ page, isMobile }) => {
+  test.skip(isMobile, "The desktop header menus are hidden on phones.");
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.goto("/fixtures");
+  const more = page.locator("details", { has: page.locator("summary", { hasText: "More" }) });
+  await more.locator("summary").click();
+  await expect(more).toHaveAttribute("open", "");
+  await page.mouse.click(10, 400);
+  await expect(more).not.toHaveAttribute("open", "");
+
+  const profile = page.locator("details", { has: page.getByLabel("Profile menu") });
+  await page.getByLabel("Profile menu").click();
+  await expect(profile).toHaveAttribute("open", "");
+  await page.keyboard.press("Escape");
+  await expect(profile).not.toHaveAttribute("open", "");
 });
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {

@@ -1,11 +1,17 @@
 "use client";
 
-import { ArrowRight, CalendarX, CheckCircle2, Scale, ShieldAlert, TrendingUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CalendarX, Crown, Info, Repeat2, ShieldCheck, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ErrorState, TableSkeleton } from "@/components/LoadingState";
-import { SectionHeader } from "@/components/SectionHeader";
 import { getTrackRecord } from "@/lib/api";
 import type { TrackRecordGameweek, TrackRecordResponse } from "@/lib/types";
+
+// Validated two-series palette (light surface): transfers & lineup, chips.
+const MOVE_COLOR = "#059669";
+const CHIP_COLOR = "#8b5cf6";
+
+type TimelineEntry = { key: string; row: TrackRecordGameweek } | { key: string; row: null; from: number; to: number };
 
 export default function TrackRecordPage() {
   const [record, setRecord] = useState<TrackRecordResponse | null>(null);
@@ -15,122 +21,254 @@ export default function TrackRecordPage() {
     getTrackRecord().then(setRecord).catch(() => setError(true));
   }, []);
 
+  const timeline = useMemo<TimelineEntry[]>(() => {
+    if (!record) return [];
+    // Newest first, with back-to-back unscored gameweeks merged into one row.
+    const byGameweek = new Map<number, TrackRecordGameweek | null>();
+    record.gameweeks.forEach((row) => byGameweek.set(row.gameweek, row));
+    record.unscored_gameweeks.forEach((gameweek) => byGameweek.set(gameweek, null));
+    const entries: TimelineEntry[] = [];
+    for (const gameweek of [...byGameweek.keys()].sort((a, b) => b - a)) {
+      const row = byGameweek.get(gameweek) ?? null;
+      const last = entries[entries.length - 1];
+      if (row) entries.push({ key: `gw-${gameweek}`, row });
+      else if (last && last.row === null && last.from === gameweek + 1) last.from = gameweek;
+      else entries.push({ key: `gap-${gameweek}`, row: null, from: gameweek, to: gameweek });
+    }
+    return entries;
+  }, [record]);
+
   if (error) return <ErrorState />;
   if (!record) return <TableSkeleton />;
 
   const { totals } = record;
-  const gameweeks = [...record.gameweeks].sort((a, b) => b.gameweek - a.gameweek);
   const total = totals.total_gain_vs_no_action ?? 0;
   const fromChips = totals.total_gain_from_chips ?? 0;
+  const fromMoves = round(total - fromChips);
 
   return (
-    <div className="space-y-7">
-      <SectionHeader title="Track record" subtitle="Every saved SquadMetric plan, scored with official FPL points once the gameweek is final." />
+    <div className="space-y-6">
+      <header>
+        <div className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">2026/27 season</div>
+        <h1 className="mt-2 text-3xl font-black tracking-[-0.045em] text-slate-950 sm:text-4xl">Track record</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Every plan SquadMetric saved before a deadline, scored with official FPL points once the gameweek was final.</p>
+      </header>
 
       {totals.scored ? (
-        <section className="overflow-hidden rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,#ffffff_0%,#f3f0ff_65%,#ecfdf5_100%)] p-6 shadow-[0_18px_55px_rgba(76,29,149,0.09)] sm:p-8">
-          <div className="text-xs font-bold uppercase tracking-[0.15em] text-violet-700">2026/27 so far</div>
-          <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">
-            <span className={gainClass(total)}>{signed(total)} points</span> versus doing nothing
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-            Across {totals.scored} scored {totals.scored === 1 ? "gameweek" : "gameweeks"}, following the plan would have scored {signed(total)} points more than keeping the same squad.
-            {fromChips ? ` ${signed(fromChips)} of that came from chips.` : ""}
-          </p>
+        <section className="grid overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)] lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="border-b border-slate-200 p-6 sm:p-8 lg:border-b-0 lg:border-r">
+            <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Versus keeping the same squad</div>
+            <div className={`mt-3 text-6xl font-black tracking-[-0.06em] sm:text-7xl ${gainText(total)}`}>{signed(total)}</div>
+            <div className="mt-1 text-sm font-semibold text-slate-700">points over {totals.scored} scored {totals.scored === 1 ? "gameweek" : "gameweeks"}</div>
+
+            <div className="mt-7">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-500"><span>Where the points came from</span></div>
+              <SplitBar moves={fromMoves} chips={fromChips} />
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <LegendValue color={MOVE_COLOR} label="Transfers & lineup" value={fromMoves} />
+                <LegendValue color={CHIP_COLOR} label="Chips" value={fromChips} />
+              </div>
+            </div>
+
+            <div className="mt-7 grid grid-cols-3 gap-2">
+              <RecordPill label="Ahead" value={totals.weeks_ahead ?? 0} tone="good" />
+              <RecordPill label="Level" value={totals.weeks_level ?? 0} tone="neutral" />
+              <RecordPill label="Behind" value={totals.weeks_behind ?? 0} tone="bad" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-violet-50/70 to-white p-6 sm:p-8">
+            <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">Gain by gameweek</div>
+            <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold text-slate-600">
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: MOVE_COLOR }} />Transfers & lineup</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: CHIP_COLOR }} />Chip</span>
+            </div>
+            <GainChart rows={record.gameweeks} />
+            <p className="mt-2 text-xs leading-5 text-slate-500">Average {signed(totals.average_gain_vs_no_action ?? 0)} points per scored gameweek.</p>
+          </div>
         </section>
       ) : (
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8">
+        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:p-8">
           <h2 className="text-2xl font-black tracking-[-0.03em] text-slate-950">No gameweeks scored yet</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Plans are saved before every deadline and scored once official results are final.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">A plan is saved before every deadline and scored once official results are final.</p>
         </section>
       )}
 
-      {totals.scored ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={CheckCircle2} label="Gameweeks scored" value={String(totals.scored)} detail="Plans saved before the deadline" />
-          <StatCard icon={TrendingUp} label="Ahead · level · behind" value={`${totals.weeks_ahead ?? 0} · ${totals.weeks_level ?? 0} · ${totals.weeks_behind ?? 0}`} detail="Weeks versus doing nothing" />
-          <StatCard icon={Scale} label="Average per gameweek" value={`${signed(totals.average_gain_vs_no_action ?? 0)} pts`} detail="Gain versus doing nothing" />
-          <StatCard icon={ShieldAlert} label="Gain from chips" value={`${signed(fromChips)} pts`} detail={`${signed(round(total - fromChips))} pts from transfers and lineup`} />
+      {timeline.length ? (
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_10px_35px_rgba(15,23,42,0.06)] sm:p-6">
+          <h2 className="text-xl font-black tracking-[-0.02em] text-slate-950">Gameweek by gameweek</h2>
+          <p className="mt-1 text-sm text-slate-600">What was recommended before the deadline, and what it scored.</p>
+          <ol className="mt-5 space-y-3">
+            {timeline.map((entry) => entry.row ? <ScoredRow key={entry.key} row={entry.row} /> : <UnscoredRow key={entry.key} from={entry.from} to={entry.to} />)}
+          </ol>
+        </section>
+      ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 sm:p-6">
+          <div className="flex items-center gap-2 font-black text-slate-950"><ShieldCheck className="h-5 w-5 text-emerald-600" />How each gameweek is scored</div>
+          <ol className="mt-4 space-y-4">
+            <Step n={1} title="Saved before the deadline" text="The recommended plan and every alternative considered are frozen before the deadline passes." />
+            <Step n={2} title="Scored with official points" text="Once FPL marks the gameweek final, each saved plan is scored with real points, including any hit." />
+            <Step n={3} title="Compared with no change" text="The baseline is the same squad with no transfers and no chip." />
+          </ol>
         </div>
-      ) : null}
-
-      {gameweeks.length ? (
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_35px_rgba(15,23,42,0.06)] sm:p-6">
-          <div className="mb-5"><h2 className="text-xl font-black text-slate-950">Gameweek by gameweek</h2><p className="mt-1 text-sm text-slate-600">What SquadMetric recommended before the deadline, and what it actually scored.</p></div>
-          <div className="space-y-3">{gameweeks.map((row) => <GameweekRow key={row.gameweek} row={row} />)}</div>
-        </section>
-      ) : null}
-
-      {record.unscored_gameweeks.length ? (
-        <section className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
-          <CalendarX className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-          <div>
-            <div className="font-black">Not scored: {record.unscored_gameweeks.map((gw) => `GW${gw}`).join(", ")}</div>
-            <p className="mt-1 text-amber-900">No plan was saved before those deadlines, and a plan made afterwards could not be scored honestly. A plan is now saved automatically before every deadline.</p>
-          </div>
-        </section>
-      ) : null}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Note good title="How each gameweek is scored" items={[
-          "Before the deadline, SquadMetric saves its recommended plan and every alternative it considered.",
-          "After official scores are final, each saved plan is scored with real points, including any points hit.",
-          "The comparison is the same squad with no transfers and no chip.",
-        ]} />
-        <Note title="What to keep in mind" items={[
-          "Plans are made for one real FPL team, and scored whether or not that manager followed them.",
-          "Each gameweek is scored on its own. A chip recommended in two weeks counts twice here, though it can only be played once.",
-          "A handful of gameweeks is a small sample in a high-variance game.",
-        ]} />
-      </div>
+        <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+          <div className="flex items-center gap-2 font-black text-slate-950"><Info className="h-5 w-5 text-slate-500" />Worth knowing</div>
+          <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
+            <li>Plans are made for one real FPL team and scored whether or not that manager followed them.</li>
+            <li>Each gameweek stands alone, so a chip recommended in two weeks counts twice here, though it can only be played once.</li>
+            <li>A few gameweeks is a small sample in a high-variance game.</li>
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }
 
-function GameweekRow({ row }: { row: TrackRecordGameweek }) {
-  const { recommendation } = row;
-  const moves = recommendation.transfers.length
-    ? recommendation.transfers.map((move) => `${move.out} → ${move.in}`).join(", ")
-    : "No transfer";
+function SplitBar({ moves, chips }: { moves: number; chips: number }) {
+  const positiveMoves = Math.max(moves, 0);
+  const positiveChips = Math.max(chips, 0);
+  const sum = positiveMoves + positiveChips;
+  if (!sum) return <div className="mt-2 h-3 rounded-full bg-slate-100" />;
   return (
-    <article className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
-      <div className="text-lg font-black text-slate-950">GW{row.gameweek}</div>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-950">
-          <span className="inline-flex items-center gap-1">{moves}</span>
-          {recommendation.hit_cost ? <Badge tone="rose">−{recommendation.hit_cost} hit</Badge> : null}
-          {recommendation.chip ? <Badge tone="violet">{recommendation.chip}</Badge> : null}
-        </div>
-        <div className="mt-1 text-xs leading-5 text-slate-500">
-          Captain {recommendation.captain ?? "—"} · {row.options_considered} options considered · best option scored {fmt(row.best_option_points)}
-        </div>
-      </div>
-      <div className="flex items-center gap-3 sm:justify-end">
-        <div className="text-right text-xs leading-5 text-slate-500">
-          <div><span className="font-bold text-slate-900">{fmt(row.recommended_points)}</span> plan</div>
-          <div><span className="font-bold text-slate-900">{fmt(row.no_action_points)}</span> no change</div>
-        </div>
-        <ArrowRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
-        <div className="min-w-20 text-right">
-          <div className={`text-xl font-black ${gainClass(row.gain_vs_no_action)}`}>{signed(row.gain_vs_no_action)}</div>
-          {row.chip_gain ? <div className="text-[11px] font-semibold text-slate-500">{signed(row.chip_gain)} from chip</div> : null}
-        </div>
-      </div>
-    </article>
+    <div className="mt-2 flex h-3 gap-0.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+      {positiveMoves ? <div className="h-full rounded-full" style={{ width: `${(positiveMoves / sum) * 100}%`, background: MOVE_COLOR }} /> : null}
+      {positiveChips ? <div className="h-full rounded-full" style={{ width: `${(positiveChips / sum) * 100}%`, background: CHIP_COLOR }} /> : null}
+    </div>
   );
 }
 
-function StatCard({ icon: Icon, label, value, detail }: { icon: typeof TrendingUp; label: string; value: string; detail: string }) {
-  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]"><Icon className="h-5 w-5 text-violet-600" /><div className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-black text-slate-950">{value}</div><div className="mt-1 text-xs leading-5 text-slate-500">{detail}</div></div>;
+function LegendValue({ color, label, value }: { color: string; label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />{label}</div>
+      <div className="mt-1 text-lg font-black text-slate-950">{signed(value)} pts</div>
+    </div>
+  );
 }
 
-function Badge({ tone, children }: { tone: "rose" | "violet"; children: React.ReactNode }) {
-  const colors = tone === "rose" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-violet-200 bg-violet-50 text-violet-700";
-  return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${colors}`}>{children}</span>;
+function RecordPill({ label, value, tone }: { label: string; value: number; tone: "good" | "neutral" | "bad" }) {
+  const colors = tone === "good" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : tone === "bad" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-slate-200 bg-slate-50 text-slate-700";
+  return (
+    <div className={`rounded-2xl border px-3 py-2.5 text-center ${colors}`}>
+      <div className="text-2xl font-black">{value}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide">{label}</div>
+    </div>
+  );
 }
 
-function Note({ good = false, title, items }: { good?: boolean; title: string; items: string[] }) {
-  return <section className={`rounded-2xl border p-5 ${good ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><div className={`flex items-center gap-2 font-black ${good ? "text-emerald-950" : "text-amber-950"}`}>{good ? <CheckCircle2 className="h-5 w-5" /> : <ShieldAlert className="h-5 w-5" />}{title}</div><ul className={`mt-3 space-y-2 text-sm leading-6 ${good ? "text-emerald-900" : "text-amber-900"}`}>{items.map((item) => <li key={item} className="flex gap-2"><span aria-hidden="true">•</span><span>{item}</span></li>)}</ul></section>;
+function GainChart({ rows }: { rows: TrackRecordGameweek[] }) {
+  const data = [...rows]
+    .sort((a, b) => a.gameweek - b.gameweek)
+    .map((row) => {
+      const chip = row.chip_gain ?? 0;
+      return { label: `GW${row.gameweek}`, moves: round(row.gain_vs_no_action - chip), chip, total: row.gain_vs_no_action };
+    });
+  return (
+    <div className="mt-4 h-[220px] w-full" role="img" aria-label={`Gain by gameweek: ${data.map((d) => `${d.label} ${signed(d.total)}`).join(", ")}`}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} stackOffset="sign" margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap="32%">
+          <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="0" />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} height={40} interval={0} tick={<GainTick totals={data.map((d) => d.total)} />} />
+          <YAxis tickLine={false} axisLine={false} allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+          <ReferenceLine y={0} stroke="#94a3b8" />
+          <Tooltip cursor={{ fill: "rgba(139,92,246,0.06)" }} content={<GainTooltip />} />
+          <Bar dataKey="moves" stackId="gain" fill={MOVE_COLOR} stroke="#ffffff" strokeWidth={2} radius={[4, 4, 4, 4]} maxBarSize={44} isAnimationActive={false} />
+          <Bar dataKey="chip" stackId="gain" fill={CHIP_COLOR} stroke="#ffffff" strokeWidth={2} radius={[4, 4, 4, 4]} maxBarSize={44} isAnimationActive={false} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// Each gameweek's total sits under its label, so a zero-gain week still reads.
+function GainTick({ x = 0, y = 0, index = 0, payload, totals }: { x?: number; y?: number; index?: number; payload?: { value: string }; totals: number[] }) {
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text dy={12} textAnchor="middle" fontSize={12} fontWeight={600} fill="#475569">{payload?.value}</text>
+      <text dy={28} textAnchor="middle" fontSize={12} fontWeight={800} fill="#0f172a">{signed(totals[index] ?? 0)}</text>
+    </g>
+  );
+}
+
+function GainTooltip({ active, payload, label }: { active?: boolean; payload?: { payload: { moves: number; chip: number; total: number } }[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+      <div className="font-black text-slate-950">{label} · {signed(point.total)} pts</div>
+      <div className="mt-1 flex items-center gap-1.5 text-slate-600"><span className="h-2 w-2 rounded-sm" style={{ background: MOVE_COLOR }} />Transfers & lineup {signed(point.moves)}</div>
+      <div className="flex items-center gap-1.5 text-slate-600"><span className="h-2 w-2 rounded-sm" style={{ background: CHIP_COLOR }} />Chip {signed(point.chip)}</div>
+    </div>
+  );
+}
+
+function ScoredRow({ row }: { row: TrackRecordGameweek }) {
+  const { recommendation } = row;
+  return (
+    <li className="grid gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-[88px_minmax(0,1fr)_auto] sm:items-center">
+      <div>
+        <div className="text-lg font-black text-slate-950">GW{row.gameweek}</div>
+        <div className="text-xs text-slate-500">{formatDay(row.deadline)}</div>
+      </div>
+      <div className="min-w-0 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {recommendation.transfers.length ? recommendation.transfers.map((move) => (
+            <span key={`${move.out}-${move.in}`} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1.5 pr-2.5 text-xs font-bold text-slate-800">
+              <Repeat2 className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-slate-500 line-through decoration-slate-300">{move.out}</span>
+              <span className="text-slate-300">→</span>
+              <span>{move.in}</span>
+            </span>
+          )) : <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600">No transfer</span>}
+          {recommendation.chip ? <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700"><Sparkles className="h-3.5 w-3.5" />{recommendation.chip}</span> : null}
+          {recommendation.hit_cost ? <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700">−{recommendation.hit_cost} hit</span> : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+          {recommendation.captain ? <span className="inline-flex items-center gap-1 font-semibold text-slate-700"><Crown className="h-3.5 w-3.5 text-amber-500" />{recommendation.captain}</span> : null}
+          <span>{row.options_considered} options considered</span>
+          <span>Best option {fmt(row.best_option_points)} pts</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-3 sm:justify-end sm:border-t-0 sm:pt-0">
+        <div className="text-xs leading-5 text-slate-500">
+          <div>Plan <span className="font-bold text-slate-900">{fmt(row.recommended_points)}</span></div>
+          <div>No change <span className="font-bold text-slate-900">{fmt(row.no_action_points)}</span></div>
+        </div>
+        <div className={`min-w-[84px] rounded-2xl px-3 py-2 text-center ${gainSurface(row.gain_vs_no_action)}`}>
+          <div className="text-xl font-black">{signed(row.gain_vs_no_action)}</div>
+          <div className="text-[10px] font-bold uppercase tracking-wide opacity-80">{row.chip_gain ? `${signed(row.chip_gain)} chip` : "points"}</div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function UnscoredRow({ from, to }: { from: number; to: number }) {
+  const single = from === to;
+  return (
+    <li className="grid gap-2 rounded-2xl border border-dashed border-slate-200 px-4 py-3 sm:grid-cols-[88px_minmax(0,1fr)] sm:items-center">
+      <div className="text-lg font-black text-slate-500">{single ? `GW${from}` : `GW${from}–${to}`}</div>
+      <div className="flex items-center gap-2 text-xs text-slate-500"><CalendarX className="h-4 w-4 shrink-0 text-slate-400" />Not scored: no plan was saved before {single ? "this deadline" : "these deadlines"}. Plans are now saved automatically.</div>
+    </li>
+  );
+}
+
+function Step({ n, title, text }: { n: number; title: string; text: string }) {
+  return (
+    <li className="flex gap-3">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-black text-violet-700">{n}</span>
+      <div><div className="text-sm font-bold text-slate-950">{title}</div><div className="mt-0.5 text-sm leading-6 text-slate-600">{text}</div></div>
+    </li>
+  );
+}
+
+function formatDay(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(date);
 }
 
 function round(value: number): number {
@@ -147,8 +285,14 @@ function signed(value: number): string {
   return "0";
 }
 
-function gainClass(value: number): string {
+function gainText(value: number): string {
   if (value > 0) return "text-emerald-700";
   if (value < 0) return "text-rose-700";
-  return "text-slate-700";
+  return "text-slate-800";
+}
+
+function gainSurface(value: number): string {
+  if (value > 0) return "bg-emerald-50 text-emerald-800";
+  if (value < 0) return "bg-rose-50 text-rose-800";
+  return "bg-slate-100 text-slate-700";
 }
