@@ -82,6 +82,20 @@ jobs:
           git checkout -- .
           git clean -fd -- data models
 
+      # Freezes the next deadline's plan for the tracked team so it can be settled
+      # against official results. Repeated captures are fine: settlement uses the
+      # latest one taken before the deadline. A failure must not lose the state.
+      - name: Capture deadline decision
+        id: capture
+        continue-on-error: true
+        env:
+          FPL_TEAM_ID: ${{ secrets.FPL_TEAM_ID }}
+        run: |
+          python -m fpl_intelligence.live_decision_evidence capture --team-id "$FPL_TEAM_ID" \
+            | tee "$RUNNER_TEMP/capture.json"
+          jq -r '"Captured GW\(.gameweek) decision (\(.candidate_count) candidates)"' \
+            "$RUNNER_TEMP/capture.json" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Save local-only state
         run: |
           git ls-files --others --ignored --exclude-standard data models > "$RUNNER_TEMP/state-files.txt"
@@ -89,3 +103,9 @@ jobs:
             | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
                 -pass env:REFRESH_STATE_KEY -out "$RUNNER_TEMP/$STATE_ASSET"
           gh release upload "$STATE_TAG" "$RUNNER_TEMP/$STATE_ASSET" --clobber
+
+      - name: Report a failed decision capture
+        if: steps.capture.outcome == 'failure'
+        run: |
+          echo "::error::The deadline decision was not captured; this Gameweek may go unscored."
+          exit 1

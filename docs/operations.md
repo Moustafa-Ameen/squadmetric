@@ -15,6 +15,11 @@ when a newly finalized Gameweek is published and the full test suite passes.
 Vercel and the backend then redeploy from that push. A failed run publishes
 nothing, keeps the last validated bundle, and GitHub emails the repository owner.
 
+Each run also freezes the next deadline's plan for the team in the `FPL_TEAM_ID`
+repository secret, so every Gameweek is settled against official results when it
+is finalized. That team is the owner's own account and is not a product-performance
+record unless it follows every recommendation.
+
 Recommendations keep serving while the model trails the official finalized
 Gameweeks by at most `FPL_MAX_PREDICTION_LAG_GAMEWEEKS` (default 2). Live prices,
 availability, roles and fixtures are applied to every request, and the website
