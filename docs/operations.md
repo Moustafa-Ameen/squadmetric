@@ -1,16 +1,25 @@
 # SquadMetric operations
 
-SquadMetric does not use an unattended Windows refresh task. The local launcher
-checks for finalized FPL data and transactionally refreshes the prediction bundle
-before starting the website. This updates application data only and never performs
-an FPL action. Pass `-SkipDataRefresh` to `start.cmd` or `start.ps1` only when the
-last validated bundle should be used unchanged.
+SquadMetric does not use an unattended Windows refresh task, and nothing needs to
+run on a personal computer. The `Data refresh` GitHub workflow
+(`.github/workflows/data-refresh.yml`) runs the post-Gameweek refresh on GitHub's
+servers at 07:30 and 16:30 UTC every day and can be started by hand from the
+Actions tab. It never performs an FPL action.
+
+The refresh needs local-only training state: raw official snapshots, historical
+rows, and frozen decision evidence. The workflow keeps that state in the
+`refresh-state` release as an AES-256 encrypted tarball whose key is the
+`REFRESH_STATE_KEY` repository secret. Every run restores it, saves fresh
+pre-deadline snapshots back to it, and commits serving artifacts to `main` only
+when a newly finalized Gameweek is published and the full test suite passes.
+Vercel and the backend then redeploy from that push. A failed run publishes
+nothing, keeps the last validated bundle, and GitHub emails the repository owner.
 
 Recommendations keep serving while the model trails the official finalized
 Gameweeks by at most `FPL_MAX_PREDICTION_LAG_GAMEWEEKS` (default 2). Live prices,
 availability, roles and fixtures are applied to every request, and the website
 labels which Gameweek the projections include. A longer lag blocks recommendations,
-so refresh at least every two finalized Gameweeks.
+which only happens if the workflow has failed for two finalized Gameweeks.
 
 ## Install dependencies
 
@@ -93,15 +102,15 @@ and settle only from finalized official results.
 
 ## Run locally
 
-Normal launch checks for new finalized gameweeks before opening the site:
+Start the website locally with the last committed bundle:
 
 ```powershell
 .\start.cmd
 ```
 
-The refresh is idempotent, keeps the last validated bundle if publishing fails,
-and never makes transfers or uses chips. For diagnostics that must not update the
-bundle, use `start.cmd -SkipDataRefresh`.
+`start.cmd -RefreshData` runs the refresh locally first. That needs the
+local-only state described above and leaves changed artifacts in the working tree,
+so normally let the workflow refresh and `git pull` instead.
 
 ```powershell
 # Terminal 1

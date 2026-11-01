@@ -1,0 +1,91 @@
+name: Data refresh
+
+# Runs the 2026/27 post-Gameweek refresh on GitHub's servers. The local-only
+# training state (raw snapshots, historical rows, decision evidence) lives in the
+# encrypted `refresh-state` release asset. Serving artifacts are committed only
+# when a newly finalized Gameweek is published; every run still saves fresh
+# pre-deadline snapshots back to the release. It never performs an FPL action.
+
+on:
+  schedule:
+    # Before Saturday-morning and weekday/Friday-evening deadlines (UTC).
+    - cron: "30 7 * * *"
+    - cron: "30 16 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFRESH_STATE_KEY: ${{ secrets.REFRESH_STATE_KEY }}
+      STATE_TAG: refresh-state
+      STATE_ASSET: refresh-state.tar.gz.enc
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+
+      - name: Restore local-only state
+        run: |
+          gh release download "$STATE_TAG" --pattern "$STATE_ASSET" --dir "$RUNNER_TEMP"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in "$RUNNER_TEMP/$STATE_ASSET" -pass env:REFRESH_STATE_KEY \
+            | tar -xzf -
+
+      - name: Refresh official data
+        id: refresh
+        run: |
+          python -m fpl_intelligence.post_gameweek_refresh --season 2026-27 \
+            | tee "$RUNNER_TEMP/refresh-report.json"
+          status=$(jq -r .status "$RUNNER_TEMP/refresh-report.json")
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          jq -r '"New gameweeks: \(.new_gameweeks)  status: \(.status)  warnings: \(.warnings)"' \
+            "$RUNNER_TEMP/refresh-report.json" >> "$GITHUB_STEP_SUMMARY"
+
+      # Manual runs always validate, so the restored state can be checked on demand.
+      - name: Validate artifacts
+        if: steps.refresh.outputs.status == 'published' || github.event_name == 'workflow_dispatch'
+        run: |
+          python -m ruff check .
+          python -m pytest -q
+
+      - name: Commit and push serving artifacts
+        if: steps.refresh.outputs.status == 'published'
+        run: |
+          gameweeks=$(jq -r '.new_gameweeks | map("GW\(.)") | join(", ")' "$RUNNER_TEMP/refresh-report.json")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898099+github-actions[bot]@users.noreply.github.com"
+          git add -A data models
+          git commit -m "data: refresh 2026/27 serving bundle with $gameweeks"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Discard unpublished tracked rewrites
+        if: steps.refresh.outputs.status != 'published'
+        run: |
+          git checkout -- .
+          git clean -fd -- data models
+
+      - name: Save local-only state
+        run: |
+          git ls-files --others --ignored --exclude-standard data models > "$RUNNER_TEMP/state-files.txt"
+          tar -czf - -T "$RUNNER_TEMP/state-files.txt" \
+            | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+                -pass env:REFRESH_STATE_KEY -out "$RUNNER_TEMP/$STATE_ASSET"
+          gh release upload "$STATE_TAG" "$RUNNER_TEMP/$STATE_ASSET" --clobber

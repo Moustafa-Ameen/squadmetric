@@ -10,6 +10,10 @@ param(
 
     [switch]$Dev,
 
+    # Data refreshes run in the scheduled GitHub workflow. -RefreshData opts in to a
+    # local refresh; -SkipDataRefresh is kept for existing shortcuts.
+    [switch]$RefreshData,
+
     [switch]$SkipDataRefresh
 )
 
@@ -262,7 +266,7 @@ try {
         throw "npm was not found. Install Node.js 24, then run .\start.cmd again."
     }
 
-    if (-not $SkipDataRefresh) {
+    if ($RefreshData -and -not $SkipDataRefresh) {
         $activeSeason = Get-ActiveSeason
         $refreshMutex = [System.Threading.Mutex]::new($false, "Local\SquadMetricDataRefresh")
         $refreshLockAcquired = $false
