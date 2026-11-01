@@ -16,6 +16,7 @@ from fpl_intelligence.p12_set_piece_report import P12_OUTPUT
 from fpl_intelligence.production_portfolio import get_production_portfolio
 from fpl_intelligence.refresh_current_season import BOOTSTRAP_PATH
 from fpl_intelligence.season_rules import decision_bootstrap_hash
+from fpl_intelligence.track_record import TRACK_RECORD_PATH
 
 router = APIRouter(prefix="/api/operations", tags=["operations"])
 
@@ -39,6 +40,15 @@ def portfolio_status() -> dict[str, Any]:
         "shadow_audit_path": str(shadow_audit_path()),
         "automatic_execution": False,
     }
+
+
+@router.get("/track-record")
+def track_record() -> dict[str, Any]:
+    """Publicly scored deadline plans; empty until a Gameweek is settled."""
+
+    if not TRACK_RECORD_PATH.exists():
+        return {"gameweeks": [], "unscored_gameweeks": [], "totals": {"scored": 0}}
+    return json.loads(TRACK_RECORD_PATH.read_text(encoding="utf-8"))
 
 
 @router.get("/shadow-evidence")

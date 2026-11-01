@@ -956,3 +956,39 @@ export interface Top10Metric {
   precision_at_10: number;
   recall_at_10: number;
 }
+
+export interface TrackRecordGameweek {
+  gameweek: number;
+  deadline: string | null;
+  captured_at: string | null;
+  recommendation: {
+    transfers: { out: string | null; in: string | null }[];
+    hit_cost: number;
+    chip: string | null;
+    captain: string | null;
+  };
+  recommended_points: number;
+  no_action_points: number;
+  gain_vs_no_action: number;
+  chip_gain: number | null;
+  best_option_points: number;
+  points_left_on_table: number;
+  options_considered: number;
+}
+
+export interface TrackRecordResponse {
+  season?: string;
+  generated_at?: string;
+  method?: string;
+  gameweeks: TrackRecordGameweek[];
+  unscored_gameweeks: number[];
+  totals: {
+    scored: number;
+    total_gain_vs_no_action?: number;
+    total_gain_from_chips?: number;
+    average_gain_vs_no_action?: number | null;
+    weeks_ahead?: number;
+    weeks_level?: number;
+    weeks_behind?: number;
+  };
+}

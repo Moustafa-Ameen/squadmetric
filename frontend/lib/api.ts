@@ -1,4 +1,5 @@
 import type {
+  TrackRecordResponse,
   AccuracyResult,
   BacktestResult,
   CaptainPick,
@@ -292,4 +293,8 @@ export async function getCaptaincyBacktest(): Promise<BacktestResult[]> {
 
 export async function getTop10Metrics(): Promise<Top10Metric[]> {
   return fetchJson("/api/backtest/top10");
+}
+
+export async function getTrackRecord(): Promise<TrackRecordResponse> {
+  return fetchJson("/api/operations/track-record", { cache: "no-store" });
 }

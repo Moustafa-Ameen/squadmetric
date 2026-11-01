@@ -12,7 +12,7 @@ import { DecisionStatusNotice, PredictionLagNotice } from "./DecisionStatusNotic
 import { PlayerDrawer } from "./PlayerDrawer";
 
 const SHELLLESS_ROUTES = new Set(["/", "/onboarding", "/privacy", "/terms"]);
-const ROUTES_WITH_OWN_STATUS = new Set(["/dashboard", "/decisions"]);
+const ROUTES_WITH_OWN_STATUS = new Set(["/dashboard", "/decisions", "/track-record"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

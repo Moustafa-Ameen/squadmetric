@@ -10,6 +10,7 @@ import {
   Settings,
   Shield,
   Sparkles,
+  TrendingUp,
   Users,
   X,
 } from "lucide-react";
@@ -27,6 +28,7 @@ const secondary = [
   { href: "/fixtures", label: "Fixtures" },
   { href: "/chips", label: "Chip guide" },
   { href: "/review", label: "Your results" },
+  { href: "/track-record", label: "Track record" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -77,6 +79,7 @@ export function AppNavigation() {
               <Link href="/fixtures" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><CalendarDays className="h-5 w-5" /> Fixtures</Link>
               <Link href="/chips" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><Sparkles className="h-5 w-5" /> Chip guide</Link>
               <Link href="/review" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><History className="h-5 w-5" /> Your results</Link>
+              <Link href="/track-record" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><TrendingUp className="h-5 w-5" /> Track record</Link>
               <Link href="/settings" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><Settings className="h-5 w-5" /> Settings</Link>
             </div>
           </section>

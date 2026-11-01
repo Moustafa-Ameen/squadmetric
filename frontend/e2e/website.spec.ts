@@ -393,6 +393,16 @@ test("chip guide is readable and legacy decision routes have one destination", a
   await expect(page).toHaveURL(/\/stats$/);
 });
 
+test("track record scores each saved plan against doing nothing", async ({ page }) => {
+  await page.goto("/track-record");
+  await expect(page.getByRole("heading", { name: "Track record" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /\+13 points versus doing nothing/ })).toBeVisible();
+  await expect(page.getByText("+13 of that came from chips.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Vušković → Shaw")).toBeVisible();
+  await expect(page.getByText("Not scored: GW4, GW5")).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -545,6 +555,15 @@ async function mockApi(route: Route) {
       { gw: 7, opponent: "T4", home: true, difficulty: 4 },
     ] },
   ]);
+  if (url.pathname === "/api/operations/track-record") return json({
+    season: "2026-27",
+    gameweeks: [
+      { gameweek: 2, deadline: "2026-08-28T17:30:00Z", captured_at: "2026-08-27T17:00:00Z", recommendation: { transfers: [{ out: "Vušković", in: "Shaw" }], hit_cost: 0, chip: "Triple Captain", captain: "Haaland" }, recommended_points: 113, no_action_points: 100, gain_vs_no_action: 13, chip_gain: 13, best_option_points: 115, points_left_on_table: 2, options_considered: 16 },
+      { gameweek: 6, deadline: "2026-10-10T10:00:00Z", captured_at: "2026-10-02T18:12:00Z", recommendation: { transfers: [], hit_cost: 0, chip: null, captain: "Haaland" }, recommended_points: 83, no_action_points: 83, gain_vs_no_action: 0, chip_gain: null, best_option_points: 84, points_left_on_table: 1, options_considered: 17 },
+    ],
+    unscored_gameweeks: [4, 5],
+    totals: { scored: 2, total_gain_vs_no_action: 13, total_gain_from_chips: 13, average_gain_vs_no_action: 6.5, weeks_ahead: 1, weeks_level: 1, weeks_behind: 0 },
+  });
   if (url.pathname === "/api/operations/deadline-readiness") return json({
     ready: true,
     season: "2026-27",

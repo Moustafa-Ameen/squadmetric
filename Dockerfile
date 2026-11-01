@@ -20,6 +20,7 @@ COPY data/processed/current_artifact_manifest.json \
     data/processed/live_2026_27_player_gw.csv \
     data/processed/players_current.csv \
     data/processed/players_ranked.csv \
+    data/processed/track_record_2026_27.json \
     ./data/processed/
 COPY data/processed/rules ./data/processed/rules
 COPY data/reference ./data/reference

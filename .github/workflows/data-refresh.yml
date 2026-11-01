@@ -58,6 +58,10 @@ jobs:
           jq -r '"New gameweeks: \(.new_gameweeks)  status: \(.status)  warnings: \(.warnings)"' \
             "$RUNNER_TEMP/refresh-report.json" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Update the public track record
+        if: steps.refresh.outputs.status == 'published'
+        run: python -m fpl_intelligence.track_record
+
       # Manual runs always validate, so the restored state can be checked on demand.
       - name: Validate artifacts
         if: steps.refresh.outputs.status == 'published' || github.event_name == 'workflow_dispatch'

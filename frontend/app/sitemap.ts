@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "http://localhost:3000").replace(/\/$/, "");
-  const publicRoutes = ["", "/onboarding", "/proof", "/privacy", "/terms"];
+  const publicRoutes = ["", "/onboarding", "/proof", "/track-record", "/privacy", "/terms"];
   return publicRoutes.map((route, index) => ({
     url: `${siteUrl}${route}`,
     changeFrequency: index < 2 ? "weekly" : "monthly",

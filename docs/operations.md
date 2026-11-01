@@ -20,6 +20,12 @@ repository secret, so every Gameweek is settled against official results when it
 is finalized. That team is the owner's own account and is not a product-performance
 record unless it follows every recommendation.
 
+When a new Gameweek is published, the workflow also rebuilds
+`data/processed/track_record_2026_27.json` with `python -m fpl_intelligence.track_record`.
+It scores each settled plan against the no-action branch, separates chip gains, and
+omits the team ID; the website's Track record page reads it from
+`/api/operations/track-record`.
+
 Recommendations keep serving while the model trails the official finalized
 Gameweeks by at most `FPL_MAX_PREDICTION_LAG_GAMEWEEKS` (default 2). Live prices,
 availability, roles and fixtures are applied to every request, and the website
