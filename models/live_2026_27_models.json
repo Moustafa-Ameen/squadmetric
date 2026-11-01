@@ -3,22 +3,22 @@
     "gradient": {
       "class": "sklearn.pipeline.Pipeline",
       "path": "live_2026_27_gradient_points.joblib",
-      "sha256": "e2ba40e239048270d185f6cb1e2f80666100a9e16e9eb38f474eba7c76ddcf3a"
+      "sha256": "79f219aa0f0f0c22072287539af8780d33fd0c3ee10b772bd9ed5ce416753528"
     },
     "minutes_band": {
       "class": "fpl_intelligence.minutes_model.MinutesBandConditionalModel",
       "path": "live_2026_27_minutes_band.joblib",
-      "sha256": "961b8ef3120e82e1ca8f3042105b7485fabcb2d86ed14a206fb5f4d792ef9a2f"
+      "sha256": "6a046b2c3efd36088cddec77015955cac665997867fa7fbca7968841c83bf8a7"
     },
     "minutes_binary": {
       "class": "sklearn.pipeline.Pipeline",
       "path": "live_2026_27_minutes_binary.joblib",
-      "sha256": "645017d85ac0ace0cadc7a327b4b3ad7f6e0c6d3eb93f4a40d8956e1e0a95cbe"
+      "sha256": "cbf888ba7e4207c938110f81c73f890e8de86e0695cc53687546d6c9d6ccc65a"
     },
     "ridge": {
       "class": "sklearn.pipeline.Pipeline",
       "path": "live_2026_27_ridge_points.joblib",
-      "sha256": "d5b763d53400c0a8b868d3138c16039ec91f8fc3f0d5e309b96ff2b064d82f78"
+      "sha256": "9a0e11837587e99271b7c7b14676408c805739323251173e2be7d3fca1a8d070"
     }
   },
   "feature_columns": [
@@ -38,14 +38,15 @@
     4,
     5,
     6,
-    7
+    7,
+    8
   ],
-  "finalized_current_season_hash": "a3489b1f6b016bcc875e27575d0ba7e71f2f19dfc26786175967cc42991367e4",
-  "finalized_current_season_rows": 4483,
-  "generated_at": "2026-10-25T17:37:04.965098Z",
+  "finalized_current_season_hash": "bee44c3a200b454d3b38240b57b7c6ddb83c6561ec27e9e03420ba1cb2bd6327",
+  "finalized_current_season_rows": 5150,
+  "generated_at": "2026-11-01T10:28:19.460937Z",
   "schema_version": "live-models-v2-finalized-current-season",
   "target_season": "2026-27",
-  "training_rows": 89794,
+  "training_rows": 90461,
   "training_seasons": [
     "2023-24",
     "2024-25",
