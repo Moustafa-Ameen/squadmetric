@@ -117,13 +117,19 @@ async def season_state() -> dict[str, Any]:
         if bootstrap
         else "unavailable"
     )
+    next_gw = _next_gameweek_from_bootstrap(bootstrap)
+    next_event = next(
+        (event for event in bootstrap.get("events", []) if event.get("id") == next_gw),
+        {},
+    )
     return {
         "fpl_api_season": fpl_api_season,
         "fixture_source": fixture_state["source"],
         "fixture_season": fixture_state["season"],
         "difficulty_source": fixture_state["difficulty_source"],
         "current_gw": _current_gameweek_from_bootstrap(bootstrap),
-        "next_gw": _next_gameweek_from_bootstrap(bootstrap),
+        "next_gw": next_gw,
+        "next_deadline": next_event.get("deadline_time"),
         "season_state": season_status,
         "recommendations_ready": readiness.ready,
         "decision_status": readiness.status,

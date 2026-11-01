@@ -220,6 +220,7 @@ export interface SeasonState {
   difficulty_source: string;
   current_gw: number | null;
   next_gw: number | null;
+  next_deadline?: string | null;
   last_completed_gw: number | null;
   next_season_start: string | null;
   data_freshness: {

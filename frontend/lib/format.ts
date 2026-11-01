@@ -21,6 +21,16 @@ export function percent(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`;
 }
 
+export function timeAgo(hours: number | null | undefined): string {
+  if (hours === null || hours === undefined || Number.isNaN(hours) || hours < 0) return "-";
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min ago`;
+  if (hours < 48) {
+    const whole = Math.round(hours);
+    return `${whole} hour${whole === 1 ? "" : "s"} ago`;
+  }
+  return `${Math.round(hours / 24)} days ago`;
+}
+
 export function positionCode(position: string): string {
   const map: Record<string, string> = {
     Goalkeeper: "GK",

@@ -967,6 +967,7 @@ def test_season_state_returns_central_source_metadata(monkeypatch):
     assert payload["difficulty_source"] == "App-estimated difficulty"
     assert payload["current_gw"] == 1
     assert payload["next_gw"] == 2
+    assert payload["next_deadline"] == "2025-08-22T17:30:00Z"
     assert payload["season_state"] == "in_season"
 
 

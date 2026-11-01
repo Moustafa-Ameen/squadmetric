@@ -62,7 +62,7 @@ export default function DecisionCenterPage() {
         // The guest demo plan is fixed sample data, so stale predictions never block it.
         if (!state.recommendations_ready && !demoMode) return;
         const response = demoMode
-          ? createDemoDecisionCenter(state.next_gw ?? state.current_gw ?? 1)
+          ? createDemoDecisionCenter(state.next_gw ?? state.current_gw ?? 1, state.next_deadline ?? null)
           : savedTeamId
             ? await getDecisionCenter(
                 savedTeamId,

@@ -1,4 +1,4 @@
-import type { DecisionCenterPlayer, DecisionCenterResponse } from "./types";
+import type { DecisionCenterPlayer, DecisionCenterResponse, SquadPlayer } from "./types";
 
 function player(
   elementId: number,
@@ -86,7 +86,28 @@ const recommendedBench = [
   demoPlayers.verbruggen,
 ];
 
-export function createDemoDecisionCenter(gameweek: number): DecisionCenterResponse {
+// The sample manager's squad, starters first, for pages that show a squad
+// rather than a plan.
+export function demoSquadPlayers(): SquadPlayer[] {
+  return [...currentStarters, ...currentBench].map((item) => ({
+    element_id: item.element_id,
+    name: item.name,
+    web_name: item.web_name,
+    team: item.team,
+    team_code: item.team_code ?? undefined,
+    position: item.position,
+    price: item.price,
+    is_captain: item.element_id === demoPlayers.haaland.element_id,
+    is_vice_captain: item.element_id === demoPlayers.saka.element_id,
+    raw_xp: item.expected_points,
+    expected_points: item.expected_points,
+    start_adjusted_xp: item.expected_points,
+    start_likelihood: item.start_likelihood,
+    form: null,
+  }));
+}
+
+export function createDemoDecisionCenter(gameweek: number, deadline: string | null = null): DecisionCenterResponse {
   const transfer = {
     outgoing_id: demoPlayers.dowell.element_id,
     outgoing_name: demoPlayers.dowell.web_name ?? demoPlayers.dowell.name,
@@ -105,6 +126,7 @@ export function createDemoDecisionCenter(gameweek: number): DecisionCenterRespon
     team_id: null,
     season_state: "in_season",
     gameweek,
+    deadline,
     horizon: 3,
     rules_version: "2026-27-demo",
     transfer_model: "SquadMetric demo projection",

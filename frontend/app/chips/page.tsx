@@ -114,6 +114,13 @@ function alternativeLabel(opportunity: ChipOpportunity, index: number): string {
   return gameweek;
 }
 
+function formatUpdated(value?: string | null): string {
+  if (!value) return "live";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
 export default function ChipsPage() {
   const [opportunities, setOpportunities] = useState<ChipOpportunitiesResponse | null>(null);
   const [chipStatus, setChipStatus] = useState<{
@@ -269,7 +276,7 @@ export default function ChipsPage() {
               })}
             </div>
             <div className="mt-4 text-xs text-slate-500">
-              Updated {opportunities.data_cutoff ?? "live"} · recommendations are not personalized
+              Updated {formatUpdated(opportunities.data_cutoff)} · recommendations are not personalized
             </div>
           </>
         )}

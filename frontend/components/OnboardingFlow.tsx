@@ -83,7 +83,7 @@ export function OnboardingFlow() {
           aria-describedby="team-input-help"
         />
         <p id="team-input-help" className="mt-2 text-xs leading-5 text-slate-500">
-          Numeric IDs and official links—including localized `/en/` links—are accepted. Your FPL password is never requested.
+          A Team ID or any link to your team on the official FPL site works. Your FPL password is never requested.
         </p>
         <button type="submit" disabled={!teamInput.trim() || busy !== null} className="sm-primary-button mt-6 w-full justify-center px-5 py-3.5 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">
           {busy === "team" ? "Checking your team…" : "Rate my team"}<ArrowRight className="h-4 w-4" />

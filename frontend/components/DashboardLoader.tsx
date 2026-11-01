@@ -7,6 +7,7 @@ import { getDecisionCenter, getOverview, getSeasonState } from "@/lib/api";
 import type { DecisionCenterResponse, OverviewResponse, SeasonState } from "@/lib/types";
 import { isGuestDemoMode } from "@/lib/accountStorage";
 import { createDemoDecisionCenter } from "@/lib/demoDecision";
+import { timeAgo } from "@/lib/format";
 import { readManagerStateOverride } from "@/lib/managerState";
 import { DashboardClient } from "./DashboardClient";
 import { DashboardSkeleton } from "./LoadingState";
@@ -45,11 +46,10 @@ export function DashboardLoader() {
       setSeasonState(null);
       setSeasonError(true);
     }
-    const gameweek = seasonResult.status === "fulfilled"
-      ? seasonResult.value.next_gw ?? seasonResult.value.current_gw ?? 1
-      : 1;
+    const season = seasonResult.status === "fulfilled" ? seasonResult.value : null;
+    const gameweek = season?.next_gw ?? season?.current_gw ?? 1;
     if (demoMode) {
-      setDecisionCenter(createDemoDecisionCenter(gameweek));
+      setDecisionCenter(createDemoDecisionCenter(gameweek, season?.next_deadline ?? null));
     } else if (linkedTeamId) {
       try {
         setDecisionCenter(await getDecisionCenter(linkedTeamId, 3, readManagerStateOverride(linkedTeamId)));
@@ -111,9 +111,9 @@ function DashboardRefreshState({
             <p className="mt-3 text-sm leading-6 text-slate-300">SquadMetric withholds transfer, captain and chip calls when a finalized gameweek is missing. Your team and official FPL information remain available until the prediction data is refreshed.</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 lg:min-w-64">
-            <div className="flex items-center gap-2 text-sm font-bold text-emerald-300"><ShieldCheck className="h-5 w-5" />Your account is safe</div>
-            <div className="mt-2 text-xs leading-5 text-slate-300">Saved team, preferences and drafts are unaffected.</div>
-            {typeof age === "number" ? <div className="mt-3 text-xs font-semibold text-slate-400">Last validated snapshot: {age.toFixed(1)}h ago</div> : null}
+            <div className="flex items-center gap-2 text-sm font-bold text-emerald-300"><ShieldCheck className="h-5 w-5" />Your saved data is untouched</div>
+            <div className="mt-2 text-xs leading-5 text-slate-300">Your linked team, preferences and drafts are still here.</div>
+            {typeof age === "number" ? <div className="mt-3 text-xs font-semibold text-slate-400">Prediction data last updated {timeAgo(age)}</div> : null}
           </div>
         </div>
       </section>
