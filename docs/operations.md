@@ -33,7 +33,7 @@ working tree.
 
 ```powershell
 py -3.13 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pip install -c constraints.txt -e ".[dev]"
 
 cd frontend
 npm.cmd ci

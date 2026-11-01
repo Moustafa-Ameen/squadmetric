@@ -7,11 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md constraints.txt ./
 COPY src ./src
 # An editable install keeps package paths rooted at /app/src. Several artifact
 # contracts deliberately derive the repository root from their source location.
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -c constraints.txt -e .
 
 COPY api ./api
 COPY data/raw/bootstrap-static.json data/raw/fixtures.json ./data/raw/

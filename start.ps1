@@ -240,7 +240,7 @@ try {
             throw "Could not create the Python environment. Python 3.13 is required."
         }
 
-        & $pythonExe -m pip install -e "${projectRoot}[dev]"
+        & $pythonExe -m pip install -c (Join-Path $projectRoot "constraints.txt") -e "${projectRoot}[dev]"
         if ($LASTEXITCODE -ne 0) {
             throw "Python dependency installation failed."
         }
