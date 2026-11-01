@@ -1,6 +1,6 @@
-import { AlertTriangle, CheckCircle2, DatabaseZap } from "lucide-react";
-import { decisionStatusLabel, recommendationsAreReady, squadAccessMessage } from "@/lib/decisionState";
-import type { SquadAccessState } from "@/lib/decisionState";
+import { AlertTriangle, CheckCircle2, DatabaseZap, History } from "lucide-react";
+import { decisionStatusLabel, predictionLagMessage, recommendationsAreReady, squadAccessMessage } from "@/lib/decisionState";
+import type { PredictionLag, SquadAccessState } from "@/lib/decisionState";
 import type { SeasonState } from "@/lib/types";
 
 export function DecisionStatusNotice({
@@ -66,6 +66,19 @@ export function DecisionStatusNotice({
         </div>
       </div>
     </section>
+  );
+}
+
+export function PredictionLagNotice({ lag }: { lag: PredictionLag }) {
+  return (
+    <div
+      data-testid="prediction-lag"
+      className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-sm text-slate-600"
+      role="status"
+    >
+      <History className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
+      <span>{predictionLagMessage(lag)}</span>
+    </div>
   );
 }
 

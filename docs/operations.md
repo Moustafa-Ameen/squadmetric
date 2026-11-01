@@ -6,6 +6,12 @@ before starting the website. This updates application data only and never perfor
 an FPL action. Pass `-SkipDataRefresh` to `start.cmd` or `start.ps1` only when the
 last validated bundle should be used unchanged.
 
+Recommendations keep serving while the model trails the official finalized
+Gameweeks by at most `FPL_MAX_PREDICTION_LAG_GAMEWEEKS` (default 2). Live prices,
+availability, roles and fixtures are applied to every request, and the website
+labels which Gameweek the projections include. A longer lag blocks recommendations,
+so refresh at least every two finalized Gameweeks.
+
 ## Install dependencies
 
 Dependencies and build output are regenerable and are not part of the maintained

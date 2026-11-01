@@ -252,6 +252,7 @@ export interface SeasonState {
     rules_version: string | null;
     finalized_gameweeks?: number[];
     latest_finalized_gameweek?: number | null;
+    missing_finalized_gameweeks?: number[];
   };
 }
 

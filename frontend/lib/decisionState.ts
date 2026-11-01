@@ -19,6 +19,30 @@ export function decisionStatusLabel(state?: SeasonState | null): string {
   return "Recommendations need fresh prediction data";
 }
 
+export interface PredictionLag {
+  throughGameweek: number;
+  missingGameweeks: number[];
+}
+
+/** Finalized Gameweeks the serving model has not ingested yet, while still ready. */
+export function predictionLag(state?: SeasonState | null): PredictionLag | null {
+  if (!state || !recommendationsAreReady(state)) return null;
+  const through = state.artifact_data?.latest_finalized_gameweek;
+  const latest = state.live_data?.latest_finalized_gameweek;
+  if (through == null || latest == null || latest <= through) return null;
+  const reported = state.artifact_data.missing_finalized_gameweeks ?? [];
+  const missingGameweeks = reported.length
+    ? [...reported].sort((a, b) => a - b)
+    : Array.from({ length: latest - through }, (_, index) => through + index + 1);
+  return { throughGameweek: through, missingGameweeks };
+}
+
+export function predictionLagMessage(lag: PredictionLag): string {
+  const missing = lag.missingGameweeks.map((gameweek) => `GW${gameweek}`).join(" and ");
+  const verb = lag.missingGameweeks.length === 1 ? "is" : "are";
+  return `Projections use results through GW${lag.throughGameweek}. ${missing} ${verb} added at the next data refresh; prices, injuries and fixtures are already live.`;
+}
+
 export function squadAccessState(
   teamId: string | null | undefined,
   squadCount: number,

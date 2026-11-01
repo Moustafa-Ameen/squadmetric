@@ -3,6 +3,9 @@
 Stored artifacts are necessary but not sufficient for a live recommendation.
 Every decision-serving request also reconciles those artifacts with the latest
 official bootstrap and fixture payloads and fails closed on drift or staleness.
+A model that trails the official finalized Gameweeks by at most
+``FPL_MAX_PREDICTION_LAG_GAMEWEEKS`` keeps serving with a warning, because live
+prices, availability, roles and fixtures are applied to every request.
 """
 
 from __future__ import annotations
@@ -34,6 +37,10 @@ from fpl_intelligence.season_rules import (
 )
 
 DEFAULT_MAX_ARTIFACT_AGE_HOURS = 24.0
+# Finalized Gameweeks the model may trail by while still serving recommendations.
+# Live prices, availability, roles and fixtures are applied to every request, so a
+# short lag only delays the newest results reaching the model.
+DEFAULT_MAX_PREDICTION_LAG_GAMEWEEKS = 2
 
 @dataclass(frozen=True)
 class LiveDecisionReadiness:
@@ -144,6 +151,16 @@ def max_artifact_age_hours() -> float:
         return DEFAULT_MAX_ARTIFACT_AGE_HOURS
 
 
+def max_prediction_lag_gameweeks() -> int:
+    raw = os.getenv(
+        "FPL_MAX_PREDICTION_LAG_GAMEWEEKS", str(DEFAULT_MAX_PREDICTION_LAG_GAMEWEEKS)
+    )
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_MAX_PREDICTION_LAG_GAMEWEEKS
+
+
 def evaluate_live_decision_readiness(
     bootstrap: dict[str, Any],
     fixtures: list[dict[str, Any]],
@@ -202,15 +219,26 @@ def evaluate_live_decision_readiness(
             if artifact_finalized_gameweeks
             else "none"
         )
-        blockers.append(
-            {
-                "code": "finalized_gameweek_missing",
-                "message": (
-                    f"GW{latest_official} is finalized, but SquadMetric predictions "
-                    f"currently use results only through GW{latest_artifact}."
-                ),
-            }
-        )
+        if (
+            artifact_finalized_gameweeks
+            and len(missing_finalized_gameweeks) <= max_prediction_lag_gameweeks()
+        ):
+            missing_label = ", ".join(f"GW{gw}" for gw in missing_finalized_gameweeks)
+            warnings.append(
+                f"Predictions use results through GW{latest_artifact}; {missing_label} "
+                "will be added at the next refresh. Official prices, availability, "
+                "roles and fixtures are still applied live."
+            )
+        else:
+            blockers.append(
+                {
+                    "code": "finalized_gameweek_missing",
+                    "message": (
+                        f"GW{latest_official} is finalized, but SquadMetric predictions "
+                        f"currently use results only through GW{latest_artifact}."
+                    ),
+                }
+            )
     if (
         manifest.get("rules_contract_hash")
         and live_rules_contract_hash != manifest.get("rules_contract_hash")
@@ -323,6 +351,7 @@ def evaluate_live_decision_readiness(
                 if artifact_finalized_gameweeks
                 else None
             ),
+            "missing_finalized_gameweeks": missing_finalized_gameweeks,
         },
         models_checked=check_models,
     )

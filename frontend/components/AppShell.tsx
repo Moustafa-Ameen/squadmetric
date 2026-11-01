@@ -5,9 +5,10 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { DrawerProvider } from "@/context/DrawerContext";
 import { getSeasonState } from "@/lib/api";
+import { predictionLag } from "@/lib/decisionState";
 import type { SeasonState } from "@/lib/types";
 import { AppNavigation } from "./AppNavigation";
-import { DecisionStatusNotice } from "./DecisionStatusNotice";
+import { DecisionStatusNotice, PredictionLagNotice } from "./DecisionStatusNotice";
 import { PlayerDrawer } from "./PlayerDrawer";
 
 const SHELLLESS_ROUTES = new Set(["/", "/onboarding", "/privacy", "/terms"]);
@@ -34,6 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [publicRoute]);
 
   if (publicRoute) return children;
+  const lag = predictionLag(seasonState);
 
   return (
     <DrawerProvider>
@@ -42,6 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main id="main-content" tabIndex={-1} className="decision-grid min-h-[calc(100vh-4.5rem)] px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
         <div className="mx-auto max-w-[1280px]">
           {seasonState && !seasonState.recommendations_ready && !pageOwnsStatus ? <div className="mb-5"><DecisionStatusNotice seasonState={seasonState} compact /></div> : null}
+          {lag ? <div className="mb-5"><PredictionLagNotice lag={lag} /></div> : null}
           {seasonStateError ? (
             <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
               Live decision status is unavailable. Existing content remains visible, but confirm freshness before acting.

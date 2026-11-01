@@ -31,7 +31,7 @@ The website is a Next.js Node server, not a static export. It relies on same-ori
 6. Use `/api/health` for liveness and `/api/readiness` for decision-serving
    readiness. A healthy process with stale or drifted artifacts is intentionally
    not recommendation-ready.
-7. Run the 2026/27 refresh manually after an official gameweek is finalized and data-checked. The app deliberately does not update artifacts automatically and blocks recommendations when a finalized gameweek is missing.
+7. Run the 2026/27 refresh manually after an official gameweek is finalized and data-checked. The app deliberately does not update artifacts automatically. It keeps serving with a "projections use results through GWx" label while the model trails by at most two finalized gameweeks, and blocks recommendations beyond that.
 
 ## Vercel launch checklist
 

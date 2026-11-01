@@ -224,6 +224,26 @@ test("legacy captain route converges on the weekly plan", async ({ page }) => {
   await expect(page.getByText("Captaincy recommendations are not decision-ready")).not.toBeVisible();
 });
 
+test("a briefly trailing model keeps the plan visible and labels its data", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+  await page.route("**/api/fpl/season-state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...seasonState,
+      live_data: { ...seasonState.live_data, latest_finalized_gameweek: 8 },
+      artifact_data: { ...seasonState.artifact_data, latest_finalized_gameweek: 7, missing_finalized_gameweeks: [8] },
+    }),
+  }));
+
+  await page.goto("/decisions");
+
+  await expect(page.getByRole("heading", { name: "This Week · GW1" })).toBeVisible();
+  await expect(page.getByTestId("prediction-lag")).toHaveText(/Projections use results through GW7\. GW8 is added at the next data refresh/);
+  await expect(page.getByText("recommendations paused", { exact: false })).toHaveCount(0);
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
 test("legacy planner route converges on the weekly plan", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/planner");
