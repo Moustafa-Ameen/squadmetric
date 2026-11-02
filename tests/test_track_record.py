@@ -5,8 +5,10 @@ from api.main import app
 from api.routers import operations as operations_router
 from httpx import ASGITransport, AsyncClient
 
+from fpl_intelligence.beam_search import DeterministicBeamPlanner
 from fpl_intelligence.track_record import build_track_record, write_track_record
 
+CURRENT = DeterministicBeamPlanner.version
 BOOTSTRAP = {
     "elements": [{"id": 411, "web_name": "Haaland"}],
     "events": [
@@ -24,7 +26,7 @@ def _transfer(out_id, in_id):
     }
 
 
-def _write_gameweek(root, gameweek, branches, selected_id, realized):
+def _write_gameweek(root, gameweek, branches, selected_id, realized, engine=CURRENT):
     gw_root = root / "2026-27" / f"GW{gameweek:02d}"
     (gw_root / "snapshots").mkdir(parents=True)
     (gw_root / "outcomes").mkdir(parents=True)
@@ -32,6 +34,7 @@ def _write_gameweek(root, gameweek, branches, selected_id, realized):
         "snapshot_hash": f"snap-{gameweek}",
         "deadline": "2026-09-01T17:30:00Z",
         "captured_at": "2026-09-01T10:00:00Z",
+        "context": {"decision_engine_version": engine},
         "branches": branches,
     }
     selected_points = realized[selected_id]
@@ -85,6 +88,7 @@ def test_track_record_scores_against_no_action_and_splits_out_chips(tmp_path):
     assert record["unscored_gameweeks"] == [4]
     assert record["totals"] == {
         "scored": 2,
+        "earlier_version_scored": 0,
         "total_gain_vs_no_action": 11.0,
         "total_gain_from_chips": 12.0,
         "average_gain_vs_no_action": 5.5,
@@ -93,6 +97,40 @@ def test_track_record_scores_against_no_action_and_splits_out_chips(tmp_path):
         "weeks_behind": 1,
     }
     assert "team_id" not in json.dumps(record)
+
+
+def test_totals_count_only_the_current_engine(tmp_path):
+    _write_gameweek(
+        tmp_path,
+        2,
+        [
+            {"branch_id": "tc", "transfers": [], "chip": "3xc", "captain_id": 411},
+            {"branch_id": "hold", "transfers": [], "chip": None, "captain_id": 411},
+        ],
+        "tc",
+        {"tc": 70.0, "hold": 55.0},
+        engine="old-engine",
+    )
+    _write_gameweek(
+        tmp_path,
+        3,
+        [{"branch_id": "hold", "transfers": [], "chip": None, "captain_id": 411}],
+        "hold",
+        {"hold": 44.0},
+    )
+
+    record = build_track_record(evidence_root=tmp_path, bootstrap=BOOTSTRAP)
+
+    earlier, current = record["gameweeks"]
+    assert earlier["current_version"] is False
+    assert earlier["chips_considered"] is True
+    assert earlier["gain_vs_no_action"] == 15.0
+    assert current["current_version"] is True
+    assert current["chips_considered"] is False
+    assert record["totals"]["scored"] == 1
+    assert record["totals"]["earlier_version_scored"] == 1
+    assert record["totals"]["total_gain_vs_no_action"] == 0.0
+    assert record["totals"]["total_gain_from_chips"] == 0.0
 
 
 def test_write_track_record_is_stable_when_nothing_changed(tmp_path):

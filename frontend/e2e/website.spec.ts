@@ -396,8 +396,8 @@ test("chip guide is readable and legacy decision routes have one destination", a
 test("track record scores each saved plan against doing nothing", async ({ page }) => {
   await page.goto("/track-record");
   await expect(page.getByRole("heading", { name: "Track record" })).toBeVisible();
-  await expect(page.getByText("points over 2 scored gameweeks")).toBeVisible();
-  await expect(page.getByRole("img", { name: "Gain by gameweek: GW2 +13, GW6 0" })).toBeVisible();
+  await expect(page.getByText("points over 1 scored gameweek")).toBeVisible();
+  await expect(page.getByText("Earlier version, chips allowed · not in the total")).toBeVisible();
   await expect(page.getByText("Vušković")).toBeVisible();
   await expect(page.getByText("GW4–5", { exact: true })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
@@ -575,11 +575,11 @@ async function mockApi(route: Route) {
   if (url.pathname === "/api/operations/track-record") return json({
     season: "2026-27",
     gameweeks: [
-      { gameweek: 2, deadline: "2026-08-28T17:30:00Z", captured_at: "2026-08-27T17:00:00Z", recommendation: { transfers: [{ out: "Vušković", in: "Shaw" }], hit_cost: 0, chip: "Triple Captain", captain: "Haaland" }, recommended_points: 113, no_action_points: 100, gain_vs_no_action: 13, chip_gain: 13, best_option_points: 115, points_left_on_table: 2, options_considered: 16 },
-      { gameweek: 6, deadline: "2026-10-10T10:00:00Z", captured_at: "2026-10-02T18:12:00Z", recommendation: { transfers: [], hit_cost: 0, chip: null, captain: "Haaland" }, recommended_points: 83, no_action_points: 83, gain_vs_no_action: 0, chip_gain: null, best_option_points: 84, points_left_on_table: 1, options_considered: 17 },
+      { gameweek: 2, engine: "old-engine", current_version: false, chips_considered: true, deadline: "2026-08-28T17:30:00Z", captured_at: "2026-08-27T17:00:00Z", recommendation: { transfers: [{ out: "Vušković", in: "Shaw" }], hit_cost: 0, chip: "Triple Captain", captain: "Haaland" }, recommended_points: 113, no_action_points: 100, gain_vs_no_action: 13, chip_gain: 13, best_option_points: 115, points_left_on_table: 2, options_considered: 16 },
+      { gameweek: 6, engine: "current-engine", current_version: true, chips_considered: false, deadline: "2026-10-10T10:00:00Z", captured_at: "2026-10-02T18:12:00Z", recommendation: { transfers: [], hit_cost: 0, chip: null, captain: "Haaland" }, recommended_points: 83, no_action_points: 83, gain_vs_no_action: 0, chip_gain: null, best_option_points: 84, points_left_on_table: 1, options_considered: 17 },
     ],
     unscored_gameweeks: [4, 5],
-    totals: { scored: 2, total_gain_vs_no_action: 13, total_gain_from_chips: 13, average_gain_vs_no_action: 6.5, weeks_ahead: 1, weeks_level: 1, weeks_behind: 0 },
+    totals: { scored: 1, earlier_version_scored: 1, total_gain_vs_no_action: 0, total_gain_from_chips: 0, average_gain_vs_no_action: 0, weeks_ahead: 0, weeks_level: 1, weeks_behind: 0 },
   });
   if (url.pathname === "/api/operations/deadline-readiness") return json({
     ready: true,

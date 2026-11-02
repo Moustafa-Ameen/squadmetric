@@ -45,6 +45,7 @@ export default function TrackRecordPage() {
   const total = totals.total_gain_vs_no_action ?? 0;
   const fromChips = totals.total_gain_from_chips ?? 0;
   const fromMoves = round(total - fromChips);
+  const currentRows = record.gameweeks.filter((row) => row.current_version);
 
   return (
     <div className="space-y-6">
@@ -57,18 +58,20 @@ export default function TrackRecordPage() {
       {totals.scored ? (
         <section className="grid overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)] lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="border-b border-slate-200 p-6 sm:p-8 lg:border-b-0 lg:border-r">
-            <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Versus keeping the same squad</div>
+            <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Current version, versus keeping the same squad</div>
             <div className={`mt-3 text-6xl font-black tracking-[-0.06em] sm:text-7xl ${gainText(total)}`}>{signed(total)}</div>
             <div className="mt-1 text-sm font-semibold text-slate-700">points over {totals.scored} scored {totals.scored === 1 ? "gameweek" : "gameweeks"}</div>
 
-            <div className="mt-7">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-500"><span>Where the points came from</span></div>
-              <SplitBar moves={fromMoves} chips={fromChips} />
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <LegendValue color={MOVE_COLOR} label="Transfers & lineup" value={fromMoves} />
-                <LegendValue color={CHIP_COLOR} label="Chips" value={fromChips} />
+            {fromChips ? (
+              <div className="mt-7">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-500"><span>Where the points came from</span></div>
+                <SplitBar moves={fromMoves} chips={fromChips} />
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <LegendValue color={MOVE_COLOR} label="Transfers & lineup" value={fromMoves} />
+                  <LegendValue color={CHIP_COLOR} label="Chips" value={fromChips} />
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="mt-7 grid grid-cols-3 gap-2">
               <RecordPill label="Ahead" value={totals.weeks_ahead ?? 0} tone="good" />
@@ -78,19 +81,30 @@ export default function TrackRecordPage() {
           </div>
 
           <div className="bg-gradient-to-br from-violet-50/70 to-white p-6 sm:p-8">
-            <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">Gain by gameweek</div>
-            <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold text-slate-600">
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: MOVE_COLOR }} />Transfers & lineup</span>
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: CHIP_COLOR }} />Chip</span>
-            </div>
-            <GainChart rows={record.gameweeks} />
-            <p className="mt-2 text-xs leading-5 text-slate-500">Average {signed(totals.average_gain_vs_no_action ?? 0)} points per scored gameweek.</p>
+            {currentRows.length >= 2 ? (
+              <>
+                <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">Gain by gameweek</div>
+                <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold text-slate-600">
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: MOVE_COLOR }} />Transfers & lineup</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: CHIP_COLOR }} />Chip</span>
+                </div>
+                <GainChart rows={currentRows} />
+                <p className="mt-2 text-xs leading-5 text-slate-500">Average {signed(totals.average_gain_vs_no_action ?? 0)} points per scored gameweek.</p>
+              </>
+            ) : (
+              <>
+                <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">Why so few gameweeks</div>
+                <h2 className="mt-3 text-xl font-black tracking-[-0.025em] text-slate-950">This record only counts what SquadMetric recommends today.</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-600">The planner was rebuilt during the season and no longer makes chip calls, so results from earlier versions are listed below but left out of the total.</p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">A plan is now saved before every deadline, and a chart appears here once there are two gameweeks to compare. That is too little to judge the model yet.</p>
+              </>
+            )}
           </div>
         </section>
       ) : (
         <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:p-8">
           <h2 className="text-2xl font-black tracking-[-0.03em] text-slate-950">No gameweeks scored yet</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">A plan is saved before every deadline and scored once official results are final.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">A plan is saved before every deadline and scored once official results are final. Only the current version of SquadMetric counts here.</p>
         </section>
       )}
 
@@ -117,7 +131,7 @@ export default function TrackRecordPage() {
           <div className="flex items-center gap-2 font-black text-slate-950"><Info className="h-5 w-5 text-slate-500" />Worth knowing</div>
           <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
             <li>Plans are made for one real FPL team and scored whether or not that manager followed them.</li>
-            <li>Each gameweek stands alone, so a chip recommended in two weeks counts twice here, though it can only be played once.</li>
+            <li>Earlier-version plans are shown for transparency only. They include chip calls SquadMetric no longer makes.</li>
             <li>A few gameweeks is a small sample in a high-variance game.</li>
           </ul>
         </div>
@@ -206,13 +220,15 @@ function GainTooltip({ active, payload, label }: { active?: boolean; payload?: {
 
 function ScoredRow({ row }: { row: TrackRecordGameweek }) {
   const { recommendation } = row;
+  const earlier = !row.current_version;
   return (
-    <li className="grid gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-[88px_minmax(0,1fr)_auto] sm:items-center">
+    <li className={`grid gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-[88px_minmax(0,1fr)_auto] sm:items-center ${earlier ? "bg-slate-50" : ""}`}>
       <div>
         <div className="text-lg font-black text-slate-950">GW{row.gameweek}</div>
         <div className="text-xs text-slate-500">{formatDay(row.deadline)}</div>
       </div>
       <div className="min-w-0 space-y-2">
+        {earlier ? <div className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Earlier version{row.chips_considered ? ", chips allowed" : ""} · not in the total</div> : null}
         <div className="flex flex-wrap items-center gap-2">
           {recommendation.transfers.length ? recommendation.transfers.map((move) => (
             <span key={`${move.out}-${move.in}`} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1.5 pr-2.5 text-xs font-bold text-slate-800">
@@ -236,7 +252,7 @@ function ScoredRow({ row }: { row: TrackRecordGameweek }) {
           <div>Plan <span className="font-bold text-slate-900">{fmt(row.recommended_points)}</span></div>
           <div>No change <span className="font-bold text-slate-900">{fmt(row.no_action_points)}</span></div>
         </div>
-        <div className={`min-w-[84px] rounded-2xl px-3 py-2 text-center ${gainSurface(row.gain_vs_no_action)}`}>
+        <div className={`min-w-[84px] rounded-2xl px-3 py-2 text-center ${earlier ? "bg-slate-200/70 text-slate-700" : gainSurface(row.gain_vs_no_action)}`}>
           <div className="text-xl font-black">{signed(row.gain_vs_no_action)}</div>
           <div className="text-[10px] font-bold uppercase tracking-wide opacity-80">{row.chip_gain ? `${signed(row.chip_gain)} chip` : "points"}</div>
         </div>

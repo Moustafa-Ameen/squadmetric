@@ -2,8 +2,9 @@
 
 Each scored Gameweek compares the plan SquadMetric froze before the deadline with
 the frozen legal no-action branch (no transfers, no chip), using official
-finalized points. The summary omits the tracked team ID and squad so it can be
-committed and served publicly.
+finalized points. Only plans from the current decision engine count toward the
+totals; older plans stay listed, labelled as an earlier version. The summary omits
+the tracked team ID and squad so it can be committed and served publicly.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from fpl_intelligence.beam_search import DeterministicBeamPlanner
 from fpl_intelligence.live_decision_evidence import EVIDENCE_ROOT, PROJECT_ROOT
 from fpl_intelligence.refresh_current_season import BOOTSTRAP_PATH
 
@@ -58,6 +60,7 @@ def score_gameweek(
     snapshot: Mapping[str, Any],
     outcome: Mapping[str, Any],
     names: Mapping[int, str],
+    current_engine: str = DeterministicBeamPlanner.version,
 ) -> dict[str, Any] | None:
     """Summarize one settled Gameweek, or None when it has no no-action branch."""
 
@@ -75,6 +78,7 @@ def score_gameweek(
     recommended_points = float(outcome["selected_net_points"])
     hold_points = realized[hold["branch_id"]]
     captain_id = selected.get("captain_id")
+    engine = (snapshot.get("context") or {}).get("decision_engine_version")
     # A chip can be played once, so report how much of the gain it supplied,
     # using the same transfers without the chip.
     chip_gain = None
@@ -92,6 +96,9 @@ def score_gameweek(
             chip_gain = round(recommended_points - realized[unchipped["branch_id"]], 1)
     return {
         "gameweek": int(outcome["gameweek"]),
+        "engine": engine,
+        "current_version": engine == current_engine,
+        "chips_considered": any(b.get("chip") for b in branches),
         "deadline": snapshot.get("deadline"),
         "captured_at": snapshot.get("captured_at"),
         "recommendation": {
@@ -144,8 +151,9 @@ def build_track_record(
     scored_gameweeks = {row["gameweek"] for row in scored}
     # GW1 is the opening-squad decision, which is scored separately.
     finalized = [gw for gw in _finalized_gameweeks(bootstrap) if gw >= 2]
-    gains = [row["gain_vs_no_action"] for row in scored]
-    chip_gains = [row["chip_gain"] or 0.0 for row in scored]
+    current = [row for row in scored if row["current_version"]]
+    gains = [row["gain_vs_no_action"] for row in current]
+    chip_gains = [row["chip_gain"] or 0.0 for row in current]
     return {
         "schema_version": "track-record-v1",
         "season": season,
@@ -154,12 +162,14 @@ def build_track_record(
         "method": (
             "Before each deadline SquadMetric saves its recommended plan and every "
             "alternative it considered. After official scores are final, each plan "
-            "is scored with real points against keeping the squad unchanged."
+            "is scored with real points against keeping the squad unchanged. Totals "
+            "count only plans from the current version of SquadMetric."
         ),
         "gameweeks": scored,
         "unscored_gameweeks": [gw for gw in finalized if gw not in scored_gameweeks],
         "totals": {
-            "scored": len(scored),
+            "scored": len(current),
+            "earlier_version_scored": len(scored) - len(current),
             "total_gain_vs_no_action": round(sum(gains), 1),
             "total_gain_from_chips": round(sum(chip_gains), 1),
             "average_gain_vs_no_action": round(sum(gains) / len(gains), 1) if gains else None,

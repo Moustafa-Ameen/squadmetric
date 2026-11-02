@@ -22,7 +22,8 @@ record unless it follows every recommendation.
 
 When a new Gameweek is published, the workflow also rebuilds
 `data/processed/track_record_2026_27.json` with `python -m fpl_intelligence.track_record`.
-It scores each settled plan against the no-action branch, separates chip gains, and
+It scores each settled plan against the no-action branch, separates chip gains, counts
+only plans from the current decision engine in its totals, and
 omits the team ID; the website's Track record page reads it from
 `/api/operations/track-record`.
 

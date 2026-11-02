@@ -959,6 +959,9 @@ export interface Top10Metric {
 
 export interface TrackRecordGameweek {
   gameweek: number;
+  engine: string | null;
+  current_version: boolean;
+  chips_considered: boolean;
   deadline: string | null;
   captured_at: string | null;
   recommendation: {
@@ -984,6 +987,7 @@ export interface TrackRecordResponse {
   unscored_gameweeks: number[];
   totals: {
     scored: number;
+    earlier_version_scored?: number;
     total_gain_vs_no_action?: number;
     total_gain_from_chips?: number;
     average_gain_vs_no_action?: number | null;
