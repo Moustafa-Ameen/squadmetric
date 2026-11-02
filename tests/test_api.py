@@ -1463,6 +1463,22 @@ def test_chip_tips_returns_transition_state_without_projection(monkeypatch):
 
 
 @pytest.mark.requires_local_artifacts
+def test_season_simulations_reconcile_with_their_gameweeks():
+    response = asyncio.run(_get("/api/backtest/season-simulations"))
+
+    assert response.status_code == 200
+    seasons = {row["season"]: row for row in response.json()["seasons"]}
+    assert set(seasons) == {"2024-25", "2025-26"}
+    for row in seasons.values():
+        assert len(row["gameweek_points"]) == 38
+        assert sum(row["gameweek_points"]) == row["squadmetric_points"]
+        assert sum(row["gameweek_average_manager_points"]) == row["average_manager_points"]
+        assert row["difference"] == row["squadmetric_points"] - row["average_manager_points"]
+        assert (
+            row["gameweeks_ahead"] + row["gameweeks_level"] + row["gameweeks_behind"] == 38
+        )
+
+
 def test_backtest_accuracy_uses_plain_english_model_names():
     response = asyncio.run(_get("/api/backtest/accuracy"))
 

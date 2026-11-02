@@ -5,18 +5,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/LoadingState";
 import { SectionHeader } from "@/components/SectionHeader";
-import { getAccuracy, getCaptaincyBacktest, getTop10Metrics } from "@/lib/api";
+import { getAccuracy, getCaptaincyBacktest, getSeasonSimulations, getTop10Metrics } from "@/lib/api";
 import { points } from "@/lib/format";
-import type { AccuracyResult, BacktestResult, Top10Metric } from "@/lib/types";
+import type { AccuracyResult, BacktestResult, SeasonSimulation, Top10Metric } from "@/lib/types";
 
 export default function ProofPage() {
   const [accuracy, setAccuracy] = useState<AccuracyResult[]>([]);
   const [captaincy, setCaptaincy] = useState<BacktestResult[]>([]);
   const [top10, setTop10] = useState<Top10Metric[]>([]);
+  const [simulations, setSimulations] = useState<SeasonSimulation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    getSeasonSimulations().then((response) => setSimulations(response.seasons)).catch(() => setSimulations([]));
     Promise.all([getAccuracy(), getCaptaincyBacktest(), getTop10Metrics()])
       .then(([accuracyRows, captaincyRows, top10Rows]) => {
         setAccuracy(accuracyRows.map(renameProjectionModel));
@@ -44,6 +46,8 @@ export default function ProofPage() {
   return (
     <div className="space-y-7">
       <SectionHeader title="Performance evidence" subtitle="A readable view of what has been tested, where the model helps, and what the results do not guarantee." />
+
+      {simulations.length ? <SeasonSimulations rows={simulations} /> : null}
 
       <section className="overflow-hidden rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,#ffffff_0%,#f3f0ff_65%,#ecfdf5_100%)] p-6 shadow-[0_18px_55px_rgba(76,29,149,0.09)] sm:p-8">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-600 text-white"><FlaskConical className="h-6 w-6" /></div>
@@ -82,6 +86,29 @@ export default function ProofPage() {
         <EvidenceNote title="What it does not prove" items={["A guaranteed top-1% finish or a fixed season score.", "That every recommended transfer will work in a high-variance game.", "That a lower prediction error automatically creates a better FPL strategy."]} />
       </div>
     </div>
+  );
+}
+
+function SeasonSimulations({ rows }: { rows: SeasonSimulation[] }) {
+  const seasons = [...rows].sort((a, b) => b.season.localeCompare(a.season));
+  const diffs = [...rows].sort((a, b) => a.difference - b.difference).map((row) => row.difference);
+  const range = diffs[0] === diffs[diffs.length - 1] ? `${diffs[0]}` : `${diffs[0]} to ${diffs[diffs.length - 1]}`;
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_35px_rgba(15,23,42,0.06)] sm:p-6">
+      <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">Full-season simulations</div>
+      <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-slate-950 sm:text-3xl">{range} points above the average FPL manager</h2>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Simulated replays of {rows.length === 1 ? "a past season" : "the last two seasons"}, without chips and using only data available before each deadline, compared with the official average score.</p>
+      <div className="mt-5 overflow-x-auto" tabIndex={0} role="region" aria-label="Full-season simulation results">
+        <table className="w-full min-w-[620px] text-left text-sm">
+          <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><th className="pb-3">Season</th><th className="pb-3 text-right">Difference</th><th className="pb-3 text-right">SquadMetric</th><th className="pb-3 text-right">Average manager</th><th className="pb-3 text-right">Weeks ahead / level / behind</th><th className="pb-3 text-right">Top 1% cutoff</th></tr></thead>
+          <tbody>{seasons.map((row) => <tr key={row.season} className="border-b border-slate-100"><td className="py-3.5 font-bold text-slate-950">{row.season.replace("-", "/")}</td><td className="py-3.5 text-right font-extrabold text-emerald-700">{row.difference > 0 ? "+" : "−"}{Math.abs(row.difference)}</td><td className="py-3.5 text-right font-extrabold text-slate-950">{row.squadmetric_points.toLocaleString("en-GB")}</td><td className="py-3.5 text-right font-semibold text-slate-700">{row.average_manager_points.toLocaleString("en-GB")}</td><td className="py-3.5 text-right font-semibold text-slate-700">{row.gameweeks_ahead} / {row.gameweeks_level} / {row.gameweeks_behind}</td><td className="py-3.5 text-right font-semibold text-slate-700">About {row.top_one_percent_cutoff.low.toLocaleString("en-GB")}–{row.top_one_percent_cutoff.high.toLocaleString("en-GB")}</td></tr>)}</tbody>
+        </table>
+      </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <EvidenceNote good title="What this supports" items={["In both seasons, the no-chip strategy finished above the average manager.", "Each decision used only data from before that gameweek's deadline.", "Captains are the ones the model would have picked, not chosen with hindsight."]} />
+        <EvidenceNote title="What to keep in mind" items={["These are simulations, not real FPL teams, and both seasons helped choose the model, so the results may be flattering.", "The simulator makes one transfer at a time; the live planner can plan packages of transfers.", "The average includes casual and inactive teams. This shows an edge over average, well short of the top 1%."]} />
+      </div>
+    </section>
   );
 }
 

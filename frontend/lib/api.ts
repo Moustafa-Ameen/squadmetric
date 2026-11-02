@@ -1,4 +1,5 @@
 import type {
+  SeasonSimulationsResponse,
   TrackRecordResponse,
   AccuracyResult,
   BacktestResult,
@@ -293,6 +294,10 @@ export async function getCaptaincyBacktest(): Promise<BacktestResult[]> {
 
 export async function getTop10Metrics(): Promise<Top10Metric[]> {
   return fetchJson("/api/backtest/top10");
+}
+
+export async function getSeasonSimulations(): Promise<SeasonSimulationsResponse> {
+  return fetchJson("/api/backtest/season-simulations");
 }
 
 export async function getTrackRecord(): Promise<TrackRecordResponse> {

@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
@@ -5,6 +7,10 @@ from fastapi import APIRouter
 from api import data_service
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+
+SEASON_SIMULATIONS_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "reference" / "season_simulation_evidence.json"
+)
 
 MODEL_NAME_MAP = {
     "Gradient Boosting Regressor": "SquadMetric",
@@ -16,6 +22,15 @@ MODEL_NAME_MAP = {
     "ridge": "Ridge regression",
     "naive_baseline": "Form average",
 }
+
+
+@router.get("/season-simulations")
+def season_simulations() -> dict[str, Any]:
+    """Accepted no-chip season replays compared with the official average manager."""
+
+    if not SEASON_SIMULATIONS_PATH.exists():
+        return {"seasons": []}
+    return json.loads(SEASON_SIMULATIONS_PATH.read_text(encoding="utf-8"))
 
 
 @router.get("/accuracy")

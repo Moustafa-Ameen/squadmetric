@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   CalendarDays,
   ChevronDown,
+  FlaskConical,
   History,
   Menu,
   Settings,
@@ -30,6 +31,7 @@ const secondary = [
   { href: "/chips", label: "Chip guide" },
   { href: "/review", label: "Your results" },
   { href: "/track-record", label: "Track record" },
+  { href: "/proof", label: "Performance evidence" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -82,6 +84,7 @@ export function AppNavigation() {
               <Link href="/chips" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><Sparkles className="h-5 w-5" /> Chip guide</Link>
               <Link href="/review" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><History className="h-5 w-5" /> Your results</Link>
               <Link href="/track-record" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><TrendingUp className="h-5 w-5" /> Track record</Link>
+              <Link href="/proof" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><FlaskConical className="h-5 w-5" /> Evidence</Link>
               <Link href="/settings" onClick={() => setMobileMoreOpen(false)} className="mobile-more-link"><Settings className="h-5 w-5" /> Settings</Link>
             </div>
           </section>

@@ -17,7 +17,7 @@
   <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" />
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-live-009688?logo=fastapi&logoColor=white" />
-  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-343%20passing-22c55e" />
+  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-344%20passing-22c55e" />
   <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-47%20passing-8b5cf6" />
 </p>
 
