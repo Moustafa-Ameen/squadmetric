@@ -24,7 +24,8 @@ COPY data/processed/current_artifact_manifest.json \
     ./data/processed/
 COPY data/processed/rules ./data/processed/rules
 COPY data/reference ./data/reference
-COPY models/live_2026_27_gradient_points.joblib \
+COPY models/live_2026_27_captain_points.joblib \
+    models/live_2026_27_gradient_points.joblib \
     models/live_2026_27_minutes_band.joblib \
     models/live_2026_27_minutes_binary.joblib \
     models/live_2026_27_models.json \

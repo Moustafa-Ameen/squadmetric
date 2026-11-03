@@ -29,8 +29,14 @@ audit, and handoff files. Git history remains the source for commit-level detail
   model bundle.
 - Manager economics: free transfers and purchase/selling prices are reconstructed
   from public transfer history; incomplete price evidence suppresses advice.
-- Chip policy: proactive chip calls are disabled by default until a credible
-  season-long owned-squad validation record exists.
+- Chip policy: timed chip advice is on and labelled experimental, with
+  `FPL_ENABLE_PROACTIVE_CHIP_RECOMMENDATIONS=false` as the off switch. Bench Boost
+  waits for three doubled squad players, Triple Captain for a doubled captain, and
+  Free Hit for three blanked squad players or four doubled teams, unless the chip
+  would otherwise expire. Wildcard timing stays with the search.
+- Captaincy: the captain alone is ranked by a Ridge model with recent playing-time
+  inputs, summed across a Gameweek's fixtures. Lineups and transfers keep the
+  baseline inputs, because the same inputs made lineup choices worse.
 - Actionability: marginal transfers are shown as alternatives rather than calls;
   the production threshold scales from three points at a three-Gameweek horizon
   to eight points at an eight-Gameweek horizon, before any hit cost.
@@ -129,6 +135,24 @@ Three and eight Gameweeks are effectively tied. Resampling the weekly difference
 between the eight-Gameweek planner and the one-transfer simulator gives a 5-95% range
 of +67 to +458 in 2024/25 and -27 to +256 in 2025/26, so the latter gain may be partly
 luck. Both seasons also helped choose the model.
+
+### Timed chips and captain inputs
+
+With chips allowed, the planner used them in GW1-3 because holding one carried no
+cost: its opportunity cost only looked beyond the available frames. The accepted fix
+stops discounting chip gains and adds the fixture rules above. Those rules were chosen
+on 2024/25 and 2025/26, then checked once on 2023/24.
+
+| Season | No chips | Timed chips, captain and double-Gameweek changes | Directly from chips |
+|---|---:|---:|---:|
+| 2023/24 (check season) | 2,006 | 2,118 | +18 |
+| 2024/25 | 2,338 | 2,463 | +129 |
+| 2025/26 | 2,113 | 2,245 | +138 |
+
+Those runs used official starts. Serving and later simulations treat 45+ minutes as a
+start, because live rows do not record starts. Double Gameweeks in simulations are
+known only for the current and next Gameweek, since the final historical schedule
+contains changes nobody knew earlier.
 
 ## Consumer tournament ledger
 

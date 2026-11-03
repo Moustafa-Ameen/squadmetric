@@ -86,6 +86,13 @@ def projection_frames(
                     "price": price,
                     "decision_price": price,
                     "expected_points_adjusted": _number(projection.get("projected_points")),
+                    "captain_projected_points": _number(
+                        projection.get(
+                            "captain_projected_points",
+                            projection.get("projected_points"),
+                        )
+                    ),
+                    "fixture_count": len(fixtures),
                     "probability_60_plus_minutes": (
                         sum(start_likelihoods) / len(start_likelihoods)
                         if start_likelihoods
@@ -185,7 +192,7 @@ def recommend_live_chip(
         for gameweek, frame in frames.items()
         if gameweek > target_gameweek
     }
-    planner = DeterministicBeamPlanner()
+    planner = DeterministicBeamPlanner(timed_chips=True)
     action = planner.decide(
         gameweek=target_gameweek,
         squad=squad.copy(),
@@ -250,6 +257,7 @@ def _future_alternatives(
                 beam_width=2,
                 horizon=1,
                 max_transfers=3,
+                timed_chips=True,
             ).decide(
                 gameweek=gameweek,
                 squad=squad.copy(),

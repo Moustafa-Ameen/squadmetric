@@ -3,6 +3,7 @@ import pandas as pd
 from fpl_intelligence.fixture_scenarios import build_fixture_scenario
 from fpl_intelligence.multi_gw_projection import (
     _baseline_for_player,
+    _baseline_from_rows,
     _fpl_difficulty,
     _model_opponent_strength,
     _recent_baselines,
@@ -255,3 +256,23 @@ def test_live_role_evidence_and_availability_adjust_projected_points():
 
     assert projections[0]["fixtures"][0]["start_likelihood"] == 0.25
     assert projections[0]["projected_points"] == 2.75
+
+
+def test_baseline_from_rows_summarizes_recent_playing_time():
+    rows = pd.DataFrame(
+        {
+            "season": ["2026-27"] * 4,
+            "gameweek": [1, 2, 3, 4],
+            "minutes": [90, 90, 30, 60],
+            "total_points": [10, 2, 1, 3],
+            "team": ["ARS"] * 4,
+        }
+    )
+
+    baseline = _baseline_from_rows(rows)
+
+    assert baseline["minutes_last_3"] == 180
+    assert baseline["points_last_3"] == 6
+    assert baseline["starts_last_3"] == 2
+    assert baseline["minutes_last_1"] == 60
+    assert baseline["points_last_8"] == 4

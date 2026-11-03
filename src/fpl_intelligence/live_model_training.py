@@ -7,6 +7,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import joblib
 import pandas as pd
@@ -14,6 +15,8 @@ import pandas as pd
 from fpl_intelligence.season_rules import canonical_json
 from fpl_intelligence.step4_models import (
     BASE_FEATURE_COLUMNS,
+    ROLE_FORM_FEATURE_COLUMNS,
+    add_role_form_features,
     build_minutes_classifier,
     build_ridge_model,
     fit_minutes_band_conditional_model,
@@ -28,6 +31,7 @@ LIVE_RIDGE_MODEL_PATH = MODELS_DIR / "live_2026_27_ridge_points.joblib"
 LIVE_GRADIENT_MODEL_PATH = MODELS_DIR / "live_2026_27_gradient_points.joblib"
 LIVE_MINUTES_MODEL_PATH = MODELS_DIR / "live_2026_27_minutes_binary.joblib"
 LIVE_MINUTES_BAND_MODEL_PATH = MODELS_DIR / "live_2026_27_minutes_band.joblib"
+LIVE_CAPTAIN_MODEL_PATH = MODELS_DIR / "live_2026_27_captain_points.joblib"
 LIVE_TARGET_SEASON = "2026-27"
 LIVE_MODEL_SCHEMA_VERSION = "live-models-v2-finalized-current-season"
 
@@ -56,6 +60,15 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def fit_live_captain_model(training: pd.DataFrame) -> Any:
+    """Fit the captain ranking model, which alone uses recent playing-time inputs."""
+
+    enriched = add_role_form_features(training)
+    model = build_ridge_model(ROLE_FORM_FEATURE_COLUMNS)
+    model.fit(enriched[ROLE_FORM_FEATURE_COLUMNS], enriched["next_gameweek_points"])
+    return model
+
+
 def train_live_models(
     players: pd.DataFrame | None = None,
     *,
@@ -80,6 +93,8 @@ def train_live_models(
     )
     required = set(BASE_FEATURE_COLUMNS) | {
         "season",
+        "player_id",
+        "gameweek",
         "minutes",
         "next_gameweek_points",
     }
@@ -133,6 +148,7 @@ def train_live_models(
     ridge.fit(features, training["next_gameweek_points"])
     gradient.fit(features, training["next_gameweek_points"])
     minutes.fit(features, (training["minutes"] >= 60).astype(int))
+    captain = fit_live_captain_model(training)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -140,12 +156,14 @@ def train_live_models(
         "gradient": output_dir / LIVE_GRADIENT_MODEL_PATH.name,
         "minutes_binary": output_dir / LIVE_MINUTES_MODEL_PATH.name,
         "minutes_band": output_dir / LIVE_MINUTES_BAND_MODEL_PATH.name,
+        "captain": output_dir / LIVE_CAPTAIN_MODEL_PATH.name,
     }
     for model, path in (
         (ridge, paths["ridge"]),
         (gradient, paths["gradient"]),
         (minutes, paths["minutes_binary"]),
         (minutes_band, paths["minutes_band"]),
+        (captain, paths["captain"]),
     ):
         joblib.dump(model, path)
 
@@ -160,6 +178,7 @@ def train_live_models(
             ("gradient", paths["gradient"], gradient),
             ("minutes_binary", paths["minutes_binary"], minutes),
             ("minutes_band", paths["minutes_band"], minutes_band),
+            ("captain", paths["captain"], captain),
         )
     }
     metadata = LiveModelMetadata(

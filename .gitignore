@@ -34,6 +34,7 @@ models/*.joblib
 !data/processed/track_record_2026_27.json
 !data/processed/rules/
 !data/processed/rules/**
+!models/live_2026_27_captain_points.joblib
 !models/live_2026_27_gradient_points.joblib
 !models/live_2026_27_minutes_band.joblib
 !models/live_2026_27_minutes_binary.joblib

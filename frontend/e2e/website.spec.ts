@@ -58,6 +58,8 @@ const decisionBench = [5, 6, 14, 1].map((index) => decisionPlayers[index]);
 const currentDecisionStarters = [0, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13].map((index) => decisionPlayers[index]);
 const currentDecisionBench = [11, 6, 14, 1].map((index) => decisionPlayers[index]);
 
+let decisionChipAction = "save";
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => mockApi(route));
 });
@@ -288,6 +290,33 @@ test("performance evidence is readable and states its limits", async ({ page }) 
   await expectNoSeriousAccessibilityViolations(page);
 });
 
+test("a chip call is labelled experimental and leaves the decision to the manager", async ({ page }) => {
+  decisionChipAction = "3xc";
+  try {
+    await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+    await page.goto("/decisions");
+    await expect(page.getByText("This plan uses your Triple Captain")).toBeVisible();
+    await expect(page.getByText("Experimental", { exact: true })).toBeVisible();
+    await expect(page.getByText("A chip can't be undone", { exact: false })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /and play Triple Captain/ })).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+  } finally {
+    decisionChipAction = "save";
+  }
+});
+
+test("a wildcard call replaces the transfer advice", async ({ page }) => {
+  decisionChipAction = "wildcard";
+  try {
+    await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
+    await page.goto("/decisions");
+    await expect(page.getByRole("heading", { name: /Play your Wildcard/ })).toBeVisible();
+    await expect(page.getByText("Wildcard replaces transfers")).toBeVisible();
+  } finally {
+    decisionChipAction = "save";
+  }
+});
+
 test("decision dashboard prioritizes recommendations and progressively discloses evidence", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/dashboard");
@@ -400,7 +429,7 @@ test("track record scores each saved plan against doing nothing", async ({ page 
   await page.goto("/track-record");
   await expect(page.getByRole("heading", { name: "Track record" })).toBeVisible();
   await expect(page.getByText("points over 1 scored gameweek")).toBeVisible();
-  await expect(page.getByText("Earlier version, chips allowed · not in the total")).toBeVisible();
+  await expect(page.getByText("Earlier version · not in the total")).toBeVisible();
   await expect(page.getByText("Vušković")).toBeVisible();
   await expect(page.getByText("GW4–5", { exact: true })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
@@ -552,8 +581,8 @@ async function mockApi(route: Route) {
       funds_spent: 2,
       funding_explanation: "P8 to Value releases £2.0m, helping fund P9 to Star.",
       future_plan: [{ gameweek: 2, transfers: [], transfer_count: 0, hit_cost: 0, expected_points: 61, net_expected_points: 61, bank_before: 0.5, bank_after: 0.5, free_transfers_before: 1, free_transfers_after: 2, funds_released: 0, funds_spent: 0 }],
-      chip_action: "save",
-      chip_key: "none",
+      chip_action: decisionChipAction,
+      chip_key: decisionChipAction === "save" ? "none" : `${decisionChipAction}:2`,
       starting_xi: decisionStarters,
       bench_order: decisionBench,
       captain_id: 13,

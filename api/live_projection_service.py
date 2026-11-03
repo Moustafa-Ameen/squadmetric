@@ -11,7 +11,11 @@ from typing import Any
 from api import data_service, fpl_client
 from fpl_intelligence.artifact_contract import load_current_artifact_manifest
 from fpl_intelligence.launch_intelligence import availability_probability
-from fpl_intelligence.multi_gw_projection import load_planner_models, project_players
+from fpl_intelligence.multi_gw_projection import (
+    load_captain_model,
+    load_planner_models,
+    project_players,
+)
 from fpl_intelligence.season_rules import (
     decision_bootstrap_hash,
     infer_season_from_bootstrap,
@@ -231,6 +235,7 @@ async def live_projection_rows(
         horizon,
         models=models,
         history=data_service.serving_player_gw(),
+        captain_model=load_captain_model(),
     )
     metadata = _projection_metadata(
         bootstrap,

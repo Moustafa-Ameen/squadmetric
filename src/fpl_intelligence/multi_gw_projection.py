@@ -20,6 +20,7 @@ import pandas as pd
 
 from fpl_intelligence.fixture_scenarios import FixtureScenario
 from fpl_intelligence.live_model_training import (
+    LIVE_CAPTAIN_MODEL_PATH,
     LIVE_GRADIENT_MODEL_PATH,
     LIVE_MINUTES_BAND_MODEL_PATH,
     LIVE_RIDGE_MODEL_PATH,
@@ -30,6 +31,7 @@ from fpl_intelligence.set_piece_intelligence import (
     build_set_piece_context,
     set_piece_transition_adjustment,
 )
+from fpl_intelligence.step4_models import ROLE_FORM_START_MINUTES
 
 ALLOWED_HORIZONS = (3, 5, 8)
 MODEL_NAME = "Gradient Boosting Regressor"
@@ -38,6 +40,7 @@ MODEL_PATHS = {
     "Gradient Boosting Regressor": LIVE_GRADIENT_MODEL_PATH,
 }
 RECENT_WINDOW = 3
+POINTS_FORM_WINDOW = 8
 
 
 @lru_cache(maxsize=4)
@@ -64,6 +67,16 @@ def load_planner_models(model_name: str = MODEL_NAME):
         raise RuntimeError(
             f"Planner model artifacts could not be loaded for {model_name}: {exc}"
         ) from exc
+
+
+@lru_cache(maxsize=1)
+def load_captain_model() -> Any | None:
+    """Load the captain ranking model; without it captains follow projected points."""
+
+    try:
+        return joblib.load(LIVE_CAPTAIN_MODEL_PATH)
+    except (OSError, AttributeError, ImportError, ModuleNotFoundError):
+        return None
 
 
 def project_player(
@@ -111,6 +124,7 @@ def project_players(
     models=None,
     history: pd.DataFrame | None = None,
     fixture_scenario: FixtureScenario | None = None,
+    captain_model: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Project all supplied players over a 3, 5, or 8 gameweek horizon."""
     if horizon_length not in ALLOWED_HORIZONS:
@@ -163,9 +177,19 @@ def project_players(
         predicted_points, projected_points, start_likelihoods = _projected_values(
             points_model, minutes_model, feature_frame
         )
+        captain_points = (
+            captain_model.predict(feature_frame)
+            if captain_model is not None
+            else [None] * len(pending)
+        )
         fixture_results: dict[int, list[dict[str, Any]]] = {index: [] for index in fixture_groups}
-        for pending_item, predicted, projected, start_likelihood in zip(
-            pending, predicted_points, projected_points, start_likelihoods, strict=True
+        for pending_item, predicted, projected, start_likelihood, captain_point in zip(
+            pending,
+            predicted_points,
+            projected_points,
+            start_likelihoods,
+            captain_points,
+            strict=True,
         ):
             index, _, fixture = pending_item
             predicted_value = max(0.0, float(predicted))
@@ -203,6 +227,11 @@ def project_players(
                     "predicted_points": round(predicted_value, 2),
                     "start_likelihood": round(start_value, 4),
                     "projected_points": round(projected_value, 2),
+                    "captain_projected_points": (
+                        round(max(0.0, float(captain_point)) * start_value, 2)
+                        if captain_point is not None
+                        else round(projected_value, 2)
+                    ),
                     "scoring_regime_adjustment": regime.to_dict(),
                     "set_piece_adjustment": set_piece.to_dict(),
                     **_fixture_metadata(fixture),
@@ -216,6 +245,13 @@ def project_players(
                         "gameweek": gameweek,
                         "projected_points": round(
                             sum(fixture["projected_points"] for fixture in fixture_projections), 2
+                        ),
+                        "captain_projected_points": round(
+                            sum(
+                                fixture["captain_projected_points"]
+                                for fixture in fixture_projections
+                            ),
+                            2,
                         ),
                         "blank": False,
                         "double": len(fixture_projections) > 1,
@@ -412,6 +448,9 @@ def _feature_row(
         "market_snapshot_available": _number(player.get("market_snapshot_available", 1)),
         "position": _position_code(player.get("position")),
         "home_or_away": "H" if fixture.get("home") else "A",
+        "starts_last_3": baseline.get("starts_last_3", np.nan),
+        "minutes_last_1": baseline.get("minutes_last_1", np.nan),
+        "points_last_8": baseline.get("points_last_8", np.nan),
     }
 
 
@@ -527,17 +566,10 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, Any]]
         recent = (
             current[current["player_key"] != ""]
             .groupby("player_key", sort=False)
-            .tail(RECENT_WINDOW)
+            .tail(POINTS_FORM_WINDOW)
         )
         for player_name, rows in recent.groupby("player_key"):
-            baseline = {
-                "minutes_last_3": float(rows["minutes"].sum()),
-                "points_last_3": float(rows["total_points"].sum()),
-                "prior_team": str(rows.iloc[-1].get("team") or ""),
-                "source_season": str(rows.iloc[-1]["season"]),
-                "latest_gameweek": int(rows["gameweek"].max()),
-            }
-            output[("name", player_name)] = baseline
+            output[("name", player_name)] = _baseline_from_rows(rows)
 
         id_column = next(
             (column for column in ("player_id", "element_id") if column in current.columns),
@@ -547,17 +579,27 @@ def _recent_baselines(history: pd.DataFrame | None) -> dict[Any, dict[str, Any]]
             current[id_column] = pd.to_numeric(current[id_column], errors="coerce")
             id_rows = current.dropna(subset=[id_column]).copy()
             id_rows[id_column] = id_rows[id_column].astype(int)
-            recent_by_id = id_rows.groupby(id_column, sort=False).tail(RECENT_WINDOW)
+            recent_by_id = id_rows.groupby(id_column, sort=False).tail(POINTS_FORM_WINDOW)
             for player_id, rows in recent_by_id.groupby(id_column):
-                output[("id", int(player_id))] = {
-                    "minutes_last_3": float(rows["minutes"].sum()),
-                    "points_last_3": float(rows["total_points"].sum()),
-                    "prior_team": str(rows.iloc[-1].get("team") or ""),
-                    "source_season": str(rows.iloc[-1]["season"]),
-                    "latest_gameweek": int(rows["gameweek"].max()),
-                }
+                output[("id", int(player_id))] = _baseline_from_rows(rows)
 
     return output
+
+
+def _baseline_from_rows(rows: pd.DataFrame) -> dict[str, Any]:
+    """Summarize one player's latest finalized rows, ordered by Gameweek."""
+
+    last_three = rows.tail(RECENT_WINDOW)
+    return {
+        "minutes_last_3": float(last_three["minutes"].sum()),
+        "points_last_3": float(last_three["total_points"].sum()),
+        "starts_last_3": float((last_three["minutes"] >= ROLE_FORM_START_MINUTES).sum()),
+        "minutes_last_1": float(rows["minutes"].iloc[-1]),
+        "points_last_8": float(rows["total_points"].tail(POINTS_FORM_WINDOW).mean()),
+        "prior_team": str(rows.iloc[-1].get("team") or ""),
+        "source_season": str(rows.iloc[-1]["season"]),
+        "latest_gameweek": int(rows["gameweek"].max()),
+    }
 
 
 def _baseline_for_player(

@@ -6,9 +6,9 @@ import os
 
 
 def proactive_chip_recommendations_enabled() -> bool:
-    """Keep chip calls off until owned-squad, season-long validation passes."""
+    """Offer timed chip advice, labelled experimental, unless switched off by env."""
 
-    return os.getenv("FPL_ENABLE_PROACTIVE_CHIP_RECOMMENDATIONS", "false").strip().casefold() in {
+    return os.getenv("FPL_ENABLE_PROACTIVE_CHIP_RECOMMENDATIONS", "true").strip().casefold() in {
         "1",
         "true",
         "yes",

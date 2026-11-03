@@ -95,7 +95,7 @@ export default function TrackRecordPage() {
               <>
                 <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">Why so few gameweeks</div>
                 <h2 className="mt-3 text-xl font-black tracking-[-0.025em] text-slate-950">This record only counts what SquadMetric recommends today.</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-600">The planner was rebuilt during the season and no longer makes chip calls, so results from earlier versions are listed below but left out of the total.</p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">The planner has been rebuilt during the season, most recently to change when it uses chips, so results from earlier versions are listed below but left out of the total.</p>
                 <p className="mt-3 text-sm leading-6 text-slate-600">A plan is now saved before every deadline, and a chart appears here once there are two gameweeks to compare. That is too little to judge the model yet.</p>
               </>
             )}
@@ -131,7 +131,7 @@ export default function TrackRecordPage() {
           <div className="flex items-center gap-2 font-black text-slate-950"><Info className="h-5 w-5 text-slate-500" />Worth knowing</div>
           <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
             <li>Plans are made for one real FPL team and scored whether or not that manager followed them.</li>
-            <li>Earlier-version plans are shown for transparency only. They include chip calls SquadMetric no longer makes.</li>
+            <li>Earlier-version plans are shown for transparency only. They used older transfer and chip logic.</li>
             <li>A few gameweeks is a small sample in a high-variance game.</li>
           </ul>
         </div>
@@ -228,7 +228,7 @@ function ScoredRow({ row }: { row: TrackRecordGameweek }) {
         <div className="text-xs text-slate-500">{formatDay(row.deadline)}</div>
       </div>
       <div className="min-w-0 space-y-2">
-        {earlier ? <div className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Earlier version{row.chips_considered ? ", chips allowed" : ""} · not in the total</div> : null}
+        {earlier ? <div className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Earlier version · not in the total</div> : null}
         <div className="flex flex-wrap items-center gap-2">
           {recommendation.transfers.length ? recommendation.transfers.map((move) => (
             <span key={`${move.out}-${move.in}`} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1.5 pr-2.5 text-xs font-bold text-slate-800">

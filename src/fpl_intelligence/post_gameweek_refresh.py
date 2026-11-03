@@ -33,6 +33,7 @@ from fpl_intelligence.live_decision_evidence import (
     persist_outcome,
 )
 from fpl_intelligence.live_model_training import (
+    LIVE_CAPTAIN_MODEL_PATH,
     LIVE_GRADIENT_MODEL_PATH,
     LIVE_MINUTES_BAND_MODEL_PATH,
     LIVE_MINUTES_MODEL_PATH,
@@ -474,6 +475,7 @@ def run_post_gameweek_refresh(
             staged_models / LIVE_GRADIENT_MODEL_PATH.name: LIVE_GRADIENT_MODEL_PATH,
             staged_models / LIVE_MINUTES_MODEL_PATH.name: LIVE_MINUTES_MODEL_PATH,
             staged_models / LIVE_MINUTES_BAND_MODEL_PATH.name: LIVE_MINUTES_BAND_MODEL_PATH,
+            staged_models / LIVE_CAPTAIN_MODEL_PATH.name: LIVE_CAPTAIN_MODEL_PATH,
             staged_models / LIVE_MODEL_METADATA_PATH.name: LIVE_MODEL_METADATA_PATH,
         }
         if staged_history.exists():
@@ -529,6 +531,7 @@ def run_post_gameweek_refresh(
             LIVE_GRADIENT_MODEL_PATH,
             LIVE_MINUTES_MODEL_PATH,
             LIVE_MINUTES_BAND_MODEL_PATH,
+            LIVE_CAPTAIN_MODEL_PATH,
             LIVE_MODEL_METADATA_PATH,
             BOOTSTRAP_PATH,
             FIXTURES_PATH,

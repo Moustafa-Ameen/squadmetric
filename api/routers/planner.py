@@ -36,6 +36,7 @@ from fpl_intelligence.beam_search import (
     _projection_map,
     apply_transfer_plan,
     build_live_transfer_planner,
+    captain_projection_map,
 )
 from fpl_intelligence.chip_simulation import ChipState
 from fpl_intelligence.live_shadow import (
@@ -903,16 +904,20 @@ def _decision_confidence(search_margin: float, uncertainty_penalty: float) -> st
 def _decision_payload(action, squad, predictions) -> dict[str, Any]:
     """Convert a beam action into an API-safe complete decision summary."""
 
-    active_squad = squad.copy()
-    if action.chip is None or action.chip.name not in {"wildcard", "freehit"}:
+    if action.chip is not None and action.chip_squad is not None:
+        active_squad = action.chip_squad.copy()
+    else:
         active_squad = apply_transfer_plan(
-            active_squad,
+            squad.copy(),
             predictions,
             action.transfer_plan,
         )
     projection = _projection_map(predictions)
     lineup = _fast_lineup(active_squad, projection)
-    captain_id, vice_captain_id = _captain_ids(lineup.starting_ids, projection)
+    captain_id, vice_captain_id = _captain_ids(
+        lineup.starting_ids,
+        captain_projection_map(predictions),
+    )
     return {
         "transfer": {
             "outgoing_id": action.transfer.outgoing_id,
@@ -1056,7 +1061,10 @@ def _branch_evidence_payload(
     retained_squad = squad if chip_name == "freehit" else active_squad
     projection = _projection_map(predictions)
     lineup = _fast_lineup(active_squad, projection)
-    captain_id, vice_captain_id = _captain_ids(lineup.starting_ids, projection)
+    captain_id, vice_captain_id = _captain_ids(
+        lineup.starting_ids,
+        captain_projection_map(predictions),
+    )
     transfer_count = action.transfer_plan.count if chip_name not in {"wildcard", "freehit"} else 0
     bank_after = (
         round(float(action.transfer_plan.bank_after), 1)

@@ -18,6 +18,7 @@ import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { getDecisionCenter, getSeasonState } from "@/lib/api";
+import { formatChip } from "@/lib/decisionCenter";
 import { isGuestDemoMode, persistWeeklyRecommendation } from "@/lib/accountStorage";
 import { recommendationIsComplete } from "@/lib/decisionCenter";
 import { createDemoDecisionCenter } from "@/lib/demoDecision";
@@ -28,6 +29,7 @@ import {
   saveManagerStateOverride,
 } from "@/lib/managerState";
 import type {
+  DecisionCenterRecommendation,
   DecisionCenterAlternative,
   DecisionCenterResponse,
   SeasonState,
@@ -177,7 +179,7 @@ export default function DecisionCenterPage() {
               <Check className="h-4 w-4" /> Ready for the deadline
             </div>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">
-              {recommendation.transfers.length ? "Make the transfer" : "Bank the transfer"}
+              {planHeadline(recommendation)}
               {recommendation.hit_recommended ? ` and take a -${recommendation.hit_cost}` : ""}
             </h2>
             <p className="mt-1 text-sm text-slate-600">{primaryExplanation(recommendation, data.horizon)}</p>
@@ -186,6 +188,8 @@ export default function DecisionCenterPage() {
             {confidenceLabel(recommendation.confidence)} confidence
           </span>
         </div>
+
+        {recommendation.chip_action !== "save" ? <ChipCall chip={recommendation.chip_action} /> : null}
 
         <div className="grid divide-y divide-slate-200 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
           <PlanAction
@@ -339,9 +343,33 @@ export default function DecisionCenterPage() {
       </div>
 
       <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-        <span>Want chip timing rather than a squad-specific chip call?</span>
+        <span>Want to see when each chip looks strongest?</span>
         <Link href="/chips" className="font-extrabold text-violet-700 hover:text-violet-900">Open the Chip Guide →</Link>
       </div>
+    </div>
+  );
+}
+
+function replacesTransfers(chip: string): boolean {
+  return chip === "wildcard" || chip === "freehit";
+}
+
+function planHeadline(recommendation: DecisionCenterRecommendation): string {
+  if (replacesTransfers(recommendation.chip_action)) return `Play your ${formatChip(recommendation.chip_action)}`;
+  const moves = recommendation.transfers.length ? "Make the transfer" : "Bank the transfer";
+  return recommendation.chip_action === "save" ? moves : `${moves} and play ${formatChip(recommendation.chip_action)}`;
+}
+
+function ChipCall({ chip }: { chip: string }) {
+  return (
+    <div className="border-b border-amber-200 bg-amber-50 px-5 py-4 sm:px-7">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full bg-amber-200 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-950">Experimental</span>
+        <span className="font-black text-amber-950">This plan uses your {formatChip(chip)}</span>
+      </div>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-900">
+        Chip timing is new. It improved results in simulations of three past seasons but has not yet been proven on real gameweeks. A chip can&apos;t be undone, so treat this as a suggestion and decide for yourself.
+      </p>
     </div>
   );
 }
@@ -397,6 +425,7 @@ function AlternativeRow({ alternative, rank }: { alternative: DecisionCenterAlte
 }
 
 function transferTitle(recommendation: NonNullable<DecisionCenterResponse["recommendation"]>): string {
+  if (replacesTransfers(recommendation.chip_action)) return `${formatChip(recommendation.chip_action)} replaces transfers`;
   if (!recommendation.transfers.length) return "Save it for next week";
   if (recommendation.transfers.length > 1) return `${recommendation.transfers.length} linked transfers`;
   return recommendation.transfers
@@ -404,7 +433,14 @@ function transferTitle(recommendation: NonNullable<DecisionCenterResponse["recom
     .join(", ");
 }
 
+function chipExplanation(recommendation: NonNullable<DecisionCenterResponse["recommendation"]>, horizon: number): string {
+  return `This plan, including your ${formatChip(recommendation.chip_action)}, projects ${signed(recommendation.gain_vs_no_action)} points compared with doing nothing across the next ${horizon} gameweeks.`;
+}
+
 function primaryExplanation(recommendation: NonNullable<DecisionCenterResponse["recommendation"]>, horizon: number): string {
+  if (recommendation.chip_action !== "save") {
+    return chipExplanation(recommendation, horizon);
+  }
   if (recommendation.transfers.length) {
     return `Projected to gain ${signed(recommendation.gain_vs_no_action)} points across the next ${horizon} gameweeks.`;
   }
@@ -412,6 +448,9 @@ function primaryExplanation(recommendation: NonNullable<DecisionCenterResponse["
 }
 
 function decisionReason(recommendation: NonNullable<DecisionCenterResponse["recommendation"]>, horizon: number): string {
+  if (recommendation.chip_action !== "save") {
+    return chipExplanation(recommendation, horizon);
+  }
   if (!recommendation.transfers.length) {
     return `Keeping the transfer is projected to be more useful than the moves currently available after comparing the next ${horizon} gameweeks, money in the bank and the extra flexibility next week.`;
   }

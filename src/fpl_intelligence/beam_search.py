@@ -130,7 +130,7 @@ class DeterministicBeamPlanner:
     """Search legal transfer/chip branches with stable pruning and tie-breaks."""
 
     name = "deterministic-beam-search"
-    version = "rolling-package-beam-v2"
+    version = "rolling-package-beam-v3-timed-chips"
 
     def __init__(
         self,
@@ -285,11 +285,15 @@ class DeterministicBeamPlanner:
                 (action for action in self.last_path_actions if action.chip is None),
                 None,
             )
-            if holding is not None:
-                selected = replace(
-                    selected,
-                    no_chip_horizon_points=holding.expected_horizon_points,
-                )
+            selected = replace(
+                selected,
+                no_chip_horizon_points=(
+                    holding.expected_horizon_points
+                    if holding is not None
+                    else selected.expected_horizon_points
+                    - (selected.expected_points - selected.no_chip_expected_points)
+                ),
+            )
         if (
             self.minimum_transfer_horizon_gain > 0
             and selected.transfer_plan.count > 0
@@ -744,7 +748,7 @@ def build_live_transfer_planner(
     horizon: int,
     free_transfers: int,
     allow_chips: bool,
-    timed_chips: bool = False,
+    timed_chips: bool = True,
 ) -> DeterministicBeamPlanner:
     """Build the one production planner configuration used by every live path.
 
@@ -793,6 +797,20 @@ def _chip_timing_allows(
     projection = _projection_map(predictions)
     captain = _captain_ids(_fast_lineup(squad, projection).starting_ids, projection)[0]
     return float(fixture_counts.get(captain, 0)) > 1
+
+
+def captain_projection_map(predictions: pd.DataFrame) -> dict[int, float]:
+    """Rank captains by the captain model when served, else by projected points."""
+
+    if "captain_projected_points" not in predictions:
+        return _projection_map(predictions)
+    return dict(
+        zip(
+            predictions["player_id"].astype(int),
+            pd.to_numeric(predictions["captain_projected_points"], errors="coerce").fillna(0.0),
+            strict=True,
+        )
+    )
 
 
 def _replaces_unavailable_player(

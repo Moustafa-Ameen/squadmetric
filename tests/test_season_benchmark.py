@@ -582,8 +582,7 @@ def test_role_form_inputs_use_only_earlier_gameweeks():
             "player_id": [1, 1, 1, 1],
             "gameweek": [4, 2, 1, 3],
             "minutes": [10, 90, 60, 0],
-            "starts": [0, 1, 1, 0],
-            "total_points": [1, 8, 2, 0],
+            "next_gameweek_points": [1, 8, 2, 0],
         }
     )
 

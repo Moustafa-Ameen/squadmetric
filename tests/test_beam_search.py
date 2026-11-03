@@ -10,6 +10,7 @@ from fpl_intelligence.beam_search import (
     _prune_candidates,
     apply_transfer_plan,
     build_live_transfer_planner,
+    captain_projection_map,
     generate_transfer_options,
     generate_transfer_plans,
 )
@@ -1148,3 +1149,19 @@ def test_timed_planner_holds_triple_captain_for_the_visible_double():
 
     assert hold.chip is None
     assert use.chip is not None and use.chip.key == "3xc:2"
+
+
+def test_captain_ranking_uses_the_captain_model_only_when_served():
+    predictions = pd.DataFrame(
+        {
+            "player_id": [1, 2],
+            "expected_points_adjusted": [5.0, 3.0],
+            "captain_projected_points": [4.0, 9.0],
+        }
+    )
+
+    assert captain_projection_map(predictions) == {1: 4.0, 2: 9.0}
+    assert captain_projection_map(predictions.drop(columns="captain_projected_points")) == {
+        1: 5.0,
+        2: 3.0,
+    }

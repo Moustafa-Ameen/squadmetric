@@ -130,6 +130,7 @@ def _training_rows(season: str, count: int, *, finalized: bool = False) -> pd.Da
             "opponent_strength": float(900 + index % 200),
             "selected_by_percent_before_deadline": float(index % 50),
             "market_snapshot_available": 1,
+            "player_id": index + 1,
             "position": ("GK", "DEF", "MID", "FWD")[index % 4],
             "home_or_away": ("H", "A")[index % 2],
         }
