@@ -57,7 +57,7 @@
       "captured_at": "2026-10-02T18:12:36.452050Z",
       "chip_gain": null,
       "chips_considered": false,
-      "current_version": true,
+      "current_version": false,
       "deadline": "2026-10-10T10:00:00Z",
       "engine": "rolling-package-beam-v2",
       "gain_vs_no_action": 0.0,
@@ -74,24 +74,25 @@
       "recommended_points": 83.0
     }
   ],
-  "generated_at": "2026-11-02T09:35:53.719922Z",
+  "generated_at": "2026-11-03T15:25:38.046887Z",
   "method": "Before each deadline SquadMetric saves its recommended plan and every alternative it considered. After official scores are final, each plan is scored with real points against keeping the squad unchanged. Totals count only plans from the current version of SquadMetric.",
   "schema_version": "track-record-v1",
   "season": "2026-27",
   "totals": {
-    "average_gain_vs_no_action": 0.0,
-    "earlier_version_scored": 2,
-    "scored": 1,
-    "total_gain_from_chips": 0.0,
-    "total_gain_vs_no_action": 0.0,
+    "average_gain_vs_no_action": null,
+    "earlier_version_scored": 3,
+    "scored": 0,
+    "total_gain_from_chips": 0,
+    "total_gain_vs_no_action": 0,
     "weeks_ahead": 0,
     "weeks_behind": 0,
-    "weeks_level": 1
+    "weeks_level": 0
   },
   "unscored_gameweeks": [
     4,
     5,
     7,
-    8
+    8,
+    9
   ]
 }
