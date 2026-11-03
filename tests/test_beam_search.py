@@ -1,11 +1,14 @@
 import pandas as pd
+import pytest
 
 from fpl_intelligence.beam_search import (
+    FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
     DeterministicBeamPlanner,
     _aggregate_horizon_predictions,
     _future_opportunity_cost,
     _prune_candidates,
     apply_transfer_plan,
+    build_live_transfer_planner,
     generate_transfer_options,
     generate_transfer_plans,
 )
@@ -1014,3 +1017,22 @@ def test_beam_keeps_transfer_and_chip_projection_paths_separate():
     assert low_actions["none"].transfer.incoming_id == 100
     assert high_actions["none"].transfer.incoming_id == 100
     assert low_actions["bboost:1"].expected_points != high_actions["bboost:1"].expected_points
+
+
+@pytest.mark.parametrize(("free_transfers", "package_limit"), [(0, 2), (1, 2), (2, 3), (5, 5)])
+def test_live_planner_configuration_scales_packages_with_free_transfers(
+    free_transfers, package_limit
+):
+    planner = build_live_transfer_planner(
+        horizon=8,
+        free_transfers=free_transfers,
+        allow_chips=False,
+    )
+
+    assert planner.horizon == 8
+    assert planner.beam_width == 8
+    assert planner.max_transfers == 16
+    assert planner.max_same_gameweek_transfers == package_limit
+    assert planner.hit_policy == "horizon_value"
+    assert planner.allow_chips is False
+    assert planner.minimum_transfer_horizon_gain == FREE_TRANSFER_MINIMUM_HORIZON_GAIN

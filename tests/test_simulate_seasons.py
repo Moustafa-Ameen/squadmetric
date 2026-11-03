@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from fpl_intelligence.beam_search import DeterministicBeamPlanner
 from fpl_intelligence.chip_simulation import CHIP_MODE_BEAM
 from fpl_intelligence.season_benchmark import SeasonBenchmarkResult
 from fpl_intelligence.simulate_seasons import (
@@ -208,3 +209,49 @@ def test_cli_defaults_to_all_completed_seasons_and_production():
 
     assert tuple(args.seasons) == DEFAULT_SEASONS
     assert args.preset == "production"
+
+
+@pytest.mark.parametrize(("preset", "horizon"), [("live-planner-3gw", 3), ("live-planner-8gw", 8)])
+def test_live_planner_presets_run_the_live_engine_without_chips(
+    tmp_path: Path,
+    monkeypatch,
+    preset,
+    horizon,
+):
+    captured = []
+
+    def fake_benchmark(players, season, strategy, **kwargs):
+        captured.append((strategy, kwargs))
+        return _result(season)
+
+    monkeypatch.setattr(
+        "fpl_intelligence.simulate_seasons.run_season_benchmark",
+        fake_benchmark,
+    )
+    monkeypatch.setattr(
+        "fpl_intelligence.simulate_seasons.get_git_commit",
+        lambda: "test-commit",
+    )
+    monkeypatch.setattr(
+        "fpl_intelligence.simulate_seasons._initial_squad_for_preset",
+        lambda *args, **kwargs: (
+            None,
+            PRODUCTION_INITIAL_SQUAD_POLICY,
+            "p3-opening-milp-v2-cold-start-safe",
+        ),
+    )
+
+    artifact = run_historical_simulation(
+        seasons=("2025-26",),
+        preset_name=preset,
+        output_dir=tmp_path / "run",
+        generated_at="2026-11-03T00:00:00Z",
+        players=_historical_rows(),
+    )
+
+    strategy, kwargs = captured[0]
+    assert strategy.name == "live-package-planner"
+    assert strategy.version == DeterministicBeamPlanner.version
+    assert kwargs["live_planner_horizon"] == horizon
+    assert kwargs["chip_mode"] == CHIP_MODE_BEAM
+    assert artifact["manifest"]["configuration"]["live_planner_horizon"] == horizon

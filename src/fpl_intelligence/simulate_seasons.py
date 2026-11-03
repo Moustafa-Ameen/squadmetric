@@ -26,6 +26,7 @@ from fpl_intelligence.production_portfolio import get_production_portfolio
 from fpl_intelligence.season_benchmark import (
     HISTORICAL_PLAYER_GW_PATH,
     DeterministicTransferStrategy,
+    LivePlannerStrategy,
     NoTransfersStrategy,
     SeasonBenchmarkResult,
     get_git_commit,
@@ -54,6 +55,7 @@ class SimulationPreset:
     projection_mode: str = "total_points"
     hit_policy: str = "current_gw"
     initial_squad_policy: str = CONTROL_INITIAL_SQUAD_POLICY
+    live_planner_horizon: int | None = None
 
 
 PRESETS = {
@@ -77,6 +79,24 @@ PRESETS = {
         strategy="deterministic-single-transfer",
         chip_mode=CHIP_MODE_NONE,
         initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+    ),
+    "live-planner-3gw": SimulationPreset(
+        name="live-planner-3gw",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=3,
+    ),
+    "live-planner-8gw": SimulationPreset(
+        name="live-planner-8gw",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
     ),
     "diagnostic-no-transfers": SimulationPreset(
         name="diagnostic-no-transfers",
@@ -108,11 +128,10 @@ def run_historical_simulation(
     )
     selected_seasons = _validate_seasons(historical, seasons)
     portfolio = get_production_portfolio(preset.portfolio_mode)
-    strategy = (
-        DeterministicTransferStrategy()
-        if preset.strategy == "deterministic-single-transfer"
-        else NoTransfersStrategy()
-    )
+    strategy = {
+        "deterministic-single-transfer": DeterministicTransferStrategy,
+        "live-package-planner": LivePlannerStrategy,
+    }.get(preset.strategy, NoTransfersStrategy)()
     timestamp = generated_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
     dataset_hash = _dataframe_hash(historical)
     config = {
@@ -156,6 +175,7 @@ def run_historical_simulation(
             chip_mode=preset.chip_mode,
             hit_policy=preset.hit_policy,
             max_same_gameweek_transfers=max_same_gameweek_transfers,
+            live_planner_horizon=preset.live_planner_horizon,
             projection_portfolio=portfolio.projections,
             initial_squad_override=initial_squad,
             initial_squad_mode=initial_mode,

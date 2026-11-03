@@ -30,12 +30,12 @@ from api.team_rating import build_team_rating
 from fpl_intelligence.artifact_contract import load_current_artifact_manifest
 from fpl_intelligence.backtest_transfer_strategy import validate_squad
 from fpl_intelligence.beam_search import (
-    FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
     DeterministicBeamPlanner,
     _captain_ids,
     _fast_lineup,
     _projection_map,
     apply_transfer_plan,
+    build_live_transfer_planner,
 )
 from fpl_intelligence.chip_simulation import ChipState
 from fpl_intelligence.live_shadow import (
@@ -63,22 +63,6 @@ _DECISION_CENTER_CACHE: dict[
     tuple[int, int, float | None, int | None],
     tuple[float, dict[str, Any]],
 ] = {}
-
-
-def _live_transfer_planner(
-    *, horizon: int, free_transfers: int, allow_chips: bool
-) -> DeterministicBeamPlanner:
-    """Build the one production planner configuration used by every live path."""
-
-    return DeterministicBeamPlanner(
-        beam_width=8,
-        horizon=horizon,
-        max_transfers=16,
-        max_same_gameweek_transfers=min(5, max(2, free_transfers + 1)),
-        hit_policy="horizon_value",
-        allow_chips=allow_chips,
-        minimum_transfer_horizon_gain=FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
-    )
 
 
 class ProvisionalTeamRequest(BaseModel):
@@ -265,7 +249,7 @@ async def planner(
         and not current_predictions.empty
     ):
         try:
-            beam = _live_transfer_planner(
+            beam = build_live_transfer_planner(
                 horizon=horizon,
                 free_transfers=decision_free_transfers,
                 allow_chips=allow_personalized_chips,
@@ -546,7 +530,7 @@ async def provisional_team_rating(request: ProvisionalTeamRequest) -> dict[str, 
         rules_version=rules.rules_version,
         remaining=(),
     )
-    beam = _live_transfer_planner(
+    beam = build_live_transfer_planner(
         horizon=3,
         free_transfers=request.free_transfers,
         allow_chips=False,

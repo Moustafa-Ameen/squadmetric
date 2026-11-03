@@ -4,9 +4,10 @@ import pandas as pd
 import pytest
 
 from fpl_intelligence.backtest_transfer_strategy import TransferDecision, select_starting_xi
-from fpl_intelligence.chip_simulation import chip_definitions
+from fpl_intelligence.chip_simulation import CHIP_MODE_BEAM, chip_definitions
 from fpl_intelligence.season_benchmark import (
     DeterministicTransferStrategy,
+    LivePlannerStrategy,
     NoTransfersStrategy,
     StrategyContext,
     _assert_transfer_budget,
@@ -501,3 +502,42 @@ def test_realistic_captaincy_uses_vice_captain_when_captain_does_not_play():
     assert score.captain_actual_points == 0
     assert score.vice_captain_actual_points == 7
     assert score.bench_ids == lineup.bench_ids
+
+
+def test_live_planner_mode_requires_the_beam_branch():
+    with pytest.raises(ValueError, match="live_planner_horizon"):
+        run_season_benchmark(
+            pd.DataFrame(),
+            "2025-26",
+            NoTransfersStrategy(),
+            live_planner_horizon=3,
+        )
+
+
+@pytest.mark.requires_local_artifacts
+def test_live_planner_mode_keeps_transfer_accounting_legal():
+    players = load_historical_player_gameweeks()
+    players = players[(players["season"] == "2023-24") & (players["gameweek"] <= 7)]
+
+    result = run_season_benchmark(
+        players,
+        "2023-24",
+        LivePlannerStrategy(),
+        model_version="test",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        live_planner_horizon=3,
+    )
+
+    rows = result.rows
+    assert result.chips_used == 0
+    assert rows["bank_after"].min() >= 0
+    assert rows.loc[rows["gameweek"] == 1, "transfer_count"].item() == 0
+    for row in rows.itertuples():
+        assert row.hit_cost == 4 * max(0, row.transfer_count - row.free_transfers_before)
+        assert row.free_transfers_after == min(
+            result.max_free_transfers,
+            max(0, row.free_transfers_before - row.transfer_count) + 1,
+        )
+        assert row.max_same_gameweek_transfers == min(5, max(2, row.free_transfers_before + 1))
+        assert row.transfer_count <= row.max_same_gameweek_transfers

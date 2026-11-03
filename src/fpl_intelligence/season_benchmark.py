@@ -60,6 +60,7 @@ from fpl_intelligence.beam_search import (
     HIT_POLICIES,
     DeterministicBeamPlanner,
     apply_transfer_plan,
+    build_live_transfer_planner,
 )
 from fpl_intelligence.chip_simulation import (
     CHIP_MODE_BASELINE,
@@ -189,6 +190,18 @@ class NoTransfersStrategy:
     def decide(self, context: StrategyContext) -> TransferDecision:
         del context
         return _empty_decision()
+
+
+@dataclass(frozen=True)
+class LivePlannerStrategy:
+    """Label for runs whose decisions come from the live beam planner."""
+
+    name: str = "live-package-planner"
+    version: str = DeterministicBeamPlanner.version
+
+    def decide(self, context: StrategyContext) -> TransferDecision:
+        del context
+        raise AssertionError("Live planner decisions run through the season's beam branch")
 
 
 @dataclass(frozen=True)
@@ -1389,6 +1402,7 @@ def run_season_benchmark(
     chip_mode: str = CHIP_MODE_DEFAULT,
     hit_policy: str = "current_gw",
     max_same_gameweek_transfers: int = 1,
+    live_planner_horizon: int | None = None,
     projection_portfolio: ProjectionPortfolio | None = None,
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
@@ -1411,6 +1425,9 @@ def run_season_benchmark(
         raise ValueError(f"chip_mode must be one of {', '.join(CHIP_MODES)}")
     if hit_policy not in HIT_POLICIES:
         raise ValueError(f"hit_policy must be one of {', '.join(HIT_POLICIES)}")
+    if live_planner_horizon is not None and chip_mode != CHIP_MODE_BEAM:
+        raise ValueError("live_planner_horizon runs through the beam chip mode")
+    beam_future_horizons = tuple(range(1, max(6, (live_planner_horizon or 0) - 1) + 1))
     portfolio = projection_portfolio or ProjectionPortfolio(
         transfer_model=model_name,
         captain_model=model_name,
@@ -1561,7 +1578,7 @@ def run_season_benchmark(
                     horizons=(
                         tuple(range(1, 9))
                         if chip_mode == CHIP_MODE_BASELINE
-                        else ((1, 2, 3, 4, 5, 6) if chip_mode == CHIP_MODE_BEAM else (1, 2, 3))
+                        else (beam_future_horizons if chip_mode == CHIP_MODE_BEAM else (1, 2, 3))
                     ),
                     _model_context_cache=model_context_cache,
                 )
@@ -1602,7 +1619,11 @@ def run_season_benchmark(
                     )
         chip_predictions = predictions
         chip_future_predictions = future_predictions
-        if chip_mode in {CHIP_MODE_BASELINE, CHIP_MODE_BEAM} and chip_model_name != model_name:
+        if (
+            chip_mode in {CHIP_MODE_BASELINE, CHIP_MODE_BEAM}
+            and chip_model_name != model_name
+            and live_planner_horizon is None
+        ):
             chip_cache_key = (
                 season,
                 gameweek,
@@ -1732,6 +1753,12 @@ def run_season_benchmark(
                 chip_state = apply_chip(chip_state, chip_definition, gameweek, rules)
                 chips_used += 1
         elif chip_mode == CHIP_MODE_BEAM:
+            if live_planner_horizon is not None:
+                beam_planner = build_live_transfer_planner(
+                    horizon=live_planner_horizon,
+                    free_transfers=free_transfers,
+                    allow_chips=False,
+                )
             beam_action = beam_planner.decide(
                 gameweek=gameweek,
                 squad=pre_chip_squad.copy(),
@@ -1758,6 +1785,10 @@ def run_season_benchmark(
             transfer_expected_horizon_gain = beam_action.transfer_expected_horizon_gain
             transfer_expected_horizon_net_gain = beam_action.transfer_expected_horizon_net_gain
             if transfer_plan.made:
+                if float(transfer_plan.bank_after) < -1e-9:
+                    raise AssertionError(
+                        f"GW{gameweek} transfer plan overspends: {transfer_plan.bank_after}"
+                    )
                 post_transfer_squad = apply_transfer_plan(
                     pre_chip_squad,
                     predictions,
@@ -2048,7 +2079,11 @@ def run_season_benchmark(
                 "lineup_model_name": lineup_model_name,
                 "chip_mode": chip_mode,
                 "hit_policy": hit_policy,
-                "max_same_gameweek_transfers": max_same_gameweek_transfers,
+                "max_same_gameweek_transfers": (
+                    beam_planner.max_same_gameweek_transfers
+                    if live_planner_horizon is not None
+                    else max_same_gameweek_transfers
+                ),
                 "chip_key": chip_decision.chip_key,
                 "chip_selected": chip_definition is not None,
                 "chip_used": chip_decision.chip_name if chip_definition is not None else "none",

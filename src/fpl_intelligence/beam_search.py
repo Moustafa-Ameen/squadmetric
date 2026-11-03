@@ -687,6 +687,25 @@ class DeterministicBeamPlanner:
         return self._projection_cache[key]
 
 
+def build_live_transfer_planner(
+    *, horizon: int, free_transfers: int, allow_chips: bool
+) -> DeterministicBeamPlanner:
+    """Build the one production planner configuration used by every live path.
+
+    Season simulations call this too, so they measure what the site recommends.
+    """
+
+    return DeterministicBeamPlanner(
+        beam_width=8,
+        horizon=horizon,
+        max_transfers=16,
+        max_same_gameweek_transfers=min(5, max(2, free_transfers + 1)),
+        hit_policy="horizon_value",
+        allow_chips=allow_chips,
+        minimum_transfer_horizon_gain=FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
+    )
+
+
 def _replaces_unavailable_player(
     transfer_plan: TransferPlan,
     squad: pd.DataFrame,
