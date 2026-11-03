@@ -276,8 +276,8 @@ test("personal plan explains package funding and accepts corrected manager state
 test("performance evidence is readable and states its limits", async ({ page }) => {
   await page.goto("/proof");
   await expect(page.getByRole("heading", { name: "Performance evidence" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "65 to 104 points above the average FPL manager" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Full-season simulation results" }).getByText("+104")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "218 to 330 points above the average FPL manager" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Full-season simulation results" }).getByText("+330")).toBeVisible();
   await expect(page.getByText("These are simulations, not real FPL teams", { exact: false })).toBeVisible();
   await expect(page.getByText("The model is tested on matches it was not trained to predict.")).toBeVisible();
   await expect(page.getByText("Prediction accuracy rank").locator("..").getByText("#1")).toBeVisible();
@@ -468,8 +468,8 @@ async function mockApi(route: Route) {
     { strategy: "Most popular player", total_captain_points: 472, avg_per_gameweek: 12.4 },
   ]);
   if (url.pathname === "/api/backtest/season-simulations") return json({ seasons: [
-    { season: "2024-25", squadmetric_points: 2073, average_manager_points: 2008, difference: 65, gameweeks_ahead: 19, gameweeks_level: 1, gameweeks_behind: 18, top_one_percent_cutoff: { low: 2504, high: 2508 } },
-    { season: "2025-26", squadmetric_points: 1999, average_manager_points: 1895, difference: 104, gameweeks_ahead: 22, gameweeks_level: 2, gameweeks_behind: 14, top_one_percent_cutoff: { low: 2296, high: 2319 } },
+    { season: "2024-25", squadmetric_points: 2338, average_manager_points: 2008, difference: 330, gameweeks_ahead: 31, gameweeks_level: 0, gameweeks_behind: 7, top_one_percent_cutoff: { low: 2504, high: 2508 } },
+    { season: "2025-26", squadmetric_points: 2113, average_manager_points: 1895, difference: 218, gameweeks_ahead: 26, gameweeks_level: 0, gameweeks_behind: 12, top_one_percent_cutoff: { low: 2296, high: 2319 } },
   ] });
   if (url.pathname === "/api/backtest/top10") return json([
     { model: "SquadMetric", precision_at_10: 0.16, recall_at_10: 0.16 },

@@ -114,6 +114,22 @@ publishing a definitive performance claim.
 Historical top-1% boundaries are evaluation references only. They never enter a
 deadline decision and cannot guarantee a future rank.
 
+## Live-planner season simulations
+
+The public season evidence uses the `live-planner-8gw` preset because deadline plans
+use an eight-Gameweek horizon. On no-chip realistic scoring, against the official
+average manager:
+
+| Season | Average | One transfer a week | Live planner, 3 GW | Live planner, 8 GW |
+|---|---:|---:|---:|---:|
+| 2024/25 | 2,008 | 2,073 | 2,327 | 2,338 |
+| 2025/26 | 1,895 | 1,999 | 2,115 | 2,113 |
+
+Three and eight Gameweeks are effectively tied. Resampling the weekly differences
+between the eight-Gameweek planner and the one-transfer simulator gives a 5-95% range
+of +67 to +458 in 2024/25 and -27 to +256 in 2025/26, so the latter gain may be partly
+luck. Both seasons also helped choose the model.
+
 ## Consumer tournament ledger
 
 The final consumer tournament changed one assignment at a time against the frozen
@@ -153,9 +169,12 @@ Rejected behavior must remain unreachable from defaults:
 
 ## Known limitations and next evidence gate
 
-- `max_same_gameweek_transfers=1` means the normal planner does not meaningfully
-  explore most deliberate two-transfer `-4` plans. A future hit experiment must
-  hold candidate breadth constant and change only the hit decision.
+- `max_same_gameweek_transfers=1` means the older simulation presets do not
+  meaningfully explore most deliberate two-transfer `-4` plans. The
+  `live-planner-3gw` and `live-planner-8gw` presets use the live planner
+  configuration instead, but not live availability news or set-piece updates.
+  A future hit experiment must hold candidate breadth constant and change only the
+  hit decision.
 - Exact raw bootstrap hashes can move between sequential operational reports due to
   volatile official selection-rank and price-projection fields. Decision evidence
   remains tied to one frozen serving snapshot.
