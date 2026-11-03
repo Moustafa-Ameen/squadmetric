@@ -1000,12 +1000,13 @@ export interface TrackRecordResponse {
 export interface SeasonSimulation {
   season: string;
   squadmetric_points: number;
+  no_chip_points: number;
   average_manager_points: number;
   difference: number;
   gameweeks_ahead: number;
   gameweeks_level: number;
   gameweeks_behind: number;
-  top_one_percent_cutoff: { low: number; high: number };
+  top_one_percent_cutoff: { low: number; high: number } | null;
 }
 
 export interface SeasonSimulationsResponse {

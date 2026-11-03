@@ -122,8 +122,9 @@ deadline decision and cannot guarantee a future rank.
 
 ## Live-planner season simulations
 
-The public season evidence uses the `live-planner-8gw` preset because deadline plans
-use an eight-Gameweek horizon. On no-chip realistic scoring, against the official
+Deadline plans use an eight-Gameweek horizon, so eight-Gameweek presets are the ones
+reported publicly. The public evidence leads with `live-planner-8gw-timed-chips` and
+keeps `live-planner-8gw` beside it. On no-chip realistic scoring, against the official
 average manager:
 
 | Season | Average | One transfer a week | Live planner, 3 GW | Live planner, 8 GW |
@@ -145,7 +146,7 @@ on 2024/25 and 2025/26, then checked once on 2023/24.
 
 | Season | No chips | Timed chips, captain and double-Gameweek changes | Directly from chips |
 |---|---:|---:|---:|
-| 2023/24 (check season) | 2,006 | 2,118 | +18 |
+| 2023/24 (check season, average 2,003) | 2,006 | 2,118 | +18 |
 | 2024/25 | 2,338 | 2,463 | +129 |
 | 2025/26 | 2,113 | 2,245 | +138 |
 

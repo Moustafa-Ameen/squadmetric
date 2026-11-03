@@ -1468,7 +1468,7 @@ def test_season_simulations_reconcile_with_their_gameweeks():
 
     assert response.status_code == 200
     seasons = {row["season"]: row for row in response.json()["seasons"]}
-    assert set(seasons) == {"2024-25", "2025-26"}
+    assert set(seasons) == {"2023-24", "2024-25", "2025-26"}
     for row in seasons.values():
         assert len(row["gameweek_points"]) == 38
         assert sum(row["gameweek_points"]) == row["squadmetric_points"]
@@ -1477,6 +1477,10 @@ def test_season_simulations_reconcile_with_their_gameweeks():
         assert (
             row["gameweeks_ahead"] + row["gameweeks_level"] + row["gameweeks_behind"] == 38
         )
+        assert sum(row["no_chip"]["gameweek_points"]) == row["no_chip_points"]
+        assert row["squadmetric_points"] > row["no_chip_points"]
+        assert row["simulation"]["preset"] == "live-planner-8gw-timed-chips"
+        assert row["no_chip"]["simulation"]["preset"] == "live-planner-8gw"
 
 
 def test_backtest_accuracy_uses_plain_english_model_names():
