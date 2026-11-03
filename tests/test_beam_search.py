@@ -5,6 +5,7 @@ from fpl_intelligence.beam_search import (
     FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
     DeterministicBeamPlanner,
     _aggregate_horizon_predictions,
+    _chip_timing_allows,
     _future_opportunity_cost,
     _prune_candidates,
     apply_transfer_plan,
@@ -13,6 +14,7 @@ from fpl_intelligence.beam_search import (
     generate_transfer_plans,
 )
 from fpl_intelligence.chip_simulation import (
+    ChipDefinition,
     ChipState,
     apply_chip,
     build_chip_squad,
@@ -1036,3 +1038,113 @@ def test_live_planner_configuration_scales_packages_with_free_transfers(
     assert planner.hit_policy == "horizon_value"
     assert planner.allow_chips is False
     assert planner.minimum_transfer_horizon_gain == FREE_TRANSFER_MINIMUM_HORIZON_GAIN
+
+
+def _timing_frame(squad, *, fixtures=None, points=None):
+    frame = squad.copy()
+    frame["expected_points_adjusted"] = points if points is not None else 2.0
+    frame["fixture_count"] = 1
+    for player_id, count in (fixtures or {}).items():
+        frame.loc[frame["player_id"] == player_id, "fixture_count"] = count
+    return frame
+
+
+def _timing_chip(name, stop_event=38):
+    return ChipDefinition(name=name, number=1, start_event=1, stop_event=stop_event)
+
+
+def test_bench_boost_waits_for_three_doubled_players_unless_it_would_expire():
+    squad = _squad()
+    ids = squad["player_id"].tolist()
+    chip = _timing_chip("bboost")
+
+    assert not _chip_timing_allows(
+        chip, squad, _timing_frame(squad, fixtures={ids[0]: 2, ids[1]: 2}),
+        gameweek=10, legal_chip_count=4,
+    )
+    assert _chip_timing_allows(
+        chip, squad, _timing_frame(squad, fixtures={ids[0]: 2, ids[1]: 2, ids[2]: 2}),
+        gameweek=10, legal_chip_count=4,
+    )
+    assert _chip_timing_allows(
+        chip, squad, _timing_frame(squad), gameweek=35, legal_chip_count=4,
+    )
+    assert not _chip_timing_allows(
+        chip, squad, _timing_frame(squad), gameweek=34, legal_chip_count=4,
+    )
+
+
+def test_triple_captain_waits_for_a_doubled_captain():
+    squad = _squad()
+    ids = squad["player_id"].tolist()
+    chip = _timing_chip("3xc")
+    points = [2.0] * len(squad)
+    captain_row = squad.index[squad["position"].eq("MID")][0]
+    points[captain_row] = 9.0
+    captain = int(squad.loc[captain_row, "player_id"])
+    other = next(value for value in ids if value != captain)
+
+    assert not _chip_timing_allows(
+        chip, squad, _timing_frame(squad, fixtures={other: 2}, points=points),
+        gameweek=10, legal_chip_count=1,
+    )
+    assert _chip_timing_allows(
+        chip, squad, _timing_frame(squad, fixtures={captain: 2}, points=points),
+        gameweek=10, legal_chip_count=1,
+    )
+
+
+def test_free_hit_waits_for_a_blank_or_a_big_double():
+    squad = _squad()
+    chip = _timing_chip("freehit")
+    full = _timing_frame(squad)
+    three_blanks = full[~full["player_id"].isin(squad["player_id"].tolist()[:3])]
+
+    assert not _chip_timing_allows(chip, squad, full, gameweek=10, legal_chip_count=1)
+    assert _chip_timing_allows(chip, squad, three_blanks, gameweek=10, legal_chip_count=1)
+
+    doubled = full.copy()
+    doubled["team"] = [f"Club {index % 8}" for index in range(len(doubled))]
+    doubled.loc[doubled["team"].isin([f"Club {index}" for index in range(4)]), "fixture_count"] = 2
+    assert _chip_timing_allows(chip, squad, doubled, gameweek=10, legal_chip_count=1)
+
+
+def test_timed_planner_holds_triple_captain_for_the_visible_double():
+    rules = build_historical_season_rules("2025-26")
+    chip_state = ChipState(
+        season=rules.season,
+        rules_version=rules.rules_version,
+        remaining=("3xc:2",),
+    )
+    squad = _squad()
+    captain = int(squad.loc[squad["position"].eq("MID"), "player_id"].iloc[0])
+    points = [2.0] * len(squad)
+    points[squad.index[squad["player_id"].eq(captain)][0]] = 9.0
+    single = _timing_frame(squad, points=points)
+    double = _timing_frame(squad, fixtures={captain: 2}, points=points)
+    double.loc[double["player_id"].eq(captain), "expected_points_adjusted"] = 18.0
+    planner = DeterministicBeamPlanner(beam_width=4, horizon=2, max_transfers=2, timed_chips=True)
+
+    hold = planner.decide(
+        gameweek=25,
+        squad=squad,
+        bank=0.0,
+        free_transfers=1,
+        chip_state=chip_state,
+        predictions=single,
+        future_predictions={26: double},
+        rules=rules,
+    )
+    use = planner.decide(
+        gameweek=26,
+        squad=squad,
+        bank=0.0,
+        free_transfers=1,
+        chip_state=chip_state,
+        predictions=double,
+        future_predictions={},
+        rules=rules,
+    )
+
+    assert hold.chip is None
+    assert use.chip is not None and use.chip.key == "3xc:2"

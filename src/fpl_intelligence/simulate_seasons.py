@@ -33,7 +33,10 @@ from fpl_intelligence.season_benchmark import (
     run_season_benchmark,
 )
 from fpl_intelligence.season_rules import build_historical_season_rules
-from fpl_intelligence.step4_models import load_historical_player_gameweeks
+from fpl_intelligence.step4_models import (
+    add_role_form_features,
+    load_historical_player_gameweeks,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "data" / "processed" / "simulations"
@@ -56,6 +59,11 @@ class SimulationPreset:
     hit_policy: str = "current_gw"
     initial_squad_policy: str = CONTROL_INITIAL_SQUAD_POLICY
     live_planner_horizon: int | None = None
+    live_planner_chips: bool = False
+    timed_chips: bool = False
+    double_gameweek_aware: bool = False
+    captain_doubles: bool = False
+    captain_feature_mode: str | None = None
 
 
 PRESETS = {
@@ -98,6 +106,63 @@ PRESETS = {
         initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
         live_planner_horizon=8,
     ),
+    "live-planner-8gw-role-form": SimulationPreset(
+        name="live-planner-8gw-role-form",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        feature_mode="role_form",
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+    ),
+    "live-planner-8gw-chips": SimulationPreset(
+        name="live-planner-8gw-chips",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        live_planner_chips=True,
+    ),
+    "live-planner-8gw-captain": SimulationPreset(
+        name="live-planner-8gw-captain",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        captain_doubles=True,
+        captain_feature_mode="role_form",
+    ),
+    "live-planner-8gw-doubles": SimulationPreset(
+        name="live-planner-8gw-doubles",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        double_gameweek_aware=True,
+        captain_doubles=True,
+        captain_feature_mode="role_form",
+    ),
+    "live-planner-8gw-timed-chips": SimulationPreset(
+        name="live-planner-8gw-timed-chips",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        live_planner_chips=True,
+        timed_chips=True,
+        double_gameweek_aware=True,
+        captain_doubles=True,
+        captain_feature_mode="role_form",
+    ),
     "diagnostic-no-transfers": SimulationPreset(
         name="diagnostic-no-transfers",
         portfolio_mode="m8_control",
@@ -126,6 +191,8 @@ def run_historical_simulation(
         if players is not None
         else load_historical_player_gameweeks(HISTORICAL_PLAYER_GW_PATH)
     )
+    if "role_form" in {preset.feature_mode, preset.captain_feature_mode}:
+        historical = add_role_form_features(historical)
     selected_seasons = _validate_seasons(historical, seasons)
     portfolio = get_production_portfolio(preset.portfolio_mode)
     strategy = {
@@ -176,6 +243,11 @@ def run_historical_simulation(
             hit_policy=preset.hit_policy,
             max_same_gameweek_transfers=max_same_gameweek_transfers,
             live_planner_horizon=preset.live_planner_horizon,
+            live_planner_chips=preset.live_planner_chips,
+            timed_chips=preset.timed_chips,
+            double_gameweek_aware=preset.double_gameweek_aware,
+            captain_doubles=preset.captain_doubles,
+            captain_feature_mode=preset.captain_feature_mode,
             projection_portfolio=portfolio.projections,
             initial_squad_override=initial_squad,
             initial_squad_mode=initial_mode,

@@ -52,14 +52,17 @@ DC_FEATURES = [
     "defensive_contribution_last_3",
     "defensive_contribution_per_90_last_3",
 ]
+ROLE_FORM_FEATURES = ["starts_last_3", "minutes_last_1", "points_last_8"]
 BASE_FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 XG_XA_FEATURE_COLUMNS = NUMERIC_FEATURES + XG_XA_FEATURES + CATEGORICAL_FEATURES
 DC_FEATURE_COLUMNS = NUMERIC_FEATURES + DC_FEATURES + CATEGORICAL_FEATURES
+ROLE_FORM_FEATURE_COLUMNS = NUMERIC_FEATURES + ROLE_FORM_FEATURES + CATEGORICAL_FEATURES
 FEATURE_COLUMNS = BASE_FEATURE_COLUMNS
 FEATURE_MODES = {
     "baseline": BASE_FEATURE_COLUMNS,
     "xg_xa": XG_XA_FEATURE_COLUMNS,
     "dc": DC_FEATURE_COLUMNS,
+    "role_form": ROLE_FORM_FEATURE_COLUMNS,
 }
 MINUTES_BAND_NAMES = {0: "0", 1: "1-59", 2: "60+"}
 
@@ -101,6 +104,28 @@ def load_historical_player_gameweeks(path: Path = HISTORICAL_PLAYER_GW_PATH) -> 
             lambda season: historical_regime(str(season))["bps_rule_version"]
         )
     return players
+
+
+def add_role_form_features(players: pd.DataFrame) -> pd.DataFrame:
+    """Add recent starts, minutes, and points, each known before the row's Gameweek."""
+
+    ordered = players.sort_values(["season", "player_id", "gameweek"])
+    by_player = ordered.groupby(["season", "player_id"], sort=False)
+    enriched = players.copy()
+    enriched["minutes_last_1"] = by_player["minutes"].shift(1)
+    for name, column, window in (
+        ("starts_last_3", "starts", 3),
+        ("points_last_8", "total_points", 8),
+    ):
+        rolling = (
+            by_player[column]
+            .shift(1)
+            .groupby([ordered["season"], ordered["player_id"]], sort=False)
+            .rolling(window, min_periods=1)
+        )
+        values = rolling.sum() if name == "starts_last_3" else rolling.mean()
+        enriched[name] = values.droplevel([0, 1])
+    return enriched
 
 
 def build_preprocessor(feature_columns: list[str] | None = None) -> ColumnTransformer:

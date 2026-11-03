@@ -125,6 +125,9 @@ DEFAULT_MODEL = "Ridge Regression"
 DEFAULT_MODEL_VERSION = "local benchmark"
 DEFAULT_PROJECTION_MODE = "total_points"
 CHIP_MODE_DEFAULT = CHIP_MODE_NONE
+# A Gameweek's fixtures are public by its deadline and doubles are normally announced
+# by the week before. Later schedule changes were not known, so they stay single.
+KNOWN_FIXTURE_LOOKAHEAD = 1
 PROJECTION_MODES = ("total_points", "components", "m10_team_components")
 OPTIMIZER_VERSION = "m3.5-milp-v1"
 HISTORY_COLUMNS = [
@@ -190,6 +193,41 @@ class NoTransfersStrategy:
     def decide(self, context: StrategyContext) -> TransferDecision:
         del context
         return _empty_decision()
+
+
+def _season_fixture_counts(season_players: pd.DataFrame) -> dict[tuple[int, int], int]:
+    """Return each player's fixtures per Gameweek from the joined opponent names."""
+
+    counts = season_players["opponent_team"].astype(str).str.count(r"\+") + 1
+    return {
+        (int(gameweek), int(player_id)): int(count)
+        for gameweek, player_id, count in zip(
+            season_players["gameweek"], season_players["player_id"], counts, strict=True
+        )
+    }
+
+
+def _with_known_fixture_counts(
+    frame: pd.DataFrame,
+    gameweek: int,
+    fixture_counts: dict[tuple[int, int], int],
+    *,
+    known: bool,
+) -> pd.DataFrame:
+    """Scale one-match projections by fixtures, as the live projection sums them."""
+
+    if frame.empty:
+        return frame
+    output = frame.copy()
+    output["fixture_count"] = (
+        output["player_id"].map(lambda value: fixture_counts.get((gameweek, int(value)), 1))
+        if known
+        else 1
+    )
+    for column in ("expected_points_adjusted", "predicted_points", "captain_predicted_points"):
+        if column in output:
+            output[column] = output[column] * output["fixture_count"]
+    return output
 
 
 @dataclass(frozen=True)
@@ -1403,6 +1441,11 @@ def run_season_benchmark(
     hit_policy: str = "current_gw",
     max_same_gameweek_transfers: int = 1,
     live_planner_horizon: int | None = None,
+    live_planner_chips: bool = False,
+    timed_chips: bool = False,
+    double_gameweek_aware: bool = False,
+    captain_doubles: bool = False,
+    captain_feature_mode: str | None = None,
     projection_portfolio: ProjectionPortfolio | None = None,
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
@@ -1517,6 +1560,12 @@ def run_season_benchmark(
     model_context_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
     fixture_scenario_cache: dict[tuple[int, int], Any] = {}
     historical_raw, historical_teams = load_historical_raw([season])
+    fixture_counts = (
+        _season_fixture_counts(season_players)
+        if double_gameweek_aware or captain_doubles
+        else {}
+    )
+    captain_mode = captain_feature_mode or feature_mode
 
     if verbose:
         print(f"Season benchmark: {season} | {strategy.name} {strategy.version}")
@@ -1587,6 +1636,19 @@ def run_season_benchmark(
         else:
             future_predictions = {}
         predictions = target.copy()
+        if double_gameweek_aware:
+            predictions = _with_known_fixture_counts(
+                predictions, gameweek, fixture_counts, known=True
+            )
+            future_predictions = {
+                target_gameweek: _with_known_fixture_counts(
+                    frame,
+                    target_gameweek,
+                    fixture_counts,
+                    known=target_gameweek <= gameweek + KNOWN_FIXTURE_LOOKAHEAD,
+                )
+                for target_gameweek, frame in future_predictions.items()
+            }
         lineup_predictions = predictions
         if lineup_model_name != model_name:
             lineup_cache_key = (
@@ -1622,7 +1684,7 @@ def run_season_benchmark(
         if (
             chip_mode in {CHIP_MODE_BASELINE, CHIP_MODE_BEAM}
             and chip_model_name != model_name
-            and live_planner_horizon is None
+            and (live_planner_horizon is None or live_planner_chips)
         ):
             chip_cache_key = (
                 season,
@@ -1669,12 +1731,25 @@ def run_season_benchmark(
                         horizons=(
                             tuple(range(1, 9))
                             if chip_mode == CHIP_MODE_BASELINE
-                            else (1, 2, 3, 4, 5, 6)
+                            else beam_future_horizons
                         ),
                         _model_context_cache=model_context_cache,
                     )
                     if future_prediction_cache is not None:
                         future_prediction_cache[chip_cache_key] = chip_future_predictions
+        if double_gameweek_aware and chip_predictions is not predictions:
+            chip_predictions = _with_known_fixture_counts(
+                chip_predictions, gameweek, fixture_counts, known=True
+            )
+            chip_future_predictions = {
+                target_gameweek: _with_known_fixture_counts(
+                    frame,
+                    target_gameweek,
+                    fixture_counts,
+                    known=target_gameweek <= gameweek + KNOWN_FIXTURE_LOOKAHEAD,
+                )
+                for target_gameweek, frame in chip_future_predictions.items()
+            }
         prices = _latest_prices(players, season, gameweek)
         scenario_key = (gameweek, 8)
         if scenario_key not in fixture_scenario_cache:
@@ -1757,7 +1832,8 @@ def run_season_benchmark(
                 beam_planner = build_live_transfer_planner(
                     horizon=live_planner_horizon,
                     free_transfers=free_transfers,
-                    allow_chips=False,
+                    allow_chips=live_planner_chips,
+                    timed_chips=timed_chips,
                 )
             beam_action = beam_planner.decide(
                 gameweek=gameweek,
@@ -1886,7 +1962,7 @@ def run_season_benchmark(
             season,
             gameweek,
             minutes_mode,
-            feature_mode,
+            captain_mode,
             projection_mode,
             captain_model_name,
         )
@@ -1898,7 +1974,7 @@ def run_season_benchmark(
                 season,
                 gameweek,
                 minutes_mode=minutes_mode,
-                feature_mode=feature_mode,
+                feature_mode=captain_mode,
                 projection_mode=projection_mode,
                 model_name=captain_model_name,
                 availability_events=availability_events,
@@ -1906,6 +1982,10 @@ def run_season_benchmark(
             )
             if captain_prediction_cache is not None:
                 captain_prediction_cache[captain_cache_key] = captain_predictions
+        if captain_doubles:
+            captain_predictions = _with_known_fixture_counts(
+                captain_predictions, gameweek, fixture_counts, known=True
+            )
         realistic_score = score_realistic_gameweek(
             active_squad,
             target,

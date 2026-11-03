@@ -44,6 +44,9 @@ PRIORITY_REPLACEMENT_MAX_START_PROBABILITY = 0.25
 DEFAULT_TIME_DECAY = 0.85
 DEFAULT_FREE_TRANSFER_VALUE = 1.5
 DEFAULT_BANK_VALUE_PER_MILLION = 0.1
+BENCH_BOOST_MINIMUM_DOUBLED_PLAYERS = 3
+FREE_HIT_MINIMUM_BLANK_PLAYERS = 3
+FREE_HIT_MINIMUM_DOUBLED_TEAMS = 4
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,7 @@ class DeterministicBeamPlanner:
         time_decay: float = DEFAULT_TIME_DECAY,
         free_transfer_value: float = DEFAULT_FREE_TRANSFER_VALUE,
         bank_value_per_million: float = DEFAULT_BANK_VALUE_PER_MILLION,
+        timed_chips: bool = False,
     ):
         if beam_width < 1 or horizon < 1 or max_transfers < 1:
             raise ValueError("beam_width, horizon, and max_transfers must be positive")
@@ -163,6 +167,7 @@ class DeterministicBeamPlanner:
         self.time_decay = float(time_decay)
         self.free_transfer_value = max(0.0, float(free_transfer_value))
         self.bank_value_per_million = max(0.0, float(bank_value_per_million))
+        self.timed_chips = bool(timed_chips)
         self._chip_squad_cache: dict[tuple[Any, ...], pd.DataFrame] = {}
         self._projection_cache: dict[int, dict[int, float]] = {}
         self.last_counterfactuals: tuple[BeamAction, ...] = ()
@@ -274,6 +279,17 @@ class DeterministicBeamPlanner:
             for action in self.last_root_actions
         )
         selected = _finalize_path_action(beam[0])
+        if selected.chip is not None:
+            # Compare like with like: the best full path that holds the chip this week.
+            holding = next(
+                (action for action in self.last_path_actions if action.chip is None),
+                None,
+            )
+            if holding is not None:
+                selected = replace(
+                    selected,
+                    no_chip_horizon_points=holding.expected_horizon_points,
+                )
         if (
             self.minimum_transfer_horizon_gain > 0
             and selected.transfer_plan.count > 0
@@ -383,11 +399,25 @@ class DeterministicBeamPlanner:
         chips: list[ChipDefinition | None] = [None]
         if self.allow_chips:
             chips.extend(legal_chip_options(state.remaining_chips, state.gameweek, rules))
+        legal_chip_count = len(chips) - 1
         branches: list[DecisionState] = []
         for chip in chips:
             if chip is not None and chip.name == "assistant_manager":
                 if _assistant_manager_expected_points(chip_predictions) is None:
                     continue
+            if (
+                self.timed_chips
+                and chip is not None
+                and chip.name == "freehit"
+                and not _chip_timing_allows(
+                    chip,
+                    state.squad,
+                    predictions,
+                    gameweek=state.gameweek,
+                    legal_chip_count=legal_chip_count,
+                )
+            ):
+                continue
             if chip is not None and chip.name in {"wildcard", "freehit"}:
                 try:
                     budget = state.bank + float(state.squad["price"].sum())
@@ -406,6 +436,19 @@ class DeterministicBeamPlanner:
                 transfer_options_for_chip = transfer_options
 
             for transfer_plan in transfer_options_for_chip:
+                if (
+                    self.timed_chips
+                    and chip is not None
+                    and chip.name in {"bboost", "3xc"}
+                    and not _chip_timing_allows(
+                        chip,
+                        apply_transfer_plan(state.squad, predictions, transfer_plan),
+                        predictions,
+                        gameweek=state.gameweek,
+                        legal_chip_count=legal_chip_count,
+                    )
+                ):
+                    continue
                 branches.append(
                     self._transition(
                         state,
@@ -616,8 +659,17 @@ class DeterministicBeamPlanner:
             if self.horizon == 1 and self.hit_policy == "horizon_value"
             else 0.0
         )
+        # A held chip keeps its value, so waiting for a better week must not look
+        # worse merely because later weeks are discounted. A Wildcard's value is the
+        # squad it leaves behind, which the path itself already counts week by week.
+        undiscounted_chip_gain = (
+            expected_points - no_chip_value
+            if self.timed_chips and chip is not None and chip.name != "wildcard"
+            else 0.0
+        )
         branch_score = (
-            weight * (expected_points - hit_cost - uncertainty)
+            weight * (expected_points - undiscounted_chip_gain - hit_cost - uncertainty)
+            + undiscounted_chip_gain
             - opportunity_cost
             + terminal_flexibility
             + priority_bonus
@@ -688,7 +740,11 @@ class DeterministicBeamPlanner:
 
 
 def build_live_transfer_planner(
-    *, horizon: int, free_transfers: int, allow_chips: bool
+    *,
+    horizon: int,
+    free_transfers: int,
+    allow_chips: bool,
+    timed_chips: bool = False,
 ) -> DeterministicBeamPlanner:
     """Build the one production planner configuration used by every live path.
 
@@ -703,7 +759,40 @@ def build_live_transfer_planner(
         hit_policy="horizon_value",
         allow_chips=allow_chips,
         minimum_transfer_horizon_gain=FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
+        timed_chips=timed_chips,
     )
+
+
+def _chip_timing_allows(
+    chip: ChipDefinition,
+    squad: pd.DataFrame,
+    predictions: pd.DataFrame,
+    *,
+    gameweek: int,
+    legal_chip_count: int,
+) -> bool:
+    """Hold fixture-driven chips for their weeks, unless they would otherwise expire."""
+
+    # One chip per Gameweek, so every legal chip needs its own remaining week.
+    if chip.stop_event - gameweek + 1 <= legal_chip_count:
+        return True
+    if "fixture_count" not in predictions:
+        return False
+    fixture_counts = (
+        predictions.drop_duplicates("player_id").set_index("player_id")["fixture_count"]
+    )
+    squad_counts = fixture_counts.reindex(squad["player_id"].astype(int)).fillna(0)
+    if chip.name == "freehit":
+        doubled_teams = predictions.loc[predictions["fixture_count"] > 1, "team"].nunique()
+        return (
+            int((squad_counts == 0).sum()) >= FREE_HIT_MINIMUM_BLANK_PLAYERS
+            or int(doubled_teams) >= FREE_HIT_MINIMUM_DOUBLED_TEAMS
+        )
+    if chip.name == "bboost":
+        return int((squad_counts > 1).sum()) >= BENCH_BOOST_MINIMUM_DOUBLED_PLAYERS
+    projection = _projection_map(predictions)
+    captain = _captain_ids(_fast_lineup(squad, projection).starting_ids, projection)[0]
+    return float(fixture_counts.get(captain, 0)) > 1
 
 
 def _replaces_unavailable_player(

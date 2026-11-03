@@ -12,6 +12,8 @@ from fpl_intelligence.season_benchmark import (
     StrategyContext,
     _assert_transfer_budget,
     _realized_chip_gain,
+    _season_fixture_counts,
+    _with_known_fixture_counts,
     append_decision_rows_to_history,
     append_result_to_history,
     get_training_data_for_season,
@@ -25,6 +27,7 @@ from fpl_intelligence.season_benchmark import (
     train_realistic_captain_predictions,
 )
 from fpl_intelligence.season_rules import build_historical_season_rules
+from fpl_intelligence.step4_models import add_role_form_features
 
 
 def _squad_rows() -> list[dict[str, object]]:
@@ -541,3 +544,52 @@ def test_live_planner_mode_keeps_transfer_accounting_legal():
         )
         assert row.max_same_gameweek_transfers == min(5, max(2, row.free_transfers_before + 1))
         assert row.transfer_count <= row.max_same_gameweek_transfers
+
+
+def test_known_fixture_counts_scale_only_visible_doubles():
+    frame = pd.DataFrame(
+        {
+            "player_id": [1, 2],
+            "expected_points_adjusted": [3.0, 3.0],
+            "predicted_points": [4.0, 4.0],
+        }
+    )
+    counts = _season_fixture_counts(
+        pd.DataFrame(
+            {
+                "gameweek": [5, 5],
+                "player_id": [1, 2],
+                "opponent_team": ["Arsenal+Chelsea", "Fulham"],
+            }
+        )
+    )
+
+    known = _with_known_fixture_counts(frame, 5, counts, known=True)
+    hidden = _with_known_fixture_counts(frame, 5, counts, known=False)
+
+    assert known["fixture_count"].tolist() == [2, 1]
+    assert known["expected_points_adjusted"].tolist() == [6.0, 3.0]
+    assert known["predicted_points"].tolist() == [8.0, 4.0]
+    assert hidden["fixture_count"].tolist() == [1, 1]
+    assert hidden["expected_points_adjusted"].tolist() == [3.0, 3.0]
+    assert frame["expected_points_adjusted"].tolist() == [3.0, 3.0]
+
+
+def test_role_form_inputs_use_only_earlier_gameweeks():
+    players = pd.DataFrame(
+        {
+            "season": ["2025-26"] * 4,
+            "player_id": [1, 1, 1, 1],
+            "gameweek": [4, 2, 1, 3],
+            "minutes": [10, 90, 60, 0],
+            "starts": [0, 1, 1, 0],
+            "total_points": [1, 8, 2, 0],
+        }
+    )
+
+    enriched = add_role_form_features(players).sort_values("gameweek")
+
+    assert enriched["minutes_last_1"].isna().tolist() == [True, False, False, False]
+    assert enriched["minutes_last_1"].tolist()[1:] == [60, 90, 0]
+    assert enriched["starts_last_3"].tolist()[1:] == [1, 2, 2]
+    assert enriched["points_last_8"].tolist()[1:] == [2.0, 5.0, 10 / 3]
