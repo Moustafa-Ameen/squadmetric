@@ -26,7 +26,7 @@ MODEL_NAME_MAP = {
 
 @router.get("/season-simulations")
 def season_simulations() -> dict[str, Any]:
-    """Accepted no-chip season replays compared with the official average manager."""
+    """Season replays of the live planner compared with the official average manager."""
 
     if not SEASON_SIMULATIONS_PATH.exists():
         return {"seasons": []}

@@ -83,7 +83,7 @@ export default function ProofPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <EvidenceNote good title="What this evidence supports" items={["The evaluation can compare models on unseen historical gameweeks.", "Minutes-aware projections can be measured against raw projections.", "Captain and player-ranking methods can be compared with simple baselines."]} />
-        <EvidenceNote title="What it does not prove" items={["A guaranteed top-1% finish or a fixed season score.", "That every recommended transfer will work in a high-variance game.", "That a lower prediction error automatically creates a better FPL strategy."]} />
+        <EvidenceNote title="What it does not prove" items={["A guaranteed top-1% finish or a fixed season score.", "That every recommended transfer will work in a high-variance game.", "That a lower prediction error automatically creates a better FPL strategy.", "The accuracy, captain and top-player tables still use end-of-season opponent ratings, which may flatter them slightly."]} />
       </div>
     </div>
   );
@@ -105,8 +105,8 @@ function SeasonSimulations({ rows }: { rows: SeasonSimulation[] }) {
         </table>
       </div>
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <EvidenceNote good title="What this supports" items={["In every season, the planner finished above the average manager, after paying for any transfer hits.", "Timed chips, with the captain and double-gameweek changes, beat the same planner without chips in every season.", "Each decision used only data from before that gameweek's deadline.", "Captains are the ones the model would have picked, not chosen with hindsight."]} />
-        <EvidenceNote title="What to keep in mind" items={["These are simulations, not real FPL teams, and these seasons helped choose the model, so the results may be flattering.", "The chip rules were chosen on 2024/25 and 2025/26, then checked on 2023/24, where chips themselves added only 18 points. They are not yet proven on real gameweeks.", "The simulation uses the live planner's settings, but not live injury news or set-piece updates.", "The average includes casual and inactive teams. This shows an edge over average, still short of the top 1% in both seasons with a known cutoff."]} />
+        <EvidenceNote good title="What this supports" items={["In every season, the planner finished above the average manager, after paying for any transfer hits.", "Timed chips, with the captain and double-gameweek changes, finished ahead of the same planner without chips in every season, by 4, 78 and 318 points.", "Each decision used only data from before that gameweek's deadline, including opponent ratings rebuilt from earlier results.", "Captains are the ones the model would have picked, not chosen with hindsight."]} />
+        <EvidenceNote title="What to keep in mind" items={["These are simulations, not real FPL teams, and these seasons helped choose the model, so the results may be flattering.", "The chip rules were chosen on 2024/25 and 2025/26, then checked on 2023/24, where they finished just 4 points ahead of playing without chips. They are not yet proven on real gameweeks.", "Small changes to the inputs moved single seasons by more than 100 points, so treat each figure as approximate.", "The simulation uses the live planner's settings, but not live injury news or set-piece updates.", "The average includes casual and inactive teams. The 2025/26 score clears that season's top 1% cutoff, but that season helped set the chip rules, and 2024/25 falls short of its cutoff."]} />
       </div>
     </section>
   );

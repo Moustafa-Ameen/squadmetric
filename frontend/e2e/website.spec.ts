@@ -278,11 +278,11 @@ test("personal plan explains package funding and accepts corrected manager state
 test("performance evidence is readable and states its limits", async ({ page }) => {
   await page.goto("/proof");
   await expect(page.getByRole("heading", { name: "Performance evidence" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "115 to 455 points above the average FPL manager" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Full-season simulation results" }).getByText("+455")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "143 to 474 points above the average FPL manager" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Full-season simulation results" }).getByText("+474")).toBeVisible();
   await expect(page.getByText("These are simulations, not real FPL teams", { exact: false })).toBeVisible();
   await expect(page.getByRole("region", { name: "Full-season simulation results" }).getByText("Not available")).toBeVisible();
-  await expect(page.getByText("where chips themselves added only 18 points", { exact: false })).toBeVisible();
+  await expect(page.getByText("where they finished just 4 points ahead of playing without chips", { exact: false })).toBeVisible();
   await expect(page.getByText("The model is tested on matches it was not trained to predict.")).toBeVisible();
   await expect(page.getByText("Prediction accuracy rank").locator("..").getByText("#1")).toBeVisible();
   await expect(page.getByText("Captain strategy rank").locator("..").getByText("#1 of 2")).toBeVisible();
@@ -500,9 +500,9 @@ async function mockApi(route: Route) {
     { strategy: "Most popular player", total_captain_points: 472, avg_per_gameweek: 12.4 },
   ]);
   if (url.pathname === "/api/backtest/season-simulations") return json({ seasons: [
-    { season: "2023-24", squadmetric_points: 2118, no_chip_points: 2006, average_manager_points: 2003, difference: 115, gameweeks_ahead: 23, gameweeks_level: 2, gameweeks_behind: 13, top_one_percent_cutoff: null },
-    { season: "2024-25", squadmetric_points: 2463, no_chip_points: 2338, average_manager_points: 2008, difference: 455, gameweeks_ahead: 32, gameweeks_level: 0, gameweeks_behind: 6, top_one_percent_cutoff: { low: 2504, high: 2508 } },
-    { season: "2025-26", squadmetric_points: 2245, no_chip_points: 2113, average_manager_points: 1895, difference: 350, gameweeks_ahead: 27, gameweeks_level: 2, gameweeks_behind: 9, top_one_percent_cutoff: { low: 2296, high: 2319 } },
+    { season: "2023-24", squadmetric_points: 2146, no_chip_points: 2142, average_manager_points: 2003, difference: 143, gameweeks_ahead: 22, gameweeks_level: 1, gameweeks_behind: 15, top_one_percent_cutoff: null },
+    { season: "2024-25", squadmetric_points: 2353, no_chip_points: 2275, average_manager_points: 2008, difference: 345, gameweeks_ahead: 28, gameweeks_level: 1, gameweeks_behind: 9, top_one_percent_cutoff: { low: 2504, high: 2508 } },
+    { season: "2025-26", squadmetric_points: 2369, no_chip_points: 2051, average_manager_points: 1895, difference: 474, gameweeks_ahead: 32, gameweeks_level: 0, gameweeks_behind: 6, top_one_percent_cutoff: { low: 2296, high: 2319 } },
   ] });
   if (url.pathname === "/api/backtest/top10") return json([
     { model: "SquadMetric", precision_at_10: 0.16, recall_at_10: 0.16 },

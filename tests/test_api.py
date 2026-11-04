@@ -1494,8 +1494,8 @@ def test_season_simulations_reconcile_with_their_gameweeks():
         )
         assert sum(row["no_chip"]["gameweek_points"]) == row["no_chip_points"]
         assert row["squadmetric_points"] > row["no_chip_points"]
-        assert row["simulation"]["preset"] == "live-planner-8gw-timed-chips"
-        assert row["no_chip"]["simulation"]["preset"] == "live-planner-8gw"
+        assert row["simulation"]["preset"] == "pit-timed-chips"
+        assert row["no_chip"]["simulation"]["preset"] == "pit-no-chips"
 
 
 def test_backtest_accuracy_uses_plain_english_model_names():

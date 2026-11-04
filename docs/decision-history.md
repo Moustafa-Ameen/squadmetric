@@ -20,8 +20,10 @@ audit, and handoff files. Git history remains the source for commit-level detail
 - Rules: season-versioned scoring, BPS, defensive contributions, transfers,
   selling prices, and chip inventories. Current 2026/27 rules use eight chips in
   two half-season sets, a GW19 reset, DC v1, and BPS v2.
-- Data safety: historical decisions are point-in-time safe; unavailable defensive
-  contribution data remains missing; scoring eras are never blended.
+- Data safety: historical decisions are point-in-time safe, except that
+  `opponent_strength` is an end-of-season value unless a replay rebuilds it (see
+  "Fair opponent ratings"); unavailable defensive contribution data remains missing;
+  scoring eras are never blended.
 - Evidence: recommendations can be frozen before a deadline and settled only after
   official FPL marks the Gameweek both finished and data-checked.
 - Live rolling form: finalized current-season rows are joined by stable FPL element
@@ -154,6 +156,33 @@ Those runs used official starts. Serving and later simulations treat 45+ minutes
 start, because live rows do not record starts. Double Gameweeks in simulations are
 known only for the current and next Gameweek, since the final historical schedule
 contains changes nobody knew earlier.
+
+### Fair opponent ratings
+
+Historical `opponent_strength` is one value per team per season, and it correlates
+0.93-0.97 with that season's final goal difference, so replays were seeing how each
+team's season turned out. Earlier tables in this file carry that flaw.
+`add_point_in_time_opponent_strength` rebuilds the rating from the prior season plus
+results so far. Public evidence now comes from these runs:
+
+| Season | Average | No chips (old ratings) | No chips (fair) | Timed chips (old ratings) | Timed chips (fair) | Timed chips + fixture scaling (fair) |
+|---|---:|---:|---:|---:|---:|---:|
+| 2023/24 | 2,003 | 2,006 | 2,142 | 2,118 | 2,146 | 2,148 |
+| 2024/25 | 2,008 | 2,338 | 2,275 | 2,463 | 2,353 | 2,289 |
+| 2025/26 | 1,895 | 2,113 | 2,051 | 2,245 | 2,369 | 2,305 |
+
+- Forecasts barely changed: for regular starters the mean absolute difference between
+  models fitted on old and fair ratings is 0.045 points, with 19 of 20 top players
+  shared each week. Season totals still moved by 28-136 points, so differences of
+  around 100 points in one season are largely path noise.
+- Timed chips stay on. They finish ahead of no chips by 4, 78 and 318 points, but the
+  2023/24 check season is a tie and 2024/25 is not clear (bootstrap 5-95%: -55 to 216).
+  Only 2025/26, which has eight chips, is clear (139 to 515).
+- Fixture scaling by position, venue and opponent band is rejected: +2, -64 and -64
+  against timed chips. On old ratings it looked like +50, +128 and +2, so most of that
+  apparent gain was hindsight.
+- Live models still train on the old ratings. The effect above is small, so this is not
+  urgent, but the accuracy, captain and top-10 evidence tables carry the same flaw.
 
 ## Consumer tournament ledger
 
