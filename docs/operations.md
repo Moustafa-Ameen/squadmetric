@@ -138,11 +138,12 @@ Open <http://localhost:3000>. Check `GET /api/health` for liveness and
 
 ## Retained local artifacts
 
-The ignored `data/processed`, `data/raw`, and `models` trees contain the current
-serving bundle, historical training data, immutable official snapshots, rules,
-and deadline evidence. Compact accepted calibration and model-evaluation values
-live under `data/reference` so old tournament runs and regenerable reports do not
-need to remain in the working copy.
+Most of `data/processed`, `data/raw`, and `models` is ignored: historical training
+data, immutable official snapshots, and deadline evidence. The serving bundle and
+rules are committed, as the `!` entries in `.gitignore` list. Compact accepted
+calibration and model-evaluation values live under `data/reference` so old
+tournament runs and regenerable reports do not need to remain in the working copy.
 
 Production deployment requirements live in
-[`frontend/DEPLOYMENT.md`](../frontend/DEPLOYMENT.md).
+[`frontend/DEPLOYMENT.md`](../frontend/DEPLOYMENT.md) and
+[`docs/deployment/backend.md`](deployment/backend.md).
