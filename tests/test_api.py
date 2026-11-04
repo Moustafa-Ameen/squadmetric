@@ -1471,11 +1471,11 @@ def test_confidence_reflects_how_clearly_the_plan_beats_doing_nothing():
     easy_hold = margin(acting=False, horizon_gain=0.0, best_alternative_gain=-3.0)
     close_hold = margin(acting=False, horizon_gain=0.0, best_alternative_gain=1.9)
 
-    assert confidence(clear, 0.7) == "high"
-    assert confidence(marginal, 0.7) == "medium"
-    assert confidence(easy_hold, 0.7) == "high"
-    assert confidence(close_hold, 0.7) == "low"
-    assert confidence(clear, 2.0) == "low"
+    assert confidence(clear, 0.2) == "high"
+    assert confidence(marginal, 0.2) == "medium"
+    assert confidence(easy_hold, 0.2) == "high"
+    assert confidence(close_hold, 0.2) == "low"
+    assert confidence(clear, 0.6) == "low"
 
 
 def test_season_simulations_reconcile_with_their_gameweeks():

@@ -791,7 +791,11 @@ def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:
         horizon_gain=horizon_gain,
         best_alternative_gain=best_alternative_gain,
     )
-    confidence = _decision_confidence(confidence_margin, uncertainty)
+    # The planner sums uncertainty along its path, so compare it per Gameweek.
+    confidence = _decision_confidence(
+        confidence_margin,
+        uncertainty / max(1, int(payload.get("horizon") or 1)),
+    )
 
     return {
         **base,
@@ -925,10 +929,10 @@ def _confidence_margin(
     return round(FREE_TRANSFER_MINIMUM_HORIZON_GAIN - best_alternative_gain, 3)
 
 
-def _decision_confidence(margin: float, uncertainty_penalty: float) -> str:
-    if margin >= 4.0 and uncertainty_penalty <= 1.0:
+def _decision_confidence(margin: float, uncertainty_per_gameweek: float) -> str:
+    if margin >= 4.0 and uncertainty_per_gameweek <= 0.35:
         return "high"
-    if margin >= 1.0 and uncertainty_penalty <= 1.5:
+    if margin >= 1.0 and uncertainty_per_gameweek <= 0.5:
         return "medium"
     return "low"
 
