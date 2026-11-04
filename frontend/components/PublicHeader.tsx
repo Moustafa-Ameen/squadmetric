@@ -10,7 +10,6 @@ export function PublicHeader() {
         <nav aria-label="Public navigation" className="hidden items-center gap-7 md:flex">
           <Link href="/#how-it-works" className="text-sm font-semibold text-slate-600 hover:text-slate-950">How it works</Link>
           <Link href="/proof" className="text-sm font-semibold text-slate-600 hover:text-slate-950">Evidence</Link>
-          <Link href="/track-record" className="text-sm font-semibold text-slate-600 hover:text-slate-950">Track record</Link>
           <Link href="/onboarding" className="sm-primary-button px-4 py-2.5">Rate my team</Link>
         </nav>
         <div className="md:hidden"><Link href="/onboarding" className="sm-primary-button px-4 py-2.5">Rate my team</Link></div>

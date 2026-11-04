@@ -114,9 +114,10 @@ export function HeroSkeleton() {
   );
 }
 
-export function PlannerSkeleton() {
+export function PlannerSkeleton({ message }: { message?: string }) {
   return (
     <div className="space-y-4" role="status" aria-label="Loading planner data">
+      {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
       <div className="skeleton h-16 rounded-[10px] border border-fpl-border bg-fpl-card" />
       <div className="rounded-[10px] border border-fpl-border bg-fpl-card p-4">
         <div className="mb-4 flex gap-2">

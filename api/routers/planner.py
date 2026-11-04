@@ -30,6 +30,7 @@ from api.team_rating import build_team_rating
 from fpl_intelligence.artifact_contract import load_current_artifact_manifest
 from fpl_intelligence.backtest_transfer_strategy import validate_squad
 from fpl_intelligence.beam_search import (
+    FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
     DeterministicBeamPlanner,
     _captain_ids,
     _fast_lineup,
@@ -59,7 +60,7 @@ router = APIRouter(
     dependencies=[Depends(require_live_artifacts)],
 )
 ACTIVE_PORTFOLIO = get_production_portfolio()
-DECISION_CENTER_CACHE_SECONDS = 60.0
+DECISION_CENTER_CACHE_SECONDS = 300.0
 _DECISION_CENTER_CACHE: dict[
     tuple[int, int, float | None, int | None],
     tuple[float, dict[str, Any]],
@@ -770,7 +771,6 @@ def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:
         3,
     )
     uncertainty = float(selected.get("uncertainty_penalty") or 0.0)
-    confidence = _decision_confidence(search_margin, uncertainty)
     expected_gameweek_points = float(selected.get("expected_gameweek_points") or 0.0)
     uncertainty_band = max(1.0, uncertainty * 2.0)
     no_action_horizon = float(no_action.get("expected_horizon_points") or 0.0)
@@ -778,6 +778,20 @@ def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:
     horizon_gain = round(selected_horizon - no_action_horizon, 3)
     transfer_count = int(selected.get("transfer_count") or 0)
     chip = selected.get("chip")
+    best_alternative_gain = max(
+        (
+            float(branch.get("expected_horizon_points") or 0.0) - no_action_horizon
+            for branch in branches
+            if branch.get("branch_id") != selected.get("branch_id")
+        ),
+        default=0.0,
+    )
+    confidence_margin = _confidence_margin(
+        acting=transfer_count > 0 or chip is not None,
+        horizon_gain=horizon_gain,
+        best_alternative_gain=best_alternative_gain,
+    )
+    confidence = _decision_confidence(confidence_margin, uncertainty)
 
     return {
         **base,
@@ -839,6 +853,7 @@ def _decision_center_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "confidence": confidence,
             "confidence_basis": {
                 "search_score_margin": search_margin,
+                "confidence_margin": confidence_margin,
                 "uncertainty_penalty": round(uncertainty, 3),
             },
             "reason": selected.get("reason"),
@@ -893,10 +908,27 @@ def _decision_center_player(
     }
 
 
-def _decision_confidence(search_margin: float, uncertainty_penalty: float) -> str:
-    if search_margin >= 2.0 and uncertainty_penalty <= 0.5:
+def _confidence_margin(
+    *,
+    acting: bool,
+    horizon_gain: float,
+    best_alternative_gain: float,
+) -> float:
+    """How clear the call is: the gain from acting, or the room left when holding.
+
+    The closest alternative is usually the same plan with one player swapped, so it
+    says little about whether the plan beats doing nothing.
+    """
+
+    if acting:
+        return round(horizon_gain, 3)
+    return round(FREE_TRANSFER_MINIMUM_HORIZON_GAIN - best_alternative_gain, 3)
+
+
+def _decision_confidence(margin: float, uncertainty_penalty: float) -> str:
+    if margin >= 4.0 and uncertainty_penalty <= 1.0:
         return "high"
-    if search_margin >= 0.5 and uncertainty_penalty <= 1.5:
+    if margin >= 1.0 and uncertainty_penalty <= 1.5:
         return "medium"
     return "low"
 

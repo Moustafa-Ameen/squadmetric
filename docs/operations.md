@@ -24,8 +24,8 @@ When a new Gameweek is published, the workflow also rebuilds
 `data/processed/track_record_2026_27.json` with `python -m fpl_intelligence.track_record`.
 It scores each settled plan against the no-action branch, separates chip gains, counts
 only plans from the current decision engine in its totals, and
-omits the team ID; the website's Track record page reads it from
-`/api/operations/track-record`.
+omits the team ID. It is internal evidence, read from
+`/api/operations/track-record`; the website no longer has a page for it.
 
 Recommendations keep serving while the model trails the official finalized
 Gameweeks by at most `FPL_MAX_PREDICTION_LAG_GAMEWEEKS` (default 2). Live prices,

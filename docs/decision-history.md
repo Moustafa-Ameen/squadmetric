@@ -38,8 +38,8 @@ audit, and handoff files. Git history remains the source for commit-level detail
   inputs, summed across a Gameweek's fixtures. Lineups and transfers keep the
   baseline inputs, because the same inputs made lineup choices worse.
 - Actionability: marginal transfers are shown as alternatives rather than calls;
-  the production threshold scales from three points at a three-Gameweek horizon
-  to eight points at an eight-Gameweek horizon, before any hit cost.
+  a plan must project two points more than doing nothing across its horizon, plus
+  any hit cost.
 
 ## Accepted engineering and decision changes
 

@@ -1,6 +1,5 @@
 import type {
   SeasonSimulationsResponse,
-  TrackRecordResponse,
   AccuracyResult,
   BacktestResult,
   CaptainPick,
@@ -300,6 +299,3 @@ export async function getSeasonSimulations(): Promise<SeasonSimulationsResponse>
   return fetchJson("/api/backtest/season-simulations");
 }
 
-export async function getTrackRecord(): Promise<TrackRecordResponse> {
-  return fetchJson("/api/operations/track-record", { cache: "no-store" });
-}

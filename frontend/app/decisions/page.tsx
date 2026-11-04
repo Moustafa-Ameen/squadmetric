@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DecisionStatusNotice } from "@/components/DecisionStatusNotice";
+import { FeedbackLink } from "@/components/FeedbackLink";
 import { ErrorState, PlannerSkeleton } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -126,7 +127,7 @@ export default function DecisionCenterPage() {
     [recommendation],
   );
 
-  if (loading) return <PlannerSkeleton />;
+  if (loading) return <PlannerSkeleton message="Building your plan. This usually takes about 15 seconds, and up to a minute when the site is busy." />;
   if (error) return <ErrorState />;
   if (!teamId && !guestMode) {
     return (
@@ -343,6 +344,7 @@ export default function DecisionCenterPage() {
       </div>
 
       <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <span>SquadMetric is being tested. Something look wrong? <FeedbackLink className="font-extrabold text-violet-700 hover:text-violet-900" /></span>
         <span>Want to see when each chip looks strongest?</span>
         <Link href="/chips" className="font-extrabold text-violet-700 hover:text-violet-900">Open the Chip Guide →</Link>
       </div>

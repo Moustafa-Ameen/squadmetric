@@ -1463,6 +1463,21 @@ def test_chip_tips_returns_transition_state_without_projection(monkeypatch):
 
 
 @pytest.mark.requires_local_artifacts
+def test_confidence_reflects_how_clearly_the_plan_beats_doing_nothing():
+    margin = planner_router._confidence_margin
+    confidence = planner_router._decision_confidence
+    clear = margin(acting=True, horizon_gain=15.0, best_alternative_gain=14.9)
+    marginal = margin(acting=True, horizon_gain=2.1, best_alternative_gain=2.0)
+    easy_hold = margin(acting=False, horizon_gain=0.0, best_alternative_gain=-3.0)
+    close_hold = margin(acting=False, horizon_gain=0.0, best_alternative_gain=1.9)
+
+    assert confidence(clear, 0.7) == "high"
+    assert confidence(marginal, 0.7) == "medium"
+    assert confidence(easy_hold, 0.7) == "high"
+    assert confidence(close_hold, 0.7) == "low"
+    assert confidence(clear, 2.0) == "low"
+
+
 def test_season_simulations_reconcile_with_their_gameweeks():
     response = asyncio.run(_get("/api/backtest/season-simulations"))
 
