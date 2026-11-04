@@ -1,11 +1,11 @@
 import pytest
 
-from fpl_intelligence.projection_portfolio import ProjectionPortfolio
-from fpl_intelligence.season_benchmark import (
+from squadmetric.projection_portfolio import ProjectionPortfolio
+from squadmetric.season_benchmark import (
     train_gameweek_predictions,
     train_realistic_captain_predictions,
 )
-from fpl_intelligence.step4_models import load_historical_player_gameweeks
+from squadmetric.step4_models import load_historical_player_gameweeks
 
 
 def test_projection_portfolio_keeps_consumers_explicit():

@@ -281,7 +281,7 @@ try {
             if ($refreshLockAcquired) {
                 Write-Host "Checking for finalized FPL data ($activeSeason)..." -ForegroundColor Cyan
                 Write-Host "This refresh updates SquadMetric data only; it cannot change your FPL team." -ForegroundColor DarkGray
-                & $pythonExe -m fpl_intelligence.post_gameweek_refresh --season $activeSeason
+                & $pythonExe -m squadmetric.post_gameweek_refresh --season $activeSeason
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning (
                         "The prediction refresh did not complete. Starting with the last validated " +

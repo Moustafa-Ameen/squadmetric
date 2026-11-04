@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fpl_intelligence.deadline_intelligence import (
+from squadmetric.deadline_intelligence import (
     build_shadow_snapshot,
     compare_snapshots,
     deadline_readiness,

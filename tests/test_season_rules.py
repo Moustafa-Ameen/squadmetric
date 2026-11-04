@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from fpl_intelligence.season_rules import (
+from squadmetric.season_rules import (
     RULES_SCHEMA_VERSION,
     build_historical_season_rules,
     build_season_rules,

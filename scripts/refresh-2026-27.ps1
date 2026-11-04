@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $Python)) {
 
 $Arguments = @(
     "-m",
-    "fpl_intelligence.post_gameweek_refresh",
+    "squadmetric.post_gameweek_refresh",
     "--season",
     "2026-27"
 )
@@ -51,11 +51,11 @@ try {
     }
     $SeasonStarted = [DateTimeOffset]::UtcNow -ge $FirstDeadlineUtc.ToUniversalTime()
     if (-not $SeasonStarted) {
-        & $Python "-m" "fpl_intelligence.p10_calibration" | Out-Null
+        & $Python "-m" "squadmetric.p10_calibration" | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Opening-squad robustness refresh failed with exit code $LASTEXITCODE"
         }
-        $P11Arguments = @("-m", "fpl_intelligence.p11_deadline_finalization")
+        $P11Arguments = @("-m", "squadmetric.p11_deadline_finalization")
         if ($FinalNewsReviewed) {
             if ($FinalNewsSource.Count -eq 0) {
                 throw "-FinalNewsReviewed requires at least one -FinalNewsSource URL"
@@ -81,14 +81,14 @@ try {
             "artifacts instead of regenerating them with post-deadline information."
         )
     }
-    & $Python "-m" "fpl_intelligence.p12_set_piece_report" | Out-Null
+    & $Python "-m" "squadmetric.p12_set_piece_report" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Set-piece audit failed with exit code $LASTEXITCODE"
     }
     if (-not $SeasonStarted -or $TeamId -gt 0) {
         $EvidenceArguments = @(
             "-m",
-            "fpl_intelligence.live_decision_evidence",
+            "squadmetric.live_decision_evidence",
             "capture"
         )
         if ($TeamId -gt 0) {
@@ -106,12 +106,12 @@ try {
         )
     }
     if ($ModelTeamId -gt 0) {
-        & $Python "-m" "fpl_intelligence.model_team_performance" `
+        & $Python "-m" "squadmetric.model_team_performance" `
             "--team-id" "$ModelTeamId"
         if ($LASTEXITCODE -ne 0) {
             throw "Model-team performance capture failed with exit code $LASTEXITCODE"
         }
-        & $Python "-m" "fpl_intelligence.live_decision_evidence" "capture" `
+        & $Python "-m" "squadmetric.live_decision_evidence" "capture" `
             "--team-id" "$ModelTeamId"
         if ($LASTEXITCODE -ne 0) {
             throw "Model-team deadline evidence capture failed with exit code $LASTEXITCODE"

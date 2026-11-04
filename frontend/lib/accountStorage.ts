@@ -1,9 +1,10 @@
+import { DRAFTS_STORAGE_KEY, migrateLegacyDrafts, readDraftsValue } from "./draftStorage";
 import { parseSavedDrafts, type SavedDraft } from "./draftWorkspace";
 import type { DecisionCenterResponse } from "./types";
 import { clearManagerStateOverride } from "./managerState";
 
 export const ACCOUNT_STORAGE_KEYS = {
-  drafts: "fpl_intelligence_drafts_v1",
+  drafts: DRAFTS_STORAGE_KEY,
   watchlist: "watchlist",
   onboardingPreferences: "squadmetric_preferences",
   teamId: "fpl_team_id",
@@ -31,7 +32,7 @@ type DecisionResponse = "accepted" | "rejected";
 export function readSavedDrafts(): SavedDraft[] {
   if (typeof window === "undefined") return [];
   try {
-    return parseSavedDrafts(JSON.parse(window.localStorage.getItem(ACCOUNT_STORAGE_KEYS.drafts) ?? "[]"));
+    return parseSavedDrafts(JSON.parse(readDraftsValue(window.localStorage) ?? "[]"));
   } catch {
     return [];
   }
@@ -117,6 +118,7 @@ export async function persistDecisionResponse(data: DecisionCenterResponse, resp
 }
 
 export async function exportAccountData() {
+  migrateLegacyDrafts(window.localStorage);
   const local = Object.fromEntries(
     Object.values(ACCOUNT_STORAGE_KEYS).map((key) => [key, window.localStorage.getItem(key)]),
   );

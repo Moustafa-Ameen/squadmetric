@@ -1,6 +1,6 @@
 import pandas as pd
 
-from fpl_intelligence.rank_players import add_rule_based_scores
+from squadmetric.rank_players import add_rule_based_scores
 
 
 def test_add_rule_based_scores_adds_expected_columns():

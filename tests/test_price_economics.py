@@ -2,12 +2,12 @@ import pandas as pd
 import pytest
 from api.chip_recommendations import squad_frame
 
-from fpl_intelligence.backtest_transfer_strategy import choose_transfer
-from fpl_intelligence.chip_simulation import (
+from squadmetric.backtest_transfer_strategy import choose_transfer
+from squadmetric.chip_simulation import (
     apply_squad_transition,
     chip_definitions,
 )
-from fpl_intelligence.price_economics import (
+from squadmetric.price_economics import (
     fpl_selling_price,
     initialise_incoming_player,
     initialise_squad_economics,
@@ -15,7 +15,7 @@ from fpl_intelligence.price_economics import (
     squad_market_value,
     squad_selling_value,
 )
-from fpl_intelligence.season_rules import build_historical_season_rules
+from squadmetric.season_rules import build_historical_season_rules
 
 
 @pytest.mark.parametrize(

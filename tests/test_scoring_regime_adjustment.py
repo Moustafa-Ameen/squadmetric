@@ -1,4 +1,4 @@
-from fpl_intelligence.scoring_regime_adjustment import bps_v2_adjustment
+from squadmetric.scoring_regime_adjustment import bps_v2_adjustment
 
 
 def test_bps_v2_adjustment_penalises_dc_bonus_overlap_without_changing_threshold():

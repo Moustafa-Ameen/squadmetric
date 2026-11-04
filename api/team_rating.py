@@ -7,9 +7,9 @@ from typing import Any
 
 import pandas as pd
 
-from fpl_intelligence.beam_search import _fast_gameweek_value, _projection_map
-from fpl_intelligence.chip_simulation import build_chip_squad
-from fpl_intelligence.squad_optimizer import position_group
+from squadmetric.beam_search import _fast_gameweek_value, _projection_map
+from squadmetric.chip_simulation import build_chip_squad
+from squadmetric.squad_optimizer import position_group
 
 GRADE_BANDS: tuple[tuple[float, str], ...] = (
     (97.0, "A+"),

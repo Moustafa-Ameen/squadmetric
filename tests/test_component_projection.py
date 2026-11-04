@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from fpl_intelligence.component_features import COMPONENT_TARGET_COLUMNS
-from fpl_intelligence.component_projection import (
+from squadmetric.component_features import COMPONENT_TARGET_COLUMNS
+from squadmetric.component_projection import (
     component_feature_columns,
     fit_component_projection_model,
     score_expected_components,

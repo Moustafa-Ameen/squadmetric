@@ -8,8 +8,8 @@ from api.routers.planner import (
     _transfer_finance,
 )
 
-from fpl_intelligence.backtest_transfer_strategy import TransferDecision, TransferPlan
-from fpl_intelligence.beam_search import BeamAction
+from squadmetric.backtest_transfer_strategy import TransferDecision, TransferPlan
+from squadmetric.beam_search import BeamAction
 
 
 def _squad() -> pd.DataFrame:

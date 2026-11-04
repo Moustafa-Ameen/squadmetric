@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from fpl_intelligence.current_season_replay import (
+from squadmetric.current_season_replay import (
     _deadline_source,
     _validated_finalized_gameweeks,
 )
-from fpl_intelligence.season_rules import payload_hash
+from squadmetric.season_rules import payload_hash
 
 
 def test_finalized_gameweeks_must_match_official_state():

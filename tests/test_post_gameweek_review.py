@@ -1,6 +1,6 @@
 import json
 
-from fpl_intelligence.post_gameweek_review import build_post_gameweek_review
+from squadmetric.post_gameweek_review import build_post_gameweek_review
 
 
 def _bootstrap():

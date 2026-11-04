@@ -2,13 +2,13 @@ from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 
-from fpl_intelligence.p11_deadline_finalization import (
+from squadmetric.p11_deadline_finalization import (
     build_deadline_gate,
     build_fragile_challenges,
     build_squad_variants,
     player_records,
 )
-from fpl_intelligence.season_rules import decision_bootstrap_hash
+from squadmetric.season_rules import decision_bootstrap_hash
 
 
 def _players() -> pd.DataFrame:

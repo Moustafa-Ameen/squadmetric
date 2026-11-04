@@ -176,7 +176,7 @@ The API defaults work locally. Copy values from `.env.example` only if you need 
 ### 3. Build the current serving bundle
 
 ```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.refresh_current_season --season 2026-27
+.\.venv\Scripts\python.exe -m squadmetric.refresh_current_season --season 2026-27
 ```
 
 This fetches official bootstrap/fixtures, writes immutable snapshots, rebuilds players, validates the rules contract, loads the model artifacts, and publishes one reconciled serving manifest.
@@ -239,14 +239,14 @@ needed. See [docs/operations.md](docs/operations.md).
 Freeze the production recommendation and every generated transfer/chip branch before a deadline:
 
 ```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence capture --team-id YOUR_TEAM_ID
-.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence status
+.\.venv\Scripts\python.exe -m squadmetric.live_decision_evidence capture --team-id YOUR_TEAM_ID
+.\.venv\Scripts\python.exe -m squadmetric.live_decision_evidence status
 ```
 
 After FPL finalizes scoring, settle the frozen decisions:
 
 ```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence settle --season 2026-27 --gameweek 1
+.\.venv\Scripts\python.exe -m squadmetric.live_decision_evidence settle --season 2026-27 --gameweek 1
 ```
 
 Settlement applies legal autosubs, bench order, captain/vice fallback, Bench Boost, Triple Captain, and transfer hits. It never uses a branch created after the deadline.
@@ -273,13 +273,13 @@ The acknowledgment is fail-closed: `-FinalNewsReviewed` without an official sour
 
 ```powershell
 # Preseason-only autosub calibration and opening-squad robustness
-.\.venv\Scripts\python.exe -m fpl_intelligence.p10_calibration
+.\.venv\Scripts\python.exe -m squadmetric.p10_calibration
 
 # Preseason-only deadline finalization report
-.\.venv\Scripts\python.exe -m fpl_intelligence.p11_deadline_finalization
+.\.venv\Scripts\python.exe -m squadmetric.p11_deadline_finalization
 
 # Current official penalties, direct free kicks, and corners audit
-.\.venv\Scripts\python.exe -m fpl_intelligence.p12_set_piece_report
+.\.venv\Scripts\python.exe -m squadmetric.p12_set_piece_report
 ```
 
 The refresh script preserves the first two outputs once GW1 has begun; it does not
@@ -294,7 +294,7 @@ returns from being counted twice.
 Run the production portfolio—including realistic captaincy, transfers, hits, chips, and season-specific rules—across completed seasons:
 
 ```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons `
+.\.venv\Scripts\python.exe -m squadmetric.simulate_seasons `
   --preset production `
   --seasons 2023-24 2024-25 2025-26
 ```
@@ -308,26 +308,26 @@ Diagnostic presets:
 
 ```powershell
 # Ridge rollback portfolio with chips
-.\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons --preset control
+.\.venv\Scripts\python.exe -m squadmetric.simulate_seasons --preset control
 
 # Current transfer/captain models without chips
-.\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons --preset no-chip
+.\.venv\Scripts\python.exe -m squadmetric.simulate_seasons --preset no-chip
 
 # Static-squad diagnostic
-.\.venv\Scripts\python.exe -m fpl_intelligence.simulate_seasons --preset diagnostic-no-transfers
+.\.venv\Scripts\python.exe -m squadmetric.simulate_seasons --preset diagnostic-no-transfers
 ```
 
 Audit a completed simulation:
 
 ```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.points_loss_audit `
+.\.venv\Scripts\python.exe -m squadmetric.points_loss_audit `
   --simulation-dir data/processed/simulations/RUN_DIRECTORY
 ```
 
 ### Opening-squad championship
 
 ```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.initial_squad_championship
+.\.venv\Scripts\python.exe -m squadmetric.initial_squad_championship
 ```
 
 The checkpointed tournament tests each opening squad through a complete chip-aware 38-Gameweek continuation. The accepted `horizon_8_flexible_cold_start_safe` policy recorded a +210 aggregate realistic-point improvement over its identity-safe control across the three supported validation seasons, with no seasonal regression. See [docs/decision-history.md](docs/decision-history.md) for the evidence, rejected variants, and current-baseline caveat.
@@ -388,7 +388,7 @@ GitHub Actions runs the repository quality workflow on pushed changes.
 squadmetric/
 ├── api/                      FastAPI application and live FPL routes
 ├── frontend/                 Next.js SquadMetric website
-├── src/fpl_intelligence/     Models, rules, simulations, planners, audits
+├── src/squadmetric/     Models, rules, simulations, planners, audits
 ├── data/                     Raw snapshots, processed contracts, evidence
 ├── models/                   Versioned serving-model metadata/artifacts
 ├── scripts/                  Refresh and operational commands

@@ -9,17 +9,17 @@ import pandas as pd
 import pytest
 from api.routers.fpl_live import _detect_season_state
 
-from fpl_intelligence.artifact_contract import (
+from squadmetric.artifact_contract import (
     CURRENT_ARTIFACT_MANIFEST_PATH,
     PROJECT_ROOT,
     portable_artifact_path,
     resolve_artifact_path,
     validate_current_artifacts,
 )
-from fpl_intelligence.launch_intelligence import LaunchPlayerEvidence
-from fpl_intelligence.live_model_training import LIVE_MINUTES_BAND_MODEL_PATH
-from fpl_intelligence.rank_players import add_preseason_priors, add_rule_based_scores
-from fpl_intelligence.season_rules import (
+from squadmetric.launch_intelligence import LaunchPlayerEvidence
+from squadmetric.live_model_training import LIVE_MINUTES_BAND_MODEL_PATH
+from squadmetric.rank_players import add_preseason_priors, add_rule_based_scores
+from squadmetric.season_rules import (
     build_season_rules,
     rules_contract_hash,
     save_rules_manifest,
@@ -67,7 +67,7 @@ def test_current_teams_are_promoted_and_relegated_correctly():
 def test_live_minutes_artifact_uses_importable_class():
     model = joblib.load(LIVE_MINUTES_BAND_MODEL_PATH)
 
-    assert model.__class__.__module__ == "fpl_intelligence.minutes_model"
+    assert model.__class__.__module__ == "squadmetric.minutes_model"
     assert model.__class__.__name__ == "MinutesBandConditionalModel"
 
 

@@ -1,8 +1,8 @@
 import pytest
 
-from fpl_intelligence import production_portfolio
-from fpl_intelligence.live_model_training import LIVE_RIDGE_MODEL_PATH
-from fpl_intelligence.multi_gw_projection import MODEL_PATHS, load_planner_models
+from squadmetric import production_portfolio
+from squadmetric.live_model_training import LIVE_RIDGE_MODEL_PATH
+from squadmetric.multi_gw_projection import MODEL_PATHS, load_planner_models
 
 
 def test_default_portfolio_uses_validated_r2_consumer_assignments(monkeypatch):
@@ -38,7 +38,7 @@ def test_invalid_portfolio_setting_fails_safely():
 def test_planner_model_loader_selects_requested_consumer_artifact(monkeypatch):
     loaded_paths = []
     monkeypatch.setattr(
-        "fpl_intelligence.multi_gw_projection.joblib.load",
+        "squadmetric.multi_gw_projection.joblib.load",
         lambda path: loaded_paths.append(path) or object(),
     )
     load_planner_models.cache_clear()

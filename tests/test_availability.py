@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pandas as pd
 import pytest
 
-from fpl_intelligence.availability import (
+from squadmetric.availability import (
     AvailabilityEvent,
     add_m9_historical_features,
     bootstrap_availability_events,

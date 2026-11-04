@@ -2,12 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fpl_intelligence.component_features import COMPONENT_TARGET_COLUMNS
-from fpl_intelligence.component_projection import (
+from squadmetric.component_features import COMPONENT_TARGET_COLUMNS
+from squadmetric.component_projection import (
     component_feature_columns,
     fit_component_projection_model,
 )
-from fpl_intelligence.projection_distributions import (
+from squadmetric.projection_distributions import (
     build_empirical_component_distribution,
     build_poisson_component_distribution,
     fit_empirical_interval_calibrator,

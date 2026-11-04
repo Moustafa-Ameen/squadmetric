@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from fpl_intelligence.consumer_model_tournament import (
+from squadmetric.consumer_model_tournament import (
     P4_CHAMPION,
     CandidateSeasonRun,
     _evaluate_candidates,
@@ -133,7 +133,7 @@ def test_screening_skips_chip_model_and_cannot_promote(monkeypatch, tmp_path: Pa
     catalog = candidate_catalog()
     dummy_squad = pd.DataFrame({"player_id": range(1, 16)})
     monkeypatch.setattr(
-        "fpl_intelligence.consumer_model_tournament._opening_squads",
+        "squadmetric.consumer_model_tournament._opening_squads",
         lambda *_: {
             (season, policy): (dummy_squad, policy, "test")
             for season in SEASONS
@@ -157,7 +157,7 @@ def test_screening_skips_chip_model_and_cannot_promote(monkeypatch, tmp_path: Pa
         )
 
     monkeypatch.setattr(
-        "fpl_intelligence.consumer_model_tournament.run_season_benchmark",
+        "squadmetric.consumer_model_tournament.run_season_benchmark",
         fake_benchmark,
     )
     result = run_consumer_tournament(

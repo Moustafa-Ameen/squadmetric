@@ -17,7 +17,7 @@
     "test:deadline": "node --experimental-strip-types --test lib/deadlineIntelligence.test.mjs",
     "test:review": "node --experimental-strip-types --test lib/reviewMode.test.mjs",
     "test:team-link": "node --experimental-strip-types --test lib/fplTeam.test.mjs",
-    "test:unit": "node --experimental-strip-types --test lib/search.test.mjs lib/squadMetrics.test.mjs lib/decisionState.test.mjs lib/draftWorkspace.test.mjs lib/decisionCenter.test.mjs lib/deadlineIntelligence.test.mjs lib/reviewMode.test.mjs lib/fplTeam.test.mjs lib/managerState.test.mjs lib/api.test.mjs lib/launchContract.test.mjs lib/format.test.mjs",
+    "test:unit": "node --experimental-strip-types --test lib/search.test.mjs lib/squadMetrics.test.mjs lib/decisionState.test.mjs lib/draftWorkspace.test.mjs lib/draftStorage.test.mjs lib/decisionCenter.test.mjs lib/deadlineIntelligence.test.mjs lib/reviewMode.test.mjs lib/fplTeam.test.mjs lib/managerState.test.mjs lib/api.test.mjs lib/launchContract.test.mjs lib/format.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium"
   },

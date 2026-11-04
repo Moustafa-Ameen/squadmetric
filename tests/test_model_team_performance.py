@@ -1,4 +1,4 @@
-from fpl_intelligence.model_team_performance import build_model_team_report
+from squadmetric.model_team_performance import build_model_team_report
 
 
 def test_model_team_scorecard_never_includes_personal_team_results():

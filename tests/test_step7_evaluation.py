@@ -1,6 +1,6 @@
 import pandas as pd
 
-from fpl_intelligence.step7_evaluation import build_accuracy_table, filter_evaluation_gameweeks
+from squadmetric.step7_evaluation import build_accuracy_table, filter_evaluation_gameweeks
 
 
 def test_filter_evaluation_gameweeks_excludes_gw1():

@@ -1,4 +1,4 @@
-from fpl_intelligence.step5_model_comparison import RegressionModelResult, build_comparison_table
+from squadmetric.step5_model_comparison import RegressionModelResult, build_comparison_table
 
 
 def test_build_comparison_table_marks_naive_beats_correctly():

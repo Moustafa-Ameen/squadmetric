@@ -15,21 +15,21 @@ from api.projection_contract import (
 from api.readiness import require_current_artifacts
 from api.routers import backtest as backtest_router
 from api.routers.fixtures import ticker
-from fpl_intelligence.backtest_transfer_strategy import select_starting_xi
-from fpl_intelligence.initial_squad_championship import (
+from squadmetric.backtest_transfer_strategy import select_starting_xi
+from squadmetric.initial_squad_championship import (
     GW1_DECISION_PROFILES,
     P3_CONFIGS,
     P3_OPTIMIZER_VERSION,
     build_live_opening_projection_bundle,
     optimize_opening_squad,
 )
-from fpl_intelligence.p10_calibration import (
+from squadmetric.p10_calibration import (
     P10_DECISION_ENGINE_VERSION,
     P10_OUTPUT,
 )
-from fpl_intelligence.p11_deadline_finalization import P11_OUTPUT
-from fpl_intelligence.production_portfolio import get_production_portfolio
-from fpl_intelligence.simulate_seasons import (
+from squadmetric.p11_deadline_finalization import P11_OUTPUT
+from squadmetric.production_portfolio import get_production_portfolio
+from squadmetric.simulate_seasons import (
     PRODUCTION_INITIAL_SQUAD_POLICY,
     PRODUCTION_INITIAL_SQUAD_VERSION,
 )

@@ -21,7 +21,7 @@ is finalized. That team is the owner's own account and is not a product-performa
 record unless it follows every recommendation.
 
 When a new Gameweek is published, the workflow also rebuilds
-`data/processed/track_record_2026_27.json` with `python -m fpl_intelligence.track_record`.
+`data/processed/track_record_2026_27.json` with `python -m squadmetric.track_record`.
 It scores each settled plan against the no-action branch, separates chip gains, counts
 only plans from the current decision engine in its totals, and
 omits the team ID. It is internal evidence, read from
@@ -72,7 +72,7 @@ that account's next recommendation evidence.
 Safe read-only finalization check:
 
 ```powershell
-.\.venv\Scripts\python.exe -m fpl_intelligence.post_gameweek_refresh `
+.\.venv\Scripts\python.exe -m squadmetric.post_gameweek_refresh `
   --season 2026-27 --dry-run
 ```
 
@@ -80,14 +80,14 @@ Safe read-only finalization check:
 
 ```powershell
 # Capture before the deadline
-.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence capture `
+.\.venv\Scripts\python.exe -m squadmetric.live_decision_evidence capture `
   --team-id YOUR_PUBLIC_FPL_TEAM_ID
 
 # Inspect coverage
-.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence status
+.\.venv\Scripts\python.exe -m squadmetric.live_decision_evidence status
 
 # Settle only after official finished + data_checked
-.\.venv\Scripts\python.exe -m fpl_intelligence.live_decision_evidence settle `
+.\.venv\Scripts\python.exe -m squadmetric.live_decision_evidence settle `
   --season 2026-27 --gameweek GAMEWEEK
 ```
 

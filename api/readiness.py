@@ -22,13 +22,13 @@ from typing import Any
 from fastapi import HTTPException, Response
 
 from api import fpl_client
-from fpl_intelligence.artifact_contract import (
+from squadmetric.artifact_contract import (
     CURRENT_ARTIFACT_MANIFEST_PATH,
     ArtifactReadiness,
     resolve_artifact_path,
     validate_current_artifacts,
 )
-from fpl_intelligence.season_rules import (
+from squadmetric.season_rules import (
     build_season_rules,
     decision_bootstrap_hash,
     infer_season_from_bootstrap,

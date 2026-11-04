@@ -27,14 +27,14 @@ from api.routers.fpl_live import (
     _season_label_from_bootstrap,
 )
 from api.routers.planner import _current_player_rows, _season_transition_message
-from fpl_intelligence.live_shadow import (
+from squadmetric.live_shadow import (
     append_shadow_record,
     compare_chip_recommendations,
     shadow_enabled,
 )
-from fpl_intelligence.multi_gw_projection import load_planner_models, project_players
-from fpl_intelligence.production_portfolio import get_production_portfolio
-from fpl_intelligence.season_rules import build_season_rules
+from squadmetric.multi_gw_projection import load_planner_models, project_players
+from squadmetric.production_portfolio import get_production_portfolio
+from squadmetric.season_rules import build_season_rules
 
 router = APIRouter(
     prefix="/api",

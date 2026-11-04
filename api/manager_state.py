@@ -14,7 +14,7 @@ from typing import Any
 
 import pandas as pd
 
-from fpl_intelligence.price_economics import fpl_selling_price, live_pick_price
+from squadmetric.price_economics import fpl_selling_price, live_pick_price
 
 
 @dataclass(frozen=True)

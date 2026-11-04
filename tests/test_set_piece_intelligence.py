@@ -1,7 +1,7 @@
 import pandas as pd
 
-from fpl_intelligence.fetch_fpl import load_players
-from fpl_intelligence.set_piece_intelligence import (
+from squadmetric.fetch_fpl import load_players
+from squadmetric.set_piece_intelligence import (
     build_set_piece_context,
     normalized_role_shares,
     set_piece_transition_adjustment,
