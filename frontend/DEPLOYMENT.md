@@ -2,22 +2,22 @@
 
 For the end-to-end first-release sequence, use the [public-launch checklist](../docs/deployment/launch-checklist.md).
 
-The website is a Next.js Node server, not a static export. It relies on same-origin
-`/api/*` rewrites to a separately running FastAPI service.
+The website is a Next.js server app, not a static export, and runs on Vercel. It
+relies on same-origin `/api/*` rewrites to a separately hosted FastAPI service. For
+how that service is hosted, see
+[`../docs/deployment/backend.md`](../docs/deployment/backend.md).
 
 ## Required production contract
 
 1. Run the FastAPI service with the repository's Python environment and current,
    validated 2026/27 artifacts.
-   For the zero-idle-cost Cloud Run package and exact command, follow
-   [`../docs/deployment/cloud-run.md`](../docs/deployment/cloud-run.md).
 2. Set `FPL_API_SERVER_URL` to the server-side FastAPI origin. Never expose that
    value through `NEXT_PUBLIC_*`.
 3. Set the canonical `NEXT_PUBLIC_SITE_URL`. The launch experience is guest-first:
    team links, preferences, drafts, watchlists, and history are stored in the
    visitor's browser. No identity provider or OAuth credentials are required.
-4. Set a monitored `NEXT_PUBLIC_SUPPORT_EMAIL`, then verify the production
-   contract, build, and start the website:
+4. Set a monitored `NEXT_PUBLIC_SUPPORT_EMAIL`. Vercel builds and runs the website.
+   To verify the production contract, build, and start it outside Vercel:
 
    ```powershell
    npm ci
@@ -26,8 +26,8 @@ The website is a Next.js Node server, not a static export. It relies on same-ori
    npm run start:production -- --hostname 0.0.0.0 --port 3000
    ```
 
-5. Put both services behind TLS and a reverse proxy. The browser should reach only
-   the Next.js origin; Next.js proxies `/api/*` to FastAPI.
+5. Serve both services over TLS. The browser should reach only the Next.js origin;
+   Next.js proxies `/api/*` to FastAPI.
 6. Use `/api/health` for liveness and `/api/readiness` for decision-serving
    readiness. A healthy process with stale or drifted artifacts is intentionally
    not recommendation-ready.
@@ -47,9 +47,8 @@ The website is a Next.js Node server, not a static export. It relies on same-ori
 Do not deploy from a dirty working tree containing unrelated changes. Create a
 reviewable release commit first.
 
-`next.config.ts` adds baseline security headers. The supported deployment path uses
-the standard Next.js Node server (`next build` followed by `next start`), which
-retains all framework features and the server-side API rewrite contract.
+`next.config.ts` adds baseline security headers and the server-side API rewrite.
+Outside Vercel, the website runs with `next build` followed by `next start`.
 
 ## Release gate
 

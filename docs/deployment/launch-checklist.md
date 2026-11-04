@@ -14,10 +14,10 @@ Use this list for the first guest-first release. Do not announce the site until 
 
 ## Deployment day
 
-1. Enable billing for the Google Cloud project, then deploy the FastAPI image with the commands in [cloud-run.md](cloud-run.md).
+1. Confirm the backend has redeployed from `main`. See [backend.md](backend.md).
 2. Confirm the public backend returns HTTP 200 from `/api/health` and `ready: true` from `/api/readiness`.
 3. Import `frontend` into Vercel and configure:
-   - `FPL_API_SERVER_URL` as the private server-side Cloud Run origin.
+   - `FPL_API_SERVER_URL` as the private server-side backend origin.
    - `NEXT_PUBLIC_SITE_URL` as the final HTTPS website origin.
    - `NEXT_PUBLIC_SUPPORT_EMAIL` as an inbox that is monitored.
 4. Deploy the frontend and confirm the page source uses the public URL—not localhost—for `og:url`, `og:image`, and the sitemap.
@@ -32,10 +32,11 @@ Use this list for the first guest-first release. Do not announce the site until 
 
 ## Weekly operation
 
-- After an official Gameweek is finalized and data-checked, run the manual season refresh.
-- Verify `/api/readiness` before sharing or relying on new recommendations.
-- Do not add an automatic refresh schedule unless the operating policy is deliberately changed.
-- Capture deadline evidence before the deadline and settle it only after official finalization.
+- The `Data refresh` workflow runs at 07:30 and 16:30 UTC every day and can be started by hand from the Actions tab. See [operations.md](../operations.md).
+- It commits to `main` only when a newly finalized Gameweek is published and the tests pass. That push redeploys the website and the backend.
+- After such a push, verify `/api/readiness` before sharing or relying on new recommendations.
+- If a run fails, GitHub emails the repository owner and the last validated bundle keeps serving. Check the run and fix the cause.
+- The workflow captures the next deadline's plan on each run, and settlement happens only after official finalization.
 
 ## Rollback rule
 
