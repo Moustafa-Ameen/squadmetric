@@ -7,7 +7,7 @@ Use this list for the first guest-first release. Do not announce the site until 
 - Guest onboarding offers a clearly labeled full demo, a Team ID, or an official FPL URL.
 - No login, OAuth provider, email service, database, or FPL password is required.
 - Team link, preferences, drafts, watchlist, and decision history stay in browser storage and can be exported.
-- The current model bundle covers finalized Gameweeks 1–5 and reports recommendation readiness as ready.
+- The current model bundle covers every finalized Gameweek so far, as listed in `models/live_2026_27_models.json`, and reports recommendation readiness as ready.
 - The Linux backend image starts within a 1 GB memory limit and serves a real manager recommendation.
 - Security headers, privacy terms, robots policy, sitemap, and a 1200×630 social preview are included.
 - Python, unit, TypeScript, lint, production-build, desktop, mobile, and dependency-audit gates pass.
