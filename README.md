@@ -9,7 +9,12 @@
 </p>
 
 <p align="center">
-  One primary recommendation, safer and aggressive alternatives, and the evidence needed to make the final call.
+  One primary recommendation, ranked alternatives, and the evidence needed to make the final call.
+</p>
+
+<p align="center">
+  <a href="https://squadmetric.vercel.app"><strong>Live site</strong></a> ·
+  <a href="https://squadmetric.vercel.app/proof"><strong>Performance evidence</strong></a>
 </p>
 
 <p align="center">
@@ -17,12 +22,13 @@
   <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" />
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-live-009688?logo=fastapi&logoColor=white" />
-  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-360%20passing-22c55e" />
-  <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-47%20passing-8b5cf6" />
+  <img alt="Backend tests" src="https://img.shields.io/badge/pytest-365%20passing-22c55e" />
+  <img alt="Browser tests" src="https://img.shields.io/badge/browser%20tests-53%20passing-8b5cf6" />
 </p>
 
 <p align="center">
   <a href="#why-squadmetric">Why SquadMetric</a> ·
+  <a href="#results">Results</a> ·
   <a href="#features">Features</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#quick-start">Quick start</a> ·
@@ -55,7 +61,27 @@ maximize realistic expected FPL points
 + squad flexibility
 ```
 
-Rank-relative play remains an explicit, optional review mode. It never silently replaces points maximization.
+The plan maximizes points. There is no rank-chasing mode.
+
+## Results
+
+These are simulated replays of three completed seasons, not real FPL teams. They use the planner settings behind the live site, with only the data available before each deadline. Scores are after transfer hits.
+
+| Season | SquadMetric | Same planner, no chips | Official average manager | Above average | Top 1% cutoff |
+|---|---:|---:|---:|---:|---:|
+| 2023/24 | 2,146 | 2,142 | 2,003 | +143 | Not available |
+| 2024/25 | 2,353 | 2,275 | 2,008 | +345 | About 2,504–2,508 |
+| 2025/26 | 2,369 | 2,051 | 1,895 | +474 | About 2,296–2,319 |
+
+What these numbers do and do not show:
+
+- **Against the average manager:** the planner finished ahead in all three seasons, but the average includes casual and inactive teams.
+- **Against the top 1%:** 2025/26 clears the cutoff, but that season helped set the chip rules. 2024/25 falls short, and no cutoff was found for 2023/24.
+- **Against no chips:** the SquadMetric column adds timed chips and captain and double-Gameweek changes. It finished 4, 78, and 318 points ahead. Only the 2025/26 gain is clear of chance; 2023/24, the season held back to check the chip rules, is effectively a tie.
+- **Reliability:** these seasons helped choose the model, so the results may be flattering. Small input changes moved single seasons by more than 100 points, so treat each figure as approximate.
+- **Live results:** none of this is proven on real Gameweeks yet. The simulations also lack live injury news and set-piece updates.
+
+An audit found that earlier replays had used end-of-season opponent ratings, which reveal how each team's season turned out. These results rebuild those ratings from earlier results only, and they replace higher and lower figures published before. See [docs/decision-history.md](docs/decision-history.md).
 
 ## Features
 
@@ -66,7 +92,7 @@ Rank-relative play remains an explicit, optional review mode. It never silently 
 - Transfer planning with free-transfer banking, sale price, bank, and optional `-4` hits.
 - Chip-aware state for Wildcard, Free Hit, Bench Boost, and Triple Captain.
 - Blank and Double Gameweek fixture scenarios that decide when fixture-driven chips are worth playing.
-- Safe, balanced, and maximum-points alternatives.
+- Ranked alternative plans each week, plus maximum-points, balanced, and safer-depth opening-squad profiles.
 - Penalty, direct-free-kick, and corner-role transition intelligence.
 
 ### Live 2026/27 intelligence
@@ -81,7 +107,7 @@ Rank-relative play remains an explicit, optional review mode. It never silently 
 
 ### Product experience
 
-- Professional recommendation-first dashboard.
+- Recommendation-first dashboard.
 - Visual pitch for the current squad and recommended XI.
 - Weekly transfer, captaincy, bench, chip, player, and fixture pages.
 - Guest-first onboarding with a full demo workspace, public FPL Team ID, or official URL.
@@ -92,7 +118,7 @@ Rank-relative play remains an explicit, optional review mode. It never silently 
 
 - Immutable official-data snapshots and SHA-256 hashes.
 - Rules, model, fixture, and data-cutoff contracts.
-- Point-in-time-safe historical simulation across multiple rule eras.
+- Historical simulation across multiple rule eras, using only pre-deadline data in published results.
 - Persisted pre-deadline decisions and post-Gameweek settlement.
 - No-chip controls, counterfactual branches, and acceptance gates.
 - Automated Python, TypeScript, lint, build, accessibility, desktop, and mobile checks.
@@ -107,11 +133,9 @@ flowchart LR
     D --> E[Multi-GW projections]
     E --> F[Squad / transfer / chip planner]
     F --> G[Primary recommendation]
-    F --> H[Safe alternative]
-    F --> I[Aggressive alternative]
+    F --> H[Ranked alternatives]
     G --> J[Dashboard & decision evidence]
     H --> J
-    I --> J
     J --> K[Post-GW settlement]
     K --> E
 ```
@@ -121,7 +145,7 @@ The system improves during the season through a guarded feedback loop:
 1. Official prices, status, roles, and fixtures are read live.
 2. Finalized Gameweeks are ingested only after FPL marks them finished and data-checked.
 3. New training rows preserve the original pre-deadline market snapshot.
-4. Models and decision policies are re-evaluated against fixed controls.
+4. New models and decision policies are tested against fixed controls.
 5. A candidate is promoted only when decision metrics pass—not because MAE looks better.
 
 ## Architecture
@@ -173,15 +197,7 @@ cd ..
 
 The API defaults work locally. Copy values from `.env.example` only if you need to override hosts, ports, season, or readiness limits. The public launch is guest-first: no identity provider, OAuth app, database, or email service is required.
 
-### 3. Build the current serving bundle
-
-```powershell
-.\.venv\Scripts\python.exe -m squadmetric.refresh_current_season --season 2026-27
-```
-
-This fetches official bootstrap/fixtures, writes immutable snapshots, rebuilds players, validates the rules contract, loads the model artifacts, and publishes one reconciled serving manifest.
-
-### 4. Run
+### 3. Run
 
 From the repository root, one command starts the API and website, waits for both
 to become ready, and opens [http://localhost:3000](http://localhost:3000):
@@ -193,7 +209,8 @@ to become ready, and opens [http://localhost:3000](http://localhost:3000):
 Keep that terminal open while using SquadMetric. Press `Ctrl+C` to stop both
 services. Startup logs are written under `.runtime/squadmetric/`. On a fresh clone,
 the launcher creates the Python environment and installs dependencies when needed.
-It does not refresh season data or create any automatic schedule.
+A validated serving bundle is already committed, so it does not refresh season data
+or create any schedule unless you add `-RefreshData`.
 
 SquadMetric stores the linked Team ID, preferences, drafts, watchlist, and decision
 history in the visitor's browser. It does not request an FPL password or create a
@@ -219,9 +236,11 @@ Useful health checks:
 | `GET /api/predictions/initial-squad?horizon=8` | Opening-squad recommendation |
 | `GET /api/operations/deadline-readiness` | Final deadline checklist |
 
-## Manual refresh and post-Gameweek operation
+## Data refresh and post-Gameweek operation
 
-Use the normal refresh command:
+The `Data refresh` GitHub workflow runs on GitHub's servers at 07:30 and 16:30 UTC every day, so nothing needs to run on a personal computer. It publishes new serving data and retrained models only after a newly finalized, data-checked Gameweek passes the test suite. See [docs/operations.md](docs/operations.md).
+
+To refresh locally instead:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-27.ps1
@@ -229,9 +248,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-2026-2
 
 It refreshes official data every run and retrains only after a newly finalized, data-checked Gameweek is available. Provisional results and post-deadline market values are rejected.
 
-SquadMetric does not require automatic scheduling. The maintained local policy is
-manual refresh with an explicit public Team ID when manager-specific evidence is
-needed. See [docs/operations.md](docs/operations.md).
+To rebuild only the serving bundle from the latest official data:
+
+```powershell
+.\.venv\Scripts\python.exe -m squadmetric.refresh_current_season --season 2026-27
+```
 
 <details>
 <summary><strong>Pre-deadline evidence capture</strong></summary>
@@ -291,26 +312,35 @@ returns from being counted twice.
 
 ## Historical simulation
 
-Run the production portfolio—including realistic captaincy, transfers, hits, chips, and season-specific rules—across completed seasons:
+Reproduce the [published results](#results), including realistic captaincy, transfers, hits, chips, and season-specific rules:
 
 ```powershell
+# SquadMetric column
 .\.venv\Scripts\python.exe -m squadmetric.simulate_seasons `
-  --preset production `
+  --preset pit-timed-chips `
+  --seasons 2023-24 2024-25 2025-26
+
+# Same planner without chips
+.\.venv\Scripts\python.exe -m squadmetric.simulate_seasons `
+  --preset pit-no-chips `
   --seasons 2023-24 2024-25 2025-26
 ```
 
-Each run writes isolated manifests, season summaries, and Gameweek decisions under `data/processed/simulations/`. The permanent benchmark ledger is never modified by this command.
+These need the local historical data in `data/processed/`, which is not committed. Each run writes isolated manifests, season summaries, and Gameweek decisions under `data/processed/simulations/`. The permanent benchmark ledger is never modified by this command.
 
 > [!NOTE]
-> Full chip-aware replays are intentionally expensive. A season can take roughly 15–20 minutes on the current development machine.
+> Full replays are intentionally expensive. A season took roughly 20–25 minutes on the development machine.
 
-Diagnostic presets:
+Older single-transfer presets, kept for comparison. They use end-of-season opponent ratings, so their results are not comparable with the table above:
 
 ```powershell
+# Earlier production portfolio
+.\.venv\Scripts\python.exe -m squadmetric.simulate_seasons --preset production
+
 # Ridge rollback portfolio with chips
 .\.venv\Scripts\python.exe -m squadmetric.simulate_seasons --preset control
 
-# Current transfer/captain models without chips
+# Earlier transfer/captain models without chips
 .\.venv\Scripts\python.exe -m squadmetric.simulate_seasons --preset no-chip
 
 # Static-squad diagnostic
@@ -330,7 +360,7 @@ Audit a completed simulation:
 .\.venv\Scripts\python.exe -m squadmetric.initial_squad_championship
 ```
 
-The checkpointed tournament tests each opening squad through a complete chip-aware 38-Gameweek continuation. The accepted `horizon_8_flexible_cold_start_safe` policy recorded a +210 aggregate realistic-point improvement over its identity-safe control across the three supported validation seasons, with no seasonal regression. See [docs/decision-history.md](docs/decision-history.md) for the evidence, rejected variants, and current-baseline caveat.
+The checkpointed tournament tests each opening squad through a complete chip-aware 38-Gameweek continuation. The accepted `horizon_8_flexible_cold_start_safe` policy scored 0, +198, and +12 points against its identity-safe control across 2023/24, 2024/25, and 2025/26, a +210 total with no season behind the control. That comparison came from an older simulator with end-of-season opponent ratings and has not been re-measured, so it is not comparable with the [results above](#results). See [docs/decision-history.md](docs/decision-history.md) for the evidence and rejected variants.
 
 ## Rules and data integrity
 
@@ -343,7 +373,7 @@ Every supported season has an explicit contract for:
 
 Non-negotiable safeguards:
 
-- No future information can enter a historical deadline decision.
+- Published simulations use only information available before each deadline. Older simulator presets, and the accuracy, captain, and top-player tables on the evidence page, still use end-of-season opponent ratings; the live models also train on them, with a small measured effect on forecasts.
 - Missing defensive-contribution data stays missing; it is never zero-filled.
 - Scoring/BPS/DC regimes are never blended across rule changes.
 - Free Hit reverts squad, bank, and transfer state; Wildcard changes are permanent.
@@ -374,13 +404,13 @@ Current verified baseline:
 
 | Gate | Result |
 |---|---:|
-| Python tests | 336 passing |
-| Frontend unit tests | 35 passing |
-| Desktop/mobile browser tests | 38 passing |
+| Python tests | 365 passing (26 need local data, so GitHub runs 339) |
+| Frontend unit tests | 40 passing |
+| Desktop/mobile browser tests | 53 passing, 1 skipped |
 | Ruff, ESLint, TypeScript | Clean |
 | Next.js production build | Passing |
 
-GitHub Actions runs the repository quality workflow on pushed changes.
+GitHub Actions runs the repository quality workflow on every push and pull request.
 
 ## Repository map
 
@@ -388,9 +418,10 @@ GitHub Actions runs the repository quality workflow on pushed changes.
 squadmetric/
 ├── api/                      FastAPI application and live FPL routes
 ├── frontend/                 Next.js SquadMetric website
-├── src/squadmetric/     Models, rules, simulations, planners, audits
+├── src/squadmetric/         Models, rules, simulations, planners, audits
 ├── data/                     Raw snapshots, processed contracts, evidence
 ├── models/                   Versioned serving-model metadata/artifacts
+├── notebooks/                Walk-forward replay of the current season
 ├── scripts/                  Refresh and operational commands
 ├── tests/                    Backend correctness and regression suite
 └── docs/                     Operations, decision history, and product visuals
@@ -399,9 +430,9 @@ squadmetric/
 ## Product principles
 
 1. **Recommendation first.** Analysis supports the decision instead of burying it.
-2. **Points first.** Rank mode is optional and clearly labelled.
+2. **Points first.** The plan maximizes expected points, not rank.
 3. **Rules are data.** Every scoring era is versioned and testable.
-4. **No hidden hindsight.** Historical decisions see only deadline-safe information.
+4. **No hidden hindsight.** Published simulations see only deadline-safe information, and known gaps are stated.
 5. **No automatic FPL actions.** The manager remains in control.
 6. **Evidence over hype.** Failed experiments stay failed; aggregates never hide a bad season.
 
