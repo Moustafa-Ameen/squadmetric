@@ -237,21 +237,21 @@ def test_team_client_coalesces_concurrent_requests_and_reuses_short_cache(monkey
     async def fake_get(path):
         nonlocal calls
         calls += 1
-        assert path == "entry/3254925/"
+        assert path == "entry/1234567/"
         await asyncio.sleep(0)
-        return {"id": 3254925, "name": "Cached Team"}
+        return {"id": 1234567, "name": "Cached Team"}
 
     monkeypatch.setattr(fpl_client, "_get", fake_get)
     fpl_client.clear_resource_cache()
 
     async def fetch_twice():
         return await asyncio.gather(
-            fpl_client.get_team(3254925),
-            fpl_client.get_team(3254925),
+            fpl_client.get_team(1234567),
+            fpl_client.get_team(1234567),
         )
 
     first = asyncio.run(fetch_twice())
-    second = asyncio.run(fpl_client.get_team(3254925))
+    second = asyncio.run(fpl_client.get_team(1234567))
 
     assert first == [second, second]
     assert calls == 1
@@ -275,9 +275,9 @@ def test_decision_center_reuses_completed_plan_for_one_minute(monkeypatch):
     monkeypatch.setattr(planner_router, "planner", fake_planner)
     planner_router.clear_decision_center_cache()
 
-    first = asyncio.run(planner_router.decision_center(team_id=3254925, horizon=5))
+    first = asyncio.run(planner_router.decision_center(team_id=1234567, horizon=5))
     first["message"] = "Mutated by consumer"
-    second = asyncio.run(planner_router.decision_center(team_id=3254925, horizon=5))
+    second = asyncio.run(planner_router.decision_center(team_id=1234567, horizon=5))
 
     assert calls == 1
     assert second["message"] == "Not ready"

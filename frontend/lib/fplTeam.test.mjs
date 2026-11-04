@@ -12,12 +12,12 @@ test("parses official FPL points and history URLs", () => {
 });
 
 test("parses localized, www, scheme-free, and query-string FPL URLs", () => {
-  const expected = { ok: true, value: { teamId: "3254925", source: "fpl_url" } };
+  const expected = { ok: true, value: { teamId: "1234567", source: "fpl_url" } };
 
-  assert.deepEqual(parseFplTeamInput("https://fantasy.premierleague.com/en/entry/3254925/event/4"), expected);
-  assert.deepEqual(parseFplTeamInput("https://www.fantasy.premierleague.com/en/entry/3254925/history/"), expected);
-  assert.deepEqual(parseFplTeamInput("fantasy.premierleague.com/entry/3254925/transfers"), expected);
-  assert.deepEqual(parseFplTeamInput("https://fantasy.premierleague.com/en/entry/3254925/event/4?view=classic#points"), expected);
+  assert.deepEqual(parseFplTeamInput("https://fantasy.premierleague.com/en/entry/1234567/event/4"), expected);
+  assert.deepEqual(parseFplTeamInput("https://www.fantasy.premierleague.com/en/entry/1234567/history/"), expected);
+  assert.deepEqual(parseFplTeamInput("fantasy.premierleague.com/entry/1234567/transfers"), expected);
+  assert.deepEqual(parseFplTeamInput("https://fantasy.premierleague.com/en/entry/1234567/event/4?view=classic#points"), expected);
 });
 
 test("rejects lookalike hosts, insecure URLs, and invalid IDs", () => {
