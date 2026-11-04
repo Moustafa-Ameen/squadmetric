@@ -107,7 +107,7 @@ That richer feature set remains a challenger until the decision-level replay pas
 
 ### Evidence boundary: the 220-point team is not SquadMetric
 
-Team 3254925 ("bestest team") is the owner's personal team. Its 220 points and
+The team in question is the owner's personal team. Its 220 points and
 rank are unrelated to SquadMetric's model-managed squad and must not be used as
 product-performance evidence. It appears in this audit only because its public
 history exposed the free-transfer and price-state defects in a reproducible live
@@ -167,7 +167,7 @@ The public picks payload also does not contain purchase or selling prices. In
 which can overstate spendable value after price rises because FPL realizes only
 half the profit in £0.1m steps.
 
-For the personal diagnostic team 3254925, the official history shows zero ordinary transfers before GW2
+For the personal diagnostic team, the official history shows zero ordinary transfers before GW2
 and GW3. That means two saved transfers entering the GW3 Wildcard. Official rules
 state that saved free transfers are retained after playing a Wildcard, making the
 inferred GW4 balance two. The live optimizer should reconstruct this state from
@@ -351,8 +351,7 @@ Caveats:
 
 ## Sources
 
-- Personal diagnostic FPL entry (not the model team): <https://fantasy.premierleague.com/api/entry/3254925/>
-- Personal diagnostic FPL history (not the model team): <https://fantasy.premierleague.com/api/entry/3254925/history/>
+- Personal diagnostic FPL entry and history (not the model team; links removed for privacy)
 - Official FPL bootstrap/player data: <https://fantasy.premierleague.com/api/bootstrap-static/>
 - Official FPL rules: <https://fantasy.premierleague.com/help/rules>
 - FFH player profiles: <https://www.fantasyfootballhub.co.uk/player-profile>
