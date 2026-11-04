@@ -85,6 +85,7 @@ from fpl_intelligence.component_projection import (
     fit_component_projection_model,
     score_expected_components,
 )
+from fpl_intelligence.fixture_adjustment import FixtureMultipliers, fit_fixture_multipliers
 from fpl_intelligence.fixture_scenarios import (
     build_historical_fixture_scenario,
 )
@@ -193,6 +194,30 @@ class NoTransfersStrategy:
     def decide(self, context: StrategyContext) -> TransferDecision:
         del context
         return _empty_decision()
+
+
+def _with_fixture_multipliers(
+    frame: pd.DataFrame,
+    gameweek: int,
+    multipliers: FixtureMultipliers,
+    fixture_context: dict[tuple[int, int], tuple[Any, Any]],
+) -> pd.DataFrame:
+    """Scale projections for the published venue and opponent of one Gameweek."""
+
+    if frame.empty or not multipliers.table:
+        return frame
+    output = frame.copy()
+    factors = [
+        multipliers.multiplier(
+            position,
+            *fixture_context.get((gameweek, int(player_id)), (None, None)),
+        )
+        for player_id, position in zip(output["player_id"], output["position"], strict=True)
+    ]
+    for column in ("expected_points_adjusted", "predicted_points", "captain_predicted_points"):
+        if column in output:
+            output[column] = output[column] * factors
+    return output
 
 
 def _season_fixture_counts(season_players: pd.DataFrame) -> dict[tuple[int, int], int]:
@@ -1446,6 +1471,7 @@ def run_season_benchmark(
     double_gameweek_aware: bool = False,
     captain_doubles: bool = False,
     captain_feature_mode: str | None = None,
+    fixture_scaling: bool = False,
     projection_portfolio: ProjectionPortfolio | None = None,
     availability_events: Iterable[AvailabilityEvent] | None = None,
     availability_cutoff: datetime | str | None = None,
@@ -1566,6 +1592,16 @@ def run_season_benchmark(
         else {}
     )
     captain_mode = captain_feature_mode or feature_mode
+    fixture_context = (
+        {
+            (int(row.gameweek), int(row.player_id)): (row.home_or_away, row.opponent_strength)
+            for row in season_players[
+                ["gameweek", "player_id", "home_or_away", "opponent_strength"]
+            ].itertuples(index=False)
+        }
+        if fixture_scaling
+        else {}
+    )
 
     if verbose:
         print(f"Season benchmark: {season} | {strategy.name} {strategy.version}")
@@ -1636,6 +1672,20 @@ def run_season_benchmark(
         else:
             future_predictions = {}
         predictions = target.copy()
+        fixture_multipliers = FixtureMultipliers()
+        if fixture_scaling:
+            fixture_multipliers = fit_fixture_multipliers(
+                get_training_data_for_season(players, season, gameweek)
+            )
+            predictions = _with_fixture_multipliers(
+                predictions, gameweek, fixture_multipliers, fixture_context
+            )
+            future_predictions = {
+                target_gameweek: _with_fixture_multipliers(
+                    frame, target_gameweek, fixture_multipliers, fixture_context
+                )
+                for target_gameweek, frame in future_predictions.items()
+            }
         if double_gameweek_aware:
             predictions = _with_known_fixture_counts(
                 predictions, gameweek, fixture_counts, known=True
@@ -1737,6 +1787,16 @@ def run_season_benchmark(
                     )
                     if future_prediction_cache is not None:
                         future_prediction_cache[chip_cache_key] = chip_future_predictions
+        if fixture_scaling and chip_predictions is not predictions:
+            chip_predictions = _with_fixture_multipliers(
+                chip_predictions, gameweek, fixture_multipliers, fixture_context
+            )
+            chip_future_predictions = {
+                target_gameweek: _with_fixture_multipliers(
+                    frame, target_gameweek, fixture_multipliers, fixture_context
+                )
+                for target_gameweek, frame in chip_future_predictions.items()
+            }
         if double_gameweek_aware and chip_predictions is not predictions:
             chip_predictions = _with_known_fixture_counts(
                 chip_predictions, gameweek, fixture_counts, known=True
@@ -1982,6 +2042,10 @@ def run_season_benchmark(
             )
             if captain_prediction_cache is not None:
                 captain_prediction_cache[captain_cache_key] = captain_predictions
+        if fixture_scaling:
+            captain_predictions = _with_fixture_multipliers(
+                captain_predictions, gameweek, fixture_multipliers, fixture_context
+            )
         if captain_doubles:
             captain_predictions = _with_known_fixture_counts(
                 captain_predictions, gameweek, fixture_counts, known=True

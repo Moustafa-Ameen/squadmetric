@@ -22,6 +22,7 @@ from fpl_intelligence.chip_simulation import (
     CHIP_MODE_BEAM,
     CHIP_MODE_NONE,
 )
+from fpl_intelligence.fixture_adjustment import add_point_in_time_opponent_strength
 from fpl_intelligence.production_portfolio import get_production_portfolio
 from fpl_intelligence.season_benchmark import (
     HISTORICAL_PLAYER_GW_PATH,
@@ -64,6 +65,8 @@ class SimulationPreset:
     double_gameweek_aware: bool = False
     captain_doubles: bool = False
     captain_feature_mode: str | None = None
+    fixture_scaling: bool = False
+    point_in_time_strength: bool = False
 
 
 PRESETS = {
@@ -163,6 +166,62 @@ PRESETS = {
         captain_doubles=True,
         captain_feature_mode="role_form",
     ),
+    "live-planner-8gw-fixtures": SimulationPreset(
+        name="live-planner-8gw-fixtures",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        live_planner_chips=True,
+        timed_chips=True,
+        double_gameweek_aware=True,
+        captain_doubles=True,
+        captain_feature_mode="role_form",
+        fixture_scaling=True,
+    ),
+    "pit-no-chips": SimulationPreset(
+        name="pit-no-chips",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        point_in_time_strength=True,
+    ),
+    "pit-timed-chips": SimulationPreset(
+        name="pit-timed-chips",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        live_planner_chips=True,
+        timed_chips=True,
+        double_gameweek_aware=True,
+        captain_doubles=True,
+        captain_feature_mode="role_form",
+        point_in_time_strength=True,
+    ),
+    "pit-fixtures": SimulationPreset(
+        name="pit-fixtures",
+        portfolio_mode="r2_validated",
+        strategy="live-package-planner",
+        chip_mode=CHIP_MODE_BEAM,
+        hit_policy="horizon_value",
+        initial_squad_policy=PRODUCTION_INITIAL_SQUAD_POLICY,
+        live_planner_horizon=8,
+        live_planner_chips=True,
+        timed_chips=True,
+        double_gameweek_aware=True,
+        captain_doubles=True,
+        captain_feature_mode="role_form",
+        fixture_scaling=True,
+        point_in_time_strength=True,
+    ),
     "diagnostic-no-transfers": SimulationPreset(
         name="diagnostic-no-transfers",
         portfolio_mode="m8_control",
@@ -191,6 +250,8 @@ def run_historical_simulation(
         if players is not None
         else load_historical_player_gameweeks(HISTORICAL_PLAYER_GW_PATH)
     )
+    if preset.point_in_time_strength:
+        historical = add_point_in_time_opponent_strength(historical)
     if "role_form" in {preset.feature_mode, preset.captain_feature_mode}:
         historical = add_role_form_features(historical)
     selected_seasons = _validate_seasons(historical, seasons)
@@ -248,6 +309,7 @@ def run_historical_simulation(
             double_gameweek_aware=preset.double_gameweek_aware,
             captain_doubles=preset.captain_doubles,
             captain_feature_mode=preset.captain_feature_mode,
+            fixture_scaling=preset.fixture_scaling,
             projection_portfolio=portfolio.projections,
             initial_squad_override=initial_squad,
             initial_squad_mode=initial_mode,
