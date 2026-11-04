@@ -11,8 +11,8 @@ from api.manager_state import current_bank_value, infer_free_transfers
 from api.readiness import live_decision_context, require_live_artifacts
 from api.routers.fixtures import fixture_source_state
 from api.routers.predictions import BEST_MODEL
-from fpl_intelligence.price_economics import live_pick_price
-from fpl_intelligence.season_rules import build_season_rules, infer_season_from_bootstrap
+from squadmetric.price_economics import live_pick_price
+from squadmetric.season_rules import build_season_rules, infer_season_from_bootstrap
 
 router = APIRouter(prefix="/api/fpl", tags=["fpl-live"])
 _LIVE_ARTIFACTS_DEPENDENCY = Depends(require_live_artifacts)

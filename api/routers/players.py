@@ -10,7 +10,7 @@ from api.player_signals import add_safety_tiers
 from api.readiness import require_current_artifacts
 from api.routers.fixtures import fixture_source_state, ticker
 from api.routers.fpl_live import _detect_season_state
-from fpl_intelligence.production_portfolio import get_production_portfolio
+from squadmetric.production_portfolio import get_production_portfolio
 
 router = APIRouter(
     prefix="/api/players",

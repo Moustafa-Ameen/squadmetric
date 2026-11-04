@@ -9,14 +9,14 @@ from time import monotonic
 from typing import Any
 
 from api import data_service, fpl_client
-from fpl_intelligence.artifact_contract import load_current_artifact_manifest
-from fpl_intelligence.launch_intelligence import availability_probability
-from fpl_intelligence.multi_gw_projection import (
+from squadmetric.artifact_contract import load_current_artifact_manifest
+from squadmetric.launch_intelligence import availability_probability
+from squadmetric.multi_gw_projection import (
     load_captain_model,
     load_planner_models,
     project_players,
 )
-from fpl_intelligence.season_rules import (
+from squadmetric.season_rules import (
     decision_bootstrap_hash,
     infer_season_from_bootstrap,
     payload_hash,

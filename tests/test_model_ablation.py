@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from fpl_intelligence.model_ablation import (
+from squadmetric.model_ablation import (
     BASELINE_VARIANT,
     AblationRegistry,
     AblationVariant,
@@ -13,7 +13,7 @@ from fpl_intelligence.model_ablation import (
     run_multi_season_ablation,
     update_history_validation_status,
 )
-from fpl_intelligence.season_benchmark import (
+from squadmetric.season_benchmark import (
     DeterministicTransferStrategy,
     NoTransfersStrategy,
     SeasonBenchmarkResult,
@@ -81,7 +81,7 @@ def _fake_variant() -> AblationVariant:
 
 def test_ablation_runner_defaults_to_no_persistence(tmp_path: Path, monkeypatch):
     history_path = tmp_path / "history.csv"
-    monkeypatch.setattr("fpl_intelligence.model_ablation.HISTORY_PATH", history_path)
+    monkeypatch.setattr("squadmetric.model_ablation.HISTORY_PATH", history_path)
     registry = AblationRegistry((_fake_variant(),))
 
     run_multi_season_ablation(

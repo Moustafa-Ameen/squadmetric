@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from fpl_intelligence.beam_search import (
+from squadmetric.beam_search import (
     FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
     DeterministicBeamPlanner,
     _aggregate_horizon_predictions,
@@ -14,14 +14,14 @@ from fpl_intelligence.beam_search import (
     generate_transfer_options,
     generate_transfer_plans,
 )
-from fpl_intelligence.chip_simulation import (
+from squadmetric.chip_simulation import (
     ChipDefinition,
     ChipState,
     apply_chip,
     build_chip_squad,
     chip_definitions,
 )
-from fpl_intelligence.season_rules import build_historical_season_rules
+from squadmetric.season_rules import build_historical_season_rules
 
 
 def _squad() -> pd.DataFrame:

@@ -382,6 +382,19 @@ test("multi-draft workspace saves and compares a named legal draft", async ({ pa
   await expectNoSeriousAccessibilityViolations(page);
 });
 
+test("drafts saved under the old storage key move to the new key", async ({ page }) => {
+  const saved = JSON.stringify([{ id: "saved-before-rename" }]);
+  await page.addInitScript((value) => {
+    if (sessionStorage.getItem("seeded")) return;
+    sessionStorage.setItem("seeded", "true");
+    localStorage.setItem("fpl_intelligence_drafts_v1", value);
+  }, saved);
+  await page.goto("/drafts");
+  await expect(page.getByRole("heading", { name: "2026-27 Draft Workspace" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("squadmetric_drafts_v1"))).toBe(saved);
+  expect(await page.evaluate(() => localStorage.getItem("fpl_intelligence_drafts_v1"))).toBeNull();
+});
+
 test("results page handles preseason safely without an objective switch", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("fpl_team_id", "5605168"));
   await page.goto("/review");

@@ -51,7 +51,7 @@ jobs:
       - name: Refresh official data
         id: refresh
         run: |
-          python -m fpl_intelligence.post_gameweek_refresh --season 2026-27 \
+          python -m squadmetric.post_gameweek_refresh --season 2026-27 \
             | tee "$RUNNER_TEMP/refresh-report.json"
           status=$(jq -r .status "$RUNNER_TEMP/refresh-report.json")
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -60,7 +60,7 @@ jobs:
 
       - name: Update the public track record
         if: steps.refresh.outputs.status == 'published'
-        run: python -m fpl_intelligence.track_record
+        run: python -m squadmetric.track_record
 
       # Manual runs always validate, so the restored state can be checked on demand.
       - name: Validate artifacts
@@ -95,7 +95,7 @@ jobs:
         env:
           FPL_TEAM_ID: ${{ secrets.FPL_TEAM_ID }}
         run: |
-          python -m fpl_intelligence.live_decision_evidence capture --team-id "$FPL_TEAM_ID" \
+          python -m squadmetric.live_decision_evidence capture --team-id "$FPL_TEAM_ID" \
             | tee "$RUNNER_TEMP/capture.json"
           jq -r '"Captured GW\(.gameweek) decision (\(.candidate_count) candidates)"' \
             "$RUNNER_TEMP/capture.json" >> "$GITHUB_STEP_SUMMARY"

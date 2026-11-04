@@ -1,7 +1,7 @@
 import pandas as pd
 
-from fpl_intelligence.fixture_scenarios import build_fixture_scenario
-from fpl_intelligence.multi_gw_projection import (
+from squadmetric.fixture_scenarios import build_fixture_scenario
+from squadmetric.multi_gw_projection import (
     _baseline_for_player,
     _baseline_from_rows,
     _fpl_difficulty,

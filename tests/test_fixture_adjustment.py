@@ -1,12 +1,12 @@
 import numpy as np
 import pandas as pd
 
-from fpl_intelligence.fixture_adjustment import (
+from squadmetric.fixture_adjustment import (
     FixtureMultipliers,
     add_point_in_time_opponent_strength,
     fit_fixture_multipliers,
 )
-from fpl_intelligence.season_benchmark import _with_fixture_multipliers
+from squadmetric.season_benchmark import _with_fixture_multipliers
 
 
 def _training_rows(count: int = 20000) -> pd.DataFrame:

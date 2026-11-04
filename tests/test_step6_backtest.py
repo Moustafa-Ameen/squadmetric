@@ -1,6 +1,6 @@
 import pandas as pd
 
-from fpl_intelligence.step6_backtest import get_training_data_for_gameweek
+from squadmetric.step6_backtest import get_training_data_for_gameweek
 
 
 def test_training_data_for_gameweek_excludes_target_and_future_2025_26_rows():

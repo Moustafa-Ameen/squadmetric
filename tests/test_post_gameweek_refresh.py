@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from fpl_intelligence.live_model_training import train_live_models
-from fpl_intelligence.post_gameweek_refresh import (
+from squadmetric.live_model_training import train_live_models
+from squadmetric.post_gameweek_refresh import (
     build_finalized_gameweek_rows,
     finalized_gameweeks,
     merge_finalized_history,
@@ -15,11 +15,11 @@ from fpl_intelligence.post_gameweek_refresh import (
     run_post_gameweek_refresh,
     select_predeadline_bootstrap_snapshot,
 )
-from fpl_intelligence.season_rules import (
+from squadmetric.season_rules import (
     build_snapshot_metadata,
     save_immutable_snapshot,
 )
-from fpl_intelligence.step4_models import BASE_FEATURE_COLUMNS
+from squadmetric.step4_models import BASE_FEATURE_COLUMNS
 
 SEASON = "2026-27"
 DEADLINE = "2026-08-21T17:30:00Z"

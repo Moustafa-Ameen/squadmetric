@@ -1,4 +1,4 @@
-from fpl_intelligence.p12_set_piece_report import build_set_piece_report
+from squadmetric.p12_set_piece_report import build_set_piece_report
 
 
 def test_report_surfaces_primary_penalty_taker_and_selected_transition():

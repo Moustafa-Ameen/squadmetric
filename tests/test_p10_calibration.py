@@ -1,6 +1,6 @@
 import pandas as pd
 
-from fpl_intelligence.p10_calibration import (
+from squadmetric.p10_calibration import (
     calibrate_autosubs,
     calibrate_nonappearance_bands,
     load_autosub_calibration,
@@ -18,7 +18,7 @@ def test_default_autosub_calibration_uses_tracked_reference_when_runs_are_absent
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(
-        "fpl_intelligence.p10_calibration.DECISION_PATHS",
+        "squadmetric.p10_calibration.DECISION_PATHS",
         (tmp_path / "missing-1.csv", tmp_path / "missing-2.csv"),
     )
 

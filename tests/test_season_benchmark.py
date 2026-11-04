@@ -3,9 +3,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from fpl_intelligence.backtest_transfer_strategy import TransferDecision, select_starting_xi
-from fpl_intelligence.chip_simulation import CHIP_MODE_BEAM, chip_definitions
-from fpl_intelligence.season_benchmark import (
+from squadmetric.backtest_transfer_strategy import TransferDecision, select_starting_xi
+from squadmetric.chip_simulation import CHIP_MODE_BEAM, chip_definitions
+from squadmetric.season_benchmark import (
     DeterministicTransferStrategy,
     LivePlannerStrategy,
     NoTransfersStrategy,
@@ -26,8 +26,8 @@ from fpl_intelligence.season_benchmark import (
     train_gameweek_predictions,
     train_realistic_captain_predictions,
 )
-from fpl_intelligence.season_rules import build_historical_season_rules
-from fpl_intelligence.step4_models import add_role_form_features
+from squadmetric.season_rules import build_historical_season_rules
+from squadmetric.step4_models import add_role_form_features
 
 
 def _squad_rows() -> list[dict[str, object]]:
@@ -168,7 +168,7 @@ def test_benchmark_autosubs_an_eligible_playing_bench_player():
 
 @pytest.mark.requires_local_artifacts
 def test_no_transfer_strategy_runs_a_complete_historical_season(tmp_path: Path):
-    from fpl_intelligence.season_benchmark import NoTransfersStrategy
+    from squadmetric.season_benchmark import NoTransfersStrategy
 
     players = load_historical_player_gameweeks()
     result = run_season_benchmark(
@@ -469,7 +469,7 @@ def test_realistic_captain_model_training_stops_before_target_gameweek():
 
 
 def test_realistic_captaincy_uses_vice_captain_when_captain_does_not_play():
-    from fpl_intelligence.backtest_transfer_strategy import select_starting_xi
+    from squadmetric.backtest_transfer_strategy import select_starting_xi
 
     squad = pd.DataFrame(_squad_rows())
     projections = {int(player_id): 1.0 for player_id in squad["player_id"]}

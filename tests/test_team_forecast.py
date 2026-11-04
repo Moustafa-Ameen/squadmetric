@@ -1,13 +1,13 @@
 import numpy as np
 import pandas as pd
 
-from fpl_intelligence.calibration import (
+from squadmetric.calibration import (
     binary_calibration_report,
     fit_probability_calibrator,
     poisson_calibration_report,
 )
-from fpl_intelligence.fixture_scenarios import build_fixture_scenario
-from fpl_intelligence.team_forecast import (
+from squadmetric.fixture_scenarios import build_fixture_scenario
+from squadmetric.team_forecast import (
     fit_team_goal_model,
     summarise_team_forecasts,
     walk_forward_team_forecasts,

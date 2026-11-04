@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fpl_intelligence.player_component_forecast import build_player_fixture_components
+from squadmetric.player_component_forecast import build_player_fixture_components
 
 
 def _fixtures() -> pd.DataFrame:

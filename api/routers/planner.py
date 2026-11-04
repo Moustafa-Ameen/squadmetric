@@ -27,9 +27,9 @@ from api.routers.fpl_live import (
     _season_label_from_bootstrap,
 )
 from api.team_rating import build_team_rating
-from fpl_intelligence.artifact_contract import load_current_artifact_manifest
-from fpl_intelligence.backtest_transfer_strategy import validate_squad
-from fpl_intelligence.beam_search import (
+from squadmetric.artifact_contract import load_current_artifact_manifest
+from squadmetric.backtest_transfer_strategy import validate_squad
+from squadmetric.beam_search import (
     FREE_TRANSFER_MINIMUM_HORIZON_GAIN,
     DeterministicBeamPlanner,
     _captain_ids,
@@ -39,20 +39,20 @@ from fpl_intelligence.beam_search import (
     build_live_transfer_planner,
     captain_projection_map,
 )
-from fpl_intelligence.chip_simulation import ChipState
-from fpl_intelligence.live_shadow import (
+from squadmetric.chip_simulation import ChipState
+from squadmetric.live_shadow import (
     append_shadow_record,
     compare_projection_sets,
     shadow_enabled,
 )
-from fpl_intelligence.multi_gw_projection import (
+from squadmetric.multi_gw_projection import (
     ALLOWED_HORIZONS,
     load_planner_models,
     project_players,
 )
-from fpl_intelligence.price_economics import live_pick_price
-from fpl_intelligence.production_portfolio import get_production_portfolio
-from fpl_intelligence.season_rules import build_season_rules
+from squadmetric.price_economics import live_pick_price
+from squadmetric.production_portfolio import get_production_portfolio
+from squadmetric.season_rules import build_season_rules
 
 router = APIRouter(
     prefix="/api/predictions",

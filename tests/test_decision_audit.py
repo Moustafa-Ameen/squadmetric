@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from fpl_intelligence.decision_audit import (
+from squadmetric.decision_audit import (
     ChampionChallengerGate,
     build_champion_challenger_report,
     build_decision_audit,

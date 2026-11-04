@@ -8,7 +8,7 @@ import pytest
 from api import data_service, fpl_client, readiness
 from fastapi import HTTPException
 
-from fpl_intelligence.artifact_contract import ArtifactReadiness
+from squadmetric.artifact_contract import ArtifactReadiness
 
 
 def test_to_records_converts_float_nan_to_json_safe_none():

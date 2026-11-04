@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from fpl_intelligence.backtest_transfer_strategy import (
+from squadmetric.backtest_transfer_strategy import (
     TwoGameweekLookaheadStrategy,
     build_initial_squad,
     build_preseason_scores,
@@ -10,8 +10,8 @@ from fpl_intelligence.backtest_transfer_strategy import (
     select_starting_xi,
     validate_squad,
 )
-from fpl_intelligence.season_benchmark import StrategyContext
-from fpl_intelligence.step4_models import load_historical_player_gameweeks
+from squadmetric.season_benchmark import StrategyContext
+from squadmetric.step4_models import load_historical_player_gameweeks
 
 
 def _squad_rows() -> list[dict[str, object]]:

@@ -9,13 +9,13 @@ from typing import Any
 import pandas as pd
 
 from api.chip_tracking import CHIP_LABELS
-from fpl_intelligence.beam_search import BeamAction, DeterministicBeamPlanner
-from fpl_intelligence.chip_simulation import ChipState
-from fpl_intelligence.price_economics import (
+from squadmetric.beam_search import BeamAction, DeterministicBeamPlanner
+from squadmetric.chip_simulation import ChipState
+from squadmetric.price_economics import (
     initialise_squad_economics,
     live_pick_price,
 )
-from fpl_intelligence.season_rules import SeasonRules
+from squadmetric.season_rules import SeasonRules
 
 LIVE_RULES_SOURCE = "https://fantasy.premierleague.com/api/bootstrap-static/"
 MODEL_NAME = "Deterministic beam search"

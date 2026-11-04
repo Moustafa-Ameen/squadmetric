@@ -11,7 +11,7 @@
   "launch_evidence_path": "data/reference/launch_player_evidence_2026_27.json",
   "live_history_hash": "67c93bb1d328822299a127de78f5e9566fb4d44ae68692fdc80a4f7fc87059f9",
   "live_history_path": "data/processed/live_2026_27_player_gw.csv",
-  "model_metadata_hash": "56c18c061560dfcf75fda1a190d4d361b457c2732d999ea70018485d4272604b",
+  "model_metadata_hash": "8ba6f8a58c1f3196763ca82206f71e3831923cb86dd9be044b2b4a1338119350",
   "model_metadata_path": "models/live_2026_27_models.json",
   "player_count": 670,
   "players_current_hash": "29b19a0a358af7ba9ee28cef5838d099ffbb40b1a75bd7a32355bc9d5c9b809f",

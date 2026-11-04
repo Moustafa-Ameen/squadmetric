@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from fpl_intelligence.fixture_scenarios import (
+from squadmetric.fixture_scenarios import (
     build_fixture_scenario,
     build_historical_fixture_scenario,
 )

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from fpl_intelligence.launch_intelligence import (
+from squadmetric.launch_intelligence import (
     availability_probability,
     load_launch_evidence,
 )

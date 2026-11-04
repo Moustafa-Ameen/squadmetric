@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from fpl_intelligence.step4_models import (
+from squadmetric.step4_models import (
     FEATURE_COLUMNS,
     fit_minutes_band_conditional_model,
     minutes_band,
@@ -50,7 +50,7 @@ def test_minutes_band_calibration_diagnostics_cover_all_classes():
     probabilities = model.predict_proba(training[FEATURE_COLUMNS])
     actual = minutes_band(training["minutes"])
 
-    from fpl_intelligence.step4_models import build_minutes_calibration_table
+    from squadmetric.step4_models import build_minutes_calibration_table
 
     calibration = build_minutes_calibration_table(actual, probabilities)
     assert calibration["band"].tolist() == ["0", "1-59", "60+"]

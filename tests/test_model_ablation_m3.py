@@ -1,4 +1,4 @@
-from fpl_intelligence import model_ablation
+from squadmetric import model_ablation
 
 
 def test_m3_variants_are_registered_directly_and_not_stacked_on_m2():

@@ -7,8 +7,8 @@ import pytest
 from api import readiness as readiness_module
 from fastapi import HTTPException, Response
 
-from fpl_intelligence.artifact_contract import ArtifactReadiness
-from fpl_intelligence.season_rules import (
+from squadmetric.artifact_contract import ArtifactReadiness
+from squadmetric.season_rules import (
     build_season_rules,
     payload_hash,
     rules_contract_hash,

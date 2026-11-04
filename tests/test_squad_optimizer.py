@@ -1,14 +1,14 @@
 import pandas as pd
 import pytest
 
-from fpl_intelligence.backtest_transfer_strategy import validate_squad
-from fpl_intelligence.squad_optimizer import (
+from squadmetric.backtest_transfer_strategy import validate_squad
+from squadmetric.squad_optimizer import (
     optimize_squad,
     optimize_starting_xi,
     validate_squad_shape,
     validate_starting_xi,
 )
-from fpl_intelligence.step4_models import load_historical_player_gameweeks
+from squadmetric.step4_models import load_historical_player_gameweeks
 
 
 @pytest.mark.requires_local_artifacts

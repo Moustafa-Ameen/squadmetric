@@ -1,4 +1,4 @@
-from fpl_intelligence.fetch_fpl import load_players
+from squadmetric.fetch_fpl import load_players
 
 
 def test_load_players_adds_display_columns():

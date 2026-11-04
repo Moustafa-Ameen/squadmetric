@@ -5,8 +5,8 @@ from api.main import app
 from api.routers import operations as operations_router
 from httpx import ASGITransport, AsyncClient
 
-from fpl_intelligence.beam_search import DeterministicBeamPlanner
-from fpl_intelligence.track_record import build_track_record, write_track_record
+from squadmetric.beam_search import DeterministicBeamPlanner
+from squadmetric.track_record import build_track_record, write_track_record
 
 CURRENT = DeterministicBeamPlanner.version
 BOOTSTRAP = {

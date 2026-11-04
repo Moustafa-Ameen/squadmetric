@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from fpl_intelligence.chip_simulation import (
+from squadmetric.chip_simulation import (
     ChipDefinition,
     DeterministicChipPlanner,
     apply_chip,
@@ -13,7 +13,7 @@ from fpl_intelligence.chip_simulation import (
     initial_chip_state,
     legal_chip_options,
 )
-from fpl_intelligence.season_rules import build_historical_season_rules
+from squadmetric.season_rules import build_historical_season_rules
 
 
 def test_historical_chip_inventories_are_manifest_driven():
@@ -194,6 +194,6 @@ def test_missing_bench_points_do_not_become_zero_as_real_points():
             "next_gameweek_points": [5.0, pd.NA],
         }
     )
-    from fpl_intelligence.chip_simulation import bench_points_not_autosubbed
+    from squadmetric.chip_simulation import bench_points_not_autosubbed
 
     assert bench_points_not_autosubbed(target, (1, 2), ()) == 5.0

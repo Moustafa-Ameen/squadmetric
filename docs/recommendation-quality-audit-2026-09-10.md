@@ -141,7 +141,7 @@ That file contains 85,311 rows across 2023/24–2025/26 and no 2026/27 rows.
 
 The rolling builder then selects the maximum season and takes the last three rows
 per normalized player name in
-`src/fpl_intelligence/multi_gw_projection.py:498-530`. It therefore treats
+`src/squadmetric/multi_gw_projection.py:498-530`. It therefore treats
 2025/26 as “current” during 2026/27. The separate live history contains 1,206
 finalized 2026/27 rows for GW1–GW2, but the serving call never combines it with the
 historical frame.
@@ -182,7 +182,7 @@ The route calculates projection frames for the requested horizon but constructs
 eight Gameweeks internally, the decision search is always capped at three.
 
 The planner default also sets `max_same_gameweek_transfers=1` in
-`src/fpl_intelligence/beam_search.py:108-126`. It cannot properly compare a
+`src/squadmetric/beam_search.py:108-126`. It cannot properly compare a
 two-transfer plan even when the manager has banked two or more free transfers.
 This makes the UI control misleading and biases decisions toward shallow,
 one-player moves.
@@ -225,7 +225,7 @@ owned-or-buyable players.
 
 The captaincy backtest is also optimistic. It chooses the highest predicted player
 from the entire player pool each Gameweek
-(`src/fpl_intelligence/step7_evaluation.py:131-147`), not the best captain from a
+(`src/squadmetric/step7_evaluation.py:131-147`), not the best captain from a
 legal owned squad. The report itself acknowledges “no real FPL squad constraints”
 at lines 236-238. Its 468-point Ridge captain total is therefore not evidence that
 the live captain recommendation works.

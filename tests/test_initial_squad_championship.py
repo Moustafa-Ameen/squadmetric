@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from fpl_intelligence.initial_squad_championship import (
+from squadmetric.initial_squad_championship import (
     CHECKPOINT_FILES,
     GW1_DECISION_PROFILES,
     P3_BASELINE_NAME,
@@ -23,7 +23,7 @@ from fpl_intelligence.initial_squad_championship import (
     optimize_opening_squad,
     run_initial_squad_tournament,
 )
-from fpl_intelligence.squad_optimizer import (
+from squadmetric.squad_optimizer import (
     validate_squad_shape,
     validate_starting_xi,
 )
@@ -392,11 +392,11 @@ def test_tournament_persists_full_season_continuation_and_acceptance(
         horizon_captains={},
     )
     monkeypatch.setattr(
-        "fpl_intelligence.initial_squad_championship.build_opening_projection_bundle",
+        "squadmetric.initial_squad_championship.build_opening_projection_bundle",
         lambda *args, **kwargs: bundle,
     )
     monkeypatch.setattr(
-        "fpl_intelligence.initial_squad_championship.build_opening_candidates",
+        "squadmetric.initial_squad_championship.build_opening_candidates",
         lambda *args, **kwargs: [champion, challenger],
     )
 
@@ -506,11 +506,11 @@ def test_tournament_reuses_identical_opening_squad_continuation(
         horizon_captains={},
     )
     monkeypatch.setattr(
-        "fpl_intelligence.initial_squad_championship.build_opening_projection_bundle",
+        "squadmetric.initial_squad_championship.build_opening_projection_bundle",
         lambda *args, **kwargs: bundle,
     )
     monkeypatch.setattr(
-        "fpl_intelligence.initial_squad_championship.build_opening_candidates",
+        "squadmetric.initial_squad_championship.build_opening_candidates",
         lambda *args, **kwargs: [champion, challenger],
     )
     benchmark_calls = []

@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from fpl_intelligence.points_loss_audit import (
+from squadmetric.points_loss_audit import (
     audit_simulation,
     build_chip_usage,
     build_decision_opportunities,

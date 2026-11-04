@@ -3,8 +3,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from api import fpl_client
-from fpl_intelligence.post_gameweek_review import build_post_gameweek_review
-from fpl_intelligence.season_rules import infer_season_from_bootstrap
+from squadmetric.post_gameweek_review import build_post_gameweek_review
+from squadmetric.season_rules import infer_season_from_bootstrap
 
 router = APIRouter(prefix="/api/review", tags=["review"])
 

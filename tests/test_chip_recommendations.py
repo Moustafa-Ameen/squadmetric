@@ -1,9 +1,9 @@
 from api import chip_recommendations
 
-from fpl_intelligence.backtest_transfer_strategy import TransferDecision, TransferPlan
-from fpl_intelligence.beam_search import BeamAction
-from fpl_intelligence.chip_simulation import ChipDefinition, ChipState
-from fpl_intelligence.season_rules import build_historical_season_rules
+from squadmetric.backtest_transfer_strategy import TransferDecision, TransferPlan
+from squadmetric.beam_search import BeamAction
+from squadmetric.chip_simulation import ChipDefinition, ChipState
+from squadmetric.season_rules import build_historical_season_rules
 
 
 def _projected_players() -> list[dict]:

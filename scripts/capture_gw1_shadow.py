@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from api.main import app
 from fastapi.testclient import TestClient
 
-from fpl_intelligence.deadline_intelligence import (
+from squadmetric.deadline_intelligence import (
     build_shadow_snapshot,
     compare_snapshots,
     latest_shadow_snapshot,

@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from fpl_intelligence.artifact_contract import resolve_artifact_path
+from squadmetric.artifact_contract import resolve_artifact_path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"

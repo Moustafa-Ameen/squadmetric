@@ -11,9 +11,9 @@
       "sha256": "4e011057ed382d81e40dcf3f18c05bb3597873b25578986583f4694dce907e6d"
     },
     "minutes_band": {
-      "class": "fpl_intelligence.minutes_model.MinutesBandConditionalModel",
+      "class": "squadmetric.minutes_model.MinutesBandConditionalModel",
       "path": "live_2026_27_minutes_band.joblib",
-      "sha256": "866f45934c7a84b4bc669562b3517a28a6557b02a70168da954af2b77efe23df"
+      "sha256": "eaa08fd4c32c3a6bf877887700ebadbf932d12c75be25f1c5f5496b641e0f47c"
     },
     "minutes_binary": {
       "class": "sklearn.pipeline.Pipeline",

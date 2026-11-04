@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from fpl_intelligence.live_decision_evidence import (
+from squadmetric.live_decision_evidence import (
     build_deadline_snapshot,
     build_finalized_outcome,
     canonical_hash,

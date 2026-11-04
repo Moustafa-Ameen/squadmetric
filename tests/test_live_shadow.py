@@ -1,11 +1,11 @@
 import json
 
-from fpl_intelligence.live_shadow import (
+from squadmetric.live_shadow import (
     append_shadow_record,
     compare_projection_sets,
     shadow_enabled,
 )
-from fpl_intelligence.production_portfolio import get_production_portfolio
+from squadmetric.production_portfolio import get_production_portfolio
 
 
 def test_shadow_mode_is_explicit(monkeypatch):

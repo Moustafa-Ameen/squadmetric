@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from fpl_intelligence.component_features import COMPONENT_TARGET_COLUMNS
-from fpl_intelligence.historical_data import (
+from squadmetric.component_features import COMPONENT_TARGET_COLUMNS
+from squadmetric.historical_data import (
     add_rolling_features,
     build_historical_player_gameweeks,
 )
@@ -365,7 +365,7 @@ def test_lagged_component_features_never_use_target_gameweek_values():
 
 @pytest.mark.requires_local_artifacts
 def test_processed_xg_xa_and_dc_rule_versions_cover_all_local_seasons():
-    from fpl_intelligence.step4_models import load_historical_player_gameweeks
+    from squadmetric.step4_models import load_historical_player_gameweeks
 
     historical = load_historical_player_gameweeks()
     xg_counts = historical.groupby("season")["expected_goals"].count()

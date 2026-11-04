@@ -6,10 +6,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from fpl_intelligence.beam_search import DeterministicBeamPlanner
-from fpl_intelligence.chip_simulation import CHIP_MODE_BEAM
-from fpl_intelligence.season_benchmark import SeasonBenchmarkResult
-from fpl_intelligence.simulate_seasons import (
+from squadmetric.beam_search import DeterministicBeamPlanner
+from squadmetric.chip_simulation import CHIP_MODE_BEAM
+from squadmetric.season_benchmark import SeasonBenchmarkResult
+from squadmetric.simulate_seasons import (
     DEFAULT_SEASONS,
     PRODUCTION_INITIAL_SQUAD_POLICY,
     _initial_squad_for_preset,
@@ -91,15 +91,15 @@ def test_production_simulation_writes_isolated_reproducible_artifacts(
         return _result(season)
 
     monkeypatch.setattr(
-        "fpl_intelligence.simulate_seasons.run_season_benchmark",
+        "squadmetric.simulate_seasons.run_season_benchmark",
         fake_benchmark,
     )
     monkeypatch.setattr(
-        "fpl_intelligence.simulate_seasons.get_git_commit",
+        "squadmetric.simulate_seasons.get_git_commit",
         lambda: "test-commit",
     )
     monkeypatch.setattr(
-        "fpl_intelligence.simulate_seasons._initial_squad_for_preset",
+        "squadmetric.simulate_seasons._initial_squad_for_preset",
         lambda *args, **kwargs: (
             None,
             PRODUCTION_INITIAL_SQUAD_POLICY,
@@ -161,7 +161,7 @@ def test_production_opening_policy_falls_back_when_no_prior_season_exists():
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
-            "fpl_intelligence.backtest_transfer_strategy.build_initial_squad",
+            "squadmetric.backtest_transfer_strategy.build_initial_squad",
             lambda *args, **kwargs: sentinel,
         )
         squad, mode, version = _initial_squad_for_preset(
@@ -225,15 +225,15 @@ def test_live_planner_presets_run_the_live_engine_without_chips(
         return _result(season)
 
     monkeypatch.setattr(
-        "fpl_intelligence.simulate_seasons.run_season_benchmark",
+        "squadmetric.simulate_seasons.run_season_benchmark",
         fake_benchmark,
     )
     monkeypatch.setattr(
-        "fpl_intelligence.simulate_seasons.get_git_commit",
+        "squadmetric.simulate_seasons.get_git_commit",
         lambda: "test-commit",
     )
     monkeypatch.setattr(
-        "fpl_intelligence.simulate_seasons._initial_squad_for_preset",
+        "squadmetric.simulate_seasons._initial_squad_for_preset",
         lambda *args, **kwargs: (
             None,
             PRODUCTION_INITIAL_SQUAD_POLICY,

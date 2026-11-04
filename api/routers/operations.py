@@ -4,19 +4,19 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from fpl_intelligence.artifact_contract import load_current_artifact_manifest
-from fpl_intelligence.deadline_intelligence import (
+from squadmetric.artifact_contract import load_current_artifact_manifest
+from squadmetric.deadline_intelligence import (
     deadline_readiness,
     latest_shadow_snapshot,
 )
-from fpl_intelligence.live_decision_evidence import evidence_status
-from fpl_intelligence.live_shadow import shadow_audit_path, shadow_enabled
-from fpl_intelligence.p11_deadline_finalization import P11_OUTPUT
-from fpl_intelligence.p12_set_piece_report import P12_OUTPUT
-from fpl_intelligence.production_portfolio import get_production_portfolio
-from fpl_intelligence.refresh_current_season import BOOTSTRAP_PATH
-from fpl_intelligence.season_rules import decision_bootstrap_hash
-from fpl_intelligence.track_record import TRACK_RECORD_PATH
+from squadmetric.live_decision_evidence import evidence_status
+from squadmetric.live_shadow import shadow_audit_path, shadow_enabled
+from squadmetric.p11_deadline_finalization import P11_OUTPUT
+from squadmetric.p12_set_piece_report import P12_OUTPUT
+from squadmetric.production_portfolio import get_production_portfolio
+from squadmetric.refresh_current_season import BOOTSTRAP_PATH
+from squadmetric.season_rules import decision_bootstrap_hash
+from squadmetric.track_record import TRACK_RECORD_PATH
 
 router = APIRouter(prefix="/api/operations", tags=["operations"])
 
