@@ -72,20 +72,62 @@
         "transfers": []
       },
       "recommended_points": 83.0
+    },
+    {
+      "best_option_points": 60.0,
+      "captured_at": "2026-11-06T15:17:00.239977Z",
+      "chip_gain": null,
+      "chips_considered": false,
+      "current_version": true,
+      "deadline": "2026-11-06T18:30:00Z",
+      "engine": "rolling-package-beam-v3-timed-chips",
+      "gain_vs_no_action": -4.0,
+      "gameweek": 10,
+      "no_action_points": 51.0,
+      "options_considered": 17,
+      "points_left_on_table": 13.0,
+      "recommendation": {
+        "captain": "Haaland",
+        "chip": null,
+        "hit_cost": 0,
+        "transfers": [
+          {
+            "in": "Marcus Tavernier",
+            "out": "Rayan Cherki"
+          },
+          {
+            "in": "Igor Thiago Nascimento Rodrigues",
+            "out": "João Pedro Junqueira de Jesus"
+          },
+          {
+            "in": "Bart Verbruggen",
+            "out": "Fraser Forster"
+          },
+          {
+            "in": "Oli McBurnie",
+            "out": "Yoane Wissa"
+          },
+          {
+            "in": "Ezri Konsa Ngoyo",
+            "out": "John Egan"
+          }
+        ]
+      },
+      "recommended_points": 47.0
     }
   ],
-  "generated_at": "2026-11-03T15:25:38.046887Z",
+  "generated_at": "2026-11-09T17:44:28.487806Z",
   "method": "Before each deadline SquadMetric saves its recommended plan and every alternative it considered. After official scores are final, each plan is scored with real points against keeping the squad unchanged. Totals count only plans from the current version of SquadMetric.",
   "schema_version": "track-record-v1",
   "season": "2026-27",
   "totals": {
-    "average_gain_vs_no_action": null,
+    "average_gain_vs_no_action": -4.0,
     "earlier_version_scored": 3,
-    "scored": 0,
-    "total_gain_from_chips": 0,
-    "total_gain_vs_no_action": 0,
+    "scored": 1,
+    "total_gain_from_chips": 0.0,
+    "total_gain_vs_no_action": -4.0,
     "weeks_ahead": 0,
-    "weeks_behind": 0,
+    "weeks_behind": 1,
     "weeks_level": 0
   },
   "unscored_gameweeks": [
