@@ -114,20 +114,46 @@
         ]
       },
       "recommended_points": 47.0
+    },
+    {
+      "best_option_points": 39.0,
+      "captured_at": "2026-11-20T22:47:07.749935Z",
+      "chip_gain": null,
+      "chips_considered": false,
+      "current_version": true,
+      "deadline": "2026-11-21T11:00:00Z",
+      "engine": "rolling-package-beam-v3-timed-chips",
+      "gain_vs_no_action": -2.0,
+      "gameweek": 11,
+      "no_action_points": 30.0,
+      "options_considered": 17,
+      "points_left_on_table": 11.0,
+      "recommendation": {
+        "captain": "Haaland",
+        "chip": null,
+        "hit_cost": 0,
+        "transfers": [
+          {
+            "in": "Jan Paul van Hecke",
+            "out": "António João Pereira de Albuquerque Tavares da Silva"
+          }
+        ]
+      },
+      "recommended_points": 28.0
     }
   ],
-  "generated_at": "2026-11-09T17:44:28.487806Z",
+  "generated_at": "2026-11-24T19:01:06.063000Z",
   "method": "Before each deadline SquadMetric saves its recommended plan and every alternative it considered. After official scores are final, each plan is scored with real points against keeping the squad unchanged. Totals count only plans from the current version of SquadMetric.",
   "schema_version": "track-record-v1",
   "season": "2026-27",
   "totals": {
-    "average_gain_vs_no_action": -4.0,
+    "average_gain_vs_no_action": -3.0,
     "earlier_version_scored": 3,
-    "scored": 1,
+    "scored": 2,
     "total_gain_from_chips": 0.0,
-    "total_gain_vs_no_action": -4.0,
+    "total_gain_vs_no_action": -6.0,
     "weeks_ahead": 0,
-    "weeks_behind": 1,
+    "weeks_behind": 2,
     "weeks_level": 0
   },
   "unscored_gameweeks": [

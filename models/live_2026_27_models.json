@@ -3,27 +3,27 @@
     "captain": {
       "class": "sklearn.pipeline.Pipeline",
       "path": "live_2026_27_captain_points.joblib",
-      "sha256": "4e0ed7d8dd8a8b91d194cfcbdea1f890d7addf6d508c9949f8fb45206a8fe208"
+      "sha256": "5a96afbda0cb593fed3c1e6873e35f0992dbdbc70687fafa5d2cfd288a58c544"
     },
     "gradient": {
       "class": "sklearn.pipeline.Pipeline",
       "path": "live_2026_27_gradient_points.joblib",
-      "sha256": "459b3105b4311dda9c6338319a3405d355e51051b595d4f0bb11c0701d594664"
+      "sha256": "b214f54413a3b1c3701da5eb29276480147e6ba507638ae2ddffdeab51b6d299"
     },
     "minutes_band": {
       "class": "squadmetric.minutes_model.MinutesBandConditionalModel",
       "path": "live_2026_27_minutes_band.joblib",
-      "sha256": "196aef2614297870e784531ff163dce15a422d108f53101cd6b8c3be6d062771"
+      "sha256": "70c8df83131ae2198cfc7d491369a8b2eef2e4ae24945303fcc12efec0788661"
     },
     "minutes_binary": {
       "class": "sklearn.pipeline.Pipeline",
       "path": "live_2026_27_minutes_binary.joblib",
-      "sha256": "003c9a383aa046e12bb1ac2b264ed66ef98bbcda146e331402182c07ad1b0e4a"
+      "sha256": "3b4b1a6e50f39ce17afd8e18389ce4b7d4adbab6515f26151995ebb252ac6776"
     },
     "ridge": {
       "class": "sklearn.pipeline.Pipeline",
       "path": "live_2026_27_ridge_points.joblib",
-      "sha256": "2a48ab1d4a039ff3261bc828038fad06b74d0d1126e0df4fa4c67a33f24c7101"
+      "sha256": "770ad08f1ce4fc842aeb0bed3a42525b6d323388a541591cbde1405fe8980b39"
     }
   },
   "feature_columns": [
@@ -46,14 +46,15 @@
     7,
     8,
     9,
-    10
+    10,
+    11
   ],
-  "finalized_current_season_hash": "2984a3296af8564d7dd4c4f2a738500d1d09bd2134ad9108f71c5bfc7c7e81a6",
-  "finalized_current_season_rows": 6489,
-  "generated_at": "2026-11-09T17:44:01.994591Z",
+  "finalized_current_season_hash": "76380e7bd02fc88e8eca33cb16e323684f0569b2674096eeda0b54df5ac919f5",
+  "finalized_current_season_rows": 7161,
+  "generated_at": "2026-11-24T19:00:20.137254Z",
   "schema_version": "live-models-v2-finalized-current-season",
   "target_season": "2026-27",
-  "training_rows": 91800,
+  "training_rows": 92472,
   "training_seasons": [
     "2023-24",
     "2024-25",
