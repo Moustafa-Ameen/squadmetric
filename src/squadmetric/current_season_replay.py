@@ -32,7 +32,7 @@ from squadmetric.initial_squad_championship import (
     optimize_opening_squad,
 )
 from squadmetric.launch_intelligence import availability_probability
-from squadmetric.live_model_training import BASE_FEATURE_COLUMNS
+from squadmetric.live_model_training import BASE_FEATURE_COLUMNS, to_model_opponent_strength
 from squadmetric.multi_gw_projection import project_players
 from squadmetric.preseason import build_identity_safe_preseason_pool
 from squadmetric.price_economics import (
@@ -447,6 +447,7 @@ def _project_at_deadline(
 
 def _fit_models(training: pd.DataFrame) -> tuple[Any, Any]:
     available = training.dropna(subset=["next_gameweek_points"]).copy()
+    available["opponent_strength"] = to_model_opponent_strength(available["opponent_strength"])
     points = build_ridge_model(BASE_FEATURE_COLUMNS)
     points.fit(available[BASE_FEATURE_COLUMNS], available["next_gameweek_points"])
     minutes = fit_minutes_band_conditional_model(available, BASE_FEATURE_COLUMNS)

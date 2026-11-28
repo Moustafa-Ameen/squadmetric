@@ -3,10 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import joblib
 import pandas as pd
 import pytest
 
-from squadmetric.live_model_training import train_live_models
+from squadmetric.live_model_training import (
+    model_opponent_strength,
+    to_model_opponent_strength,
+    train_live_models,
+)
 from squadmetric.post_gameweek_refresh import (
     build_finalized_gameweek_rows,
     finalized_gameweeks,
@@ -138,6 +143,46 @@ def _training_rows(season: str, count: int, *, finalized: bool = False) -> pd.Da
             row.update(official_finished=True, official_data_checked=True)
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def test_opponent_strength_conversion_matches_serving_and_keeps_old_scale():
+    values = pd.Series([2, 3.5, 5, 1200.0, 0, None])
+
+    converted = to_model_opponent_strength(values)
+
+    assert converted.tolist()[:5] == [1075.0, 1187.5, 1300.0, 1200.0, 1150.0]
+    assert pd.isna(converted.iloc[5])
+    for value in (2, 3.5, 5, 1200.0, 0):
+        assert model_opponent_strength(value) == to_model_opponent_strength(
+            pd.Series([value])
+        ).iloc[0]
+
+
+def test_live_model_fit_puts_current_season_strength_on_the_historical_scale(
+    tmp_path: Path,
+):
+    history = _training_rows("2025-26", 240)
+    current = _training_rows("2026-27", 80, finalized=True)
+    current["opponent_strength"] = (current.index % 4 + 2).astype(float)
+    premapped = current.assign(
+        opponent_strength=925.0 + 75.0 * current["opponent_strength"]
+    )
+
+    train_live_models(
+        history, output_dir=tmp_path / "raw", finalized_current_season=current
+    )
+    train_live_models(
+        history, output_dir=tmp_path / "mapped", finalized_current_season=premapped
+    )
+
+    raw_model = joblib.load(tmp_path / "raw" / "live_2026_27_ridge_points.joblib")
+    mapped_model = joblib.load(tmp_path / "mapped" / "live_2026_27_ridge_points.joblib")
+    assert raw_model.named_steps["model"].coef_ == pytest.approx(
+        mapped_model.named_steps["model"].coef_
+    )
+    scaler = raw_model.named_steps["preprocessor"].named_transformers_["numeric"]
+    strength_index = list(scaler.feature_names_in_).index("opponent_strength")
+    assert scaler.named_steps["scaler"].mean_[strength_index] > 900
 
 
 def test_finalized_detector_excludes_every_provisional_state():
