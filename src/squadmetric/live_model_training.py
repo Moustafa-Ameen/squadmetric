@@ -60,6 +60,34 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def model_opponent_strength(value: Any) -> float:
+    """Put one opponent strength on the scale the models are trained on.
+
+    Completed seasons store FPL's team strength ratings, roughly 1,000-1,400.
+    From 2026/27 FPL publishes the same fields on a 1-5 scale, so values of 5 or
+    less are mapped onto the older scale. Missing or zero values get a mid rating.
+    """
+
+    try:
+        raw = float(value)
+    except (TypeError, ValueError):
+        raw = 0.0
+    if not raw > 0:
+        return 1150.0
+    if raw <= 5:
+        return 925.0 + 75.0 * raw
+    return raw
+
+
+def to_model_opponent_strength(values: pd.Series) -> pd.Series:
+    """Apply `model_opponent_strength` to a column, keeping missing values missing."""
+
+    numbers = pd.to_numeric(values, errors="coerce")
+    mapped = numbers.where(numbers > 5, 925.0 + 75.0 * numbers)
+    mapped = mapped.where(numbers > 0, 1150.0)
+    return mapped.where(numbers.notna())
+
+
 def fit_live_captain_model(training: pd.DataFrame) -> Any:
     """Fit the captain ranking model, which alone uses recent playing-time inputs."""
 
@@ -136,6 +164,7 @@ def train_live_models(
 
     training = pd.concat([history, current], ignore_index=True, sort=False)
     training = training.dropna(subset=["next_gameweek_points"]).copy()
+    training["opponent_strength"] = to_model_opponent_strength(training["opponent_strength"])
     training_seasons = sorted(training["season"].astype(str).unique().tolist())
     if not training_seasons:
         raise ValueError("Live-model training requires at least one completed season")

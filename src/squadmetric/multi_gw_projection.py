@@ -24,6 +24,7 @@ from squadmetric.live_model_training import (
     LIVE_GRADIENT_MODEL_PATH,
     LIVE_MINUTES_BAND_MODEL_PATH,
     LIVE_RIDGE_MODEL_PATH,
+    model_opponent_strength,
 )
 from squadmetric.scoring_regime_adjustment import bps_v2_adjustment
 from squadmetric.set_piece_intelligence import (
@@ -510,14 +511,12 @@ def _fixture_metadata(fixture: dict[str, Any]) -> dict[str, Any]:
 
 
 def _model_opponent_strength(value: Any) -> float:
-    """Map the live 1-5 FDR scale onto the historical model's strength scale."""
+    """Map the live 1-5 scale onto the historical model's strength scale.
 
-    raw = _number(value)
-    if raw <= 0:
-        return 1150.0
-    if raw <= 5:
-        return 925.0 + 75.0 * raw
-    return raw
+    Training uses the same rule, so served fixtures and training rows match.
+    """
+
+    return model_opponent_strength(_number(value))
 
 
 def _fpl_difficulty(value: Any) -> int | None:
